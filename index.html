@@ -554,6 +554,64 @@ function loadAll() {
 function saveAll() { try { localStorage.setItem('swingai_v3', JSON.stringify(ST)); } catch(e){} }
 function saveCfg() { try { localStorage.setItem('swingai_cfg_v3', JSON.stringify(CFG)); } catch(e){} }
 
+// ── PERSISTENCJA MODELI AI ─────────────────────────────────────────
+function saveModels() {
+  try {
+    var payload = {
+      nb: {
+        model:   NB.model,
+        trained: NB.trained,
+        trainCount: NB.trainCount
+      },
+      gbm: {
+        trees:    GBM.trees,
+        trained:  GBM.trained,
+        accuracy: GBM.accuracy
+      },
+      adaptive: {
+        minScoreAdjusted: ADAPTIVE.minScoreAdjusted,
+        lastTrainSize:    ADAPTIVE.lastTrainSize
+      },
+      savedAt: Date.now()
+    };
+    localStorage.setItem('swingai_models_v1', JSON.stringify(payload));
+  } catch(e) { log('saveModels blad: '+e.message, 'warn'); }
+}
+
+function loadModels() {
+  try {
+    var raw = localStorage.getItem('swingai_models_v1');
+    if (!raw) return false;
+    var p = JSON.parse(raw);
+    // Sprawdz czy modele nie sa starsze niz 30 dni
+    if (Date.now() - (p.savedAt||0) > 30*864e5) {
+      localStorage.removeItem('swingai_models_v1');
+      log('Modele AI wygasly (>30 dni) — wymagany nowy trening', 'warn');
+      return false;
+    }
+    if (p.nb && p.nb.trained) {
+      NB.model      = p.nb.model;
+      NB.trained    = true;
+      NB.trainCount = p.nb.trainCount || 0;
+    }
+    if (p.gbm && p.gbm.trained && p.gbm.trees && p.gbm.trees.length) {
+      GBM.trees    = p.gbm.trees;
+      GBM.trained  = true;
+      GBM.accuracy = p.gbm.accuracy || 0;
+    }
+    if (p.adaptive) {
+      ADAPTIVE.minScoreAdjusted = p.adaptive.minScoreAdjusted;
+      ADAPTIVE.lastTrainSize    = p.adaptive.lastTrainSize || 0;
+    }
+    var age = Math.round((Date.now()-(p.savedAt||0))/3600000);
+    log('Modele AI zaladowane z pamieci (trenowane '+age+'h temu): NB='+NB.trained+' GBM='+GBM.trained, 'ok');
+    return true;
+  } catch(e) {
+    log('loadModels blad: '+e.message, 'warn');
+    return false;
+  }
+}
+
 // ── TELEGRAM ───────────────────────────────────────────────────────
 async function tgSend(msg) {
   if (!CFG.tgToken || !CFG.tgChat) return;
@@ -1929,6 +1987,7 @@ var ADAPTIVE = {
     }
 
     log('AI retrained: NB='+nbOk+' GBM='+GBM.accuracy+'% trades='+trades.length, 'ok');
+    saveModels(); // zapisz do localStorage
     updateAIStatusPanel();
   },
 
@@ -2365,10 +2424,11 @@ async function trainAllAI() {
     ADAPTIVE.minScoreAdjusted = CFG.minScore; // reset adaptive
 
     var msg = 'NB: '+(nbOk?'OK':'blad')+' | GBM: '+(gbmOk?'OK (acc: '+GBM.accuracy+'%)':'blad')+' | proba: '+synTrades.length;
-    gi('ml-progress').textContent = msg;
+    gi('ml-progress').textContent = msg+' ✅ Zapisano do pamięci';
     gi('ml-apply').style.display = '';
+    saveModels(); // zapisz modele do localStorage
     updateAIStatusPanel();
-    log('AI trening zakończony: '+msg, 'ok');
+    log('AI trening zakończony i zapisany: '+msg, 'ok');
   } catch(e) {
     gi('ml-progress').textContent = 'Blad: '+e.message;
     log('trainAllAI blad: '+e.message,'err');
@@ -2387,6 +2447,8 @@ function applyMLWeights() {
 
 // ── INIT ───────────────────────────────────────────────────────────
 loadAll();
+// Załaduj modele AI z poprzedniej sesji (brak potrzeby ponownego treningu)
+var _modelsLoaded = loadModels();
 gi('lim-maxpos').textContent = CFG.maxPos;
 gi('lim-tp').textContent     = (CFG.tp*100)+'%';
 gi('lim-sl').textContent     = (CFG.sl*100)+'%';
@@ -2400,8 +2462,14 @@ var _mb=gi('mode-badge'); _mb.textContent=CFG.mode.toUpperCase(); _mb.className=
 gi('st-mode').textContent = CFG.mode.toUpperCase();
 var _tge=gi('rb-tg'); if(_tge){ _tge.textContent=CFG.tgToken?'OK':'-'; _tge.className=CFG.tgToken?'val up':'val neu'; }
 renderPositions(); renderHistory(); renderStats(); renderCooldowns();
+updateAIStatusPanel();
 log('SwingAI Bot v2 | '+PAIRS.length+' par | Kelly | Fear&Greed | PumpDump | 1H confirm');
 log('Tryb: '+CFG.mode.toUpperCase()+' | min score: '+CFG.minScore+' | ryzko: '+CFG.riskPct+'%/trade');
+if (_modelsLoaded) {
+  log('Modele AI gotowe — mozesz od razu kliknac START BOT', 'ok');
+} else {
+  log('Brak zapisanych modeli — zalecany trening: zakladka ML Wagi → Trenuj NB+GBM', 'warn');
+}
 </script>
 </body>
 </html>
