@@ -310,6 +310,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="r2"><span class="lbl">P/L dzienny</span><span class="val" id="rb-pnl">$0.00</span></div>
     <div class="r2"><span class="lbl">Straty z rzędu</span><span class="val" id="rb-losses">0</span></div>
     <div class="r2"><span class="lbl">Paper saldo</span><span class="val" id="rb-paper">$1000</span></div>
+    <div class="r2"><span class="lbl">Worker proxy</span><span class="val" id="rb-worker">–</span></div>
   </div>
 
   <div class="sec">
@@ -359,17 +360,29 @@ tr:hover td{background:rgba(255,255,255,.015);}
 <div class="modal">
   <h2>⚙️ Konfiguracja SwingAI Bot</h2>
   <div class="alert-box">
-    🔐 Klucze API przechowywane tylko w <b>localStorage</b> Twojej przeglądarki.<br>
-    Nie są wysyłane nigdzie poza Binance. W trybie <b>PAPER</b> klucze nie są potrzebne.
+    🔐 Klucze API przechowywane tylko w <b>localStorage</b> Twojej przeglądarki — nie wychodzą nigdzie poza Binance.<br>
+    Tryb <b>LIVE</b> wymaga Cloudflare Worker (proxy CORS) — instrukcja poniżej.
   </div>
   <div class="form-row"><label>Tryb handlu</label>
-    <select id="cfg-mode">
+    <select id="cfg-mode" onchange="onModeChange(this.value)">
       <option value="paper">📝 PAPER — symulacja (bezpieczny start)</option>
       <option value="live">💰 LIVE — realne transakcje Binance</option>
     </select>
   </div>
   <div class="form-row"><label>Binance API Key</label><input id="cfg-key" type="password" placeholder="Wklej klucz Binance API"></div>
   <div class="form-row"><label>Binance Secret</label><input id="cfg-secret" type="password" placeholder="Wklej Secret Binance"></div>
+  <div class="form-row" id="row-worker">
+    <label>Cloudflare Worker URL</label>
+    <input id="cfg-worker" type="text" placeholder="https://swingai.TWOJA-NAZWA.workers.dev">
+  </div>
+  <div id="worker-guide" style="display:none;background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:5px;padding:10px 13px;font-size:8.5pt;color:var(--accent);margin-bottom:10px;line-height:1.8;">
+    <b>🔧 Jak skonfigurować Worker (jednorazowo, 5 minut):</b><br>
+    1. Wejdź na <b>dash.cloudflare.com</b> → <i>Workers &amp; Pages</i> → <i>Create Worker</i><br>
+    2. Kliknij <b>Edit code</b> → wklej kod z pliku <code>swingai_worker.js</code><br>
+    3. Kliknij <b>Deploy</b> → skopiuj URL workera (np. <code>https://swingai.xxx.workers.dev</code>)<br>
+    4. Wklej URL w polu powyżej i zapisz<br>
+    <span style="color:var(--text3)">✓ Darmowy plan: 100 000 req/dzień — w zupełności wystarczy</span>
+  </div>
   <hr style="border-color:var(--border);margin:12px 0;">
   <div class="form-row"><label>Take Profit %</label><input id="cfg-tp" type="number" value="8" step="0.5" min="3" max="30"></div>
   <div class="form-row"><label>Stop Loss %</label><input id="cfg-sl" type="number" value="4" step="0.5" min="1" max="15"></div>
@@ -405,7 +418,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
 // ═══════════════════════════════════════════════
 //  CONFIG & STATE
 // ═══════════════════════════════════════════════
-let CFG={apiKey:'',secret:'',mode:'paper',tp:.08,sl:.04,trail:.045,maxPos:3,posSize:15,intervalMin:15,paperBal:1000,minScore:62};
+let CFG={apiKey:'',secret:'',mode:'paper',workerUrl:'',tp:.08,sl:.04,trail:.045,maxPos:3,posSize:15,intervalMin:15,paperBal:1000,minScore:62};
 const PAIRS=['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC'];
 const BASE='https://api.binance.com';
 let ST={positions:[],trades:[],dailyPnl:0,dailyDate:'',cooldown:{},globalBlockUntil:0,consLoss:0,paperBal:1000,iter:0};
@@ -429,11 +442,25 @@ async function hmac(msg){
   const sig=await crypto.subtle.sign('HMAC',key,enc.encode(msg));
   return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
+// Zwraca bazowy URL: bezpośrednio Binance (dane pub) lub przez Worker (signed)
+function apiBase(signed=false){
+  if(signed && CFG.workerUrl){
+    return CFG.workerUrl.replace(/\/+$/,'')+'/proxy';
+  }
+  return BASE;
+}
+function workerReady(){
+  return !!(CFG.workerUrl && CFG.workerUrl.startsWith('https://'));
+}
+
 async function signedReq(method,path,params={}){
+  if(!workerReady()) throw new Error('Brak Worker URL — skonfiguruj proxy w ustawieniach');
   params.timestamp=Date.now();
   const qs1=new URLSearchParams(params).toString();
   params.signature=await hmac(qs1);
-  const r=await fetch(BASE+path+'?'+new URLSearchParams(params).toString(),{method,headers:{'X-MBX-APIKEY':CFG.apiKey}});
+  const base=apiBase(true);
+  const r=await fetch(base+path+'?'+new URLSearchParams(params).toString(),
+    {method,headers:{'X-MBX-APIKEY':CFG.apiKey,'Content-Type':'application/x-www-form-urlencoded'}});
   if(!r.ok){const e=await r.json().catch(()=>({msg:r.statusText}));throw new Error(e.msg||r.statusText);}
   return r.json();
 }
@@ -791,6 +818,15 @@ setInterval(()=>setEl('st-time',new Date().toLocaleTimeString('pl-PL')),1000);
 //  BOT CONTROL
 // ═══════════════════════════════════════════════
 async function startBot(){
+  // Walidacja LIVE
+  if(CFG.mode==='live'){
+    if(!CFG.apiKey||!CFG.secret){
+      alert('❌ Tryb LIVE wymaga kluczy Binance API.\nOtwórz ⚙️ Konfiguracja i wklej klucze.');return;
+    }
+    if(!workerReady()){
+      alert('❌ Tryb LIVE wymaga Cloudflare Worker URL.\nOtwórz ⚙️ Konfiguracja → wklej URL workera.\n\nInstrukcja jest w panelu konfiguracji.');return;
+    }
+  }
   running=true;
   document.getElementById('btn-run').style.display='none';
   document.getElementById('btn-stop').style.display='';
@@ -874,6 +910,10 @@ async function updateHeader(){
     setEl('rb-paper','$'+ST.paperBal.toFixed(2));
     setEl('rb-losses',ST.consLoss,'val '+(ST.consLoss>=2?'dn':'neu'));
     setEl('rb-mode',CFG.mode.toUpperCase());
+    const we=document.getElementById('rb-worker');
+    if(CFG.mode==='paper'){we.textContent='(tryb PAPER)';we.className='val neu';}
+    else if(workerReady()){we.textContent='✅ skonfigurowany';we.className='val up';}
+    else{we.textContent='⚠️ brak — LIVE nie działa';we.className='val dn';}
     const bb=document.getElementById('block-badge');
     if(ST.globalBlockUntil>Date.now()){const r=Math.round((ST.globalBlockUntil-Date.now())/60000);bb.style.display='';bb.textContent='⛔ BLOKADA '+r+'min';}
     else bb.style.display='none';
@@ -1096,9 +1136,16 @@ function renderCooldowns(){
 // ═══════════════════════════════════════════════
 //  SETTINGS
 // ═══════════════════════════════════════════════
+function onModeChange(val){
+  const show = val==='live';
+  document.getElementById('row-worker').style.display = show?'':'none';
+  document.getElementById('worker-guide').style.display = show?'':'none';
+}
 function openSettings(){
   setInput('cfg-key',CFG.apiKey||'');setInput('cfg-secret',CFG.secret||'');
+  setInput('cfg-worker',CFG.workerUrl||'');
   document.getElementById('cfg-mode').value=CFG.mode;
+  onModeChange(CFG.mode);
   setInput('cfg-tp',(CFG.tp*100).toFixed(1));setInput('cfg-sl',(CFG.sl*100).toFixed(1));setInput('cfg-trail',(CFG.trail*100).toFixed(1));
   setInput('cfg-maxpos',CFG.maxPos);setInput('cfg-size',CFG.posSize);setInput('cfg-interval',CFG.intervalMin);
   setInput('cfg-paper-bal',CFG.paperBal);setInput('cfg-minscore',CFG.minScore);
@@ -1106,6 +1153,7 @@ function openSettings(){
 }
 function saveSettings(){
   CFG.apiKey=gi('cfg-key').value.trim();CFG.secret=gi('cfg-secret').value.trim();
+  CFG.workerUrl=gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode=gi('cfg-mode').value;
   CFG.tp=parseFloat(gi('cfg-tp').value)/100;CFG.sl=parseFloat(gi('cfg-sl').value)/100;CFG.trail=parseFloat(gi('cfg-trail').value)/100;
   CFG.maxPos=parseInt(gi('cfg-maxpos').value);CFG.posSize=parseFloat(gi('cfg-size').value);
@@ -1119,13 +1167,34 @@ function saveSettings(){
 }
 async function testConn(){
   const s=gi('cfg-status');s.textContent='⏳ Testuję...';s.style.color='var(--gold)';saveSettings();
+  const lines=[];
+  // 1. Public Binance
   try{
     const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'});
-    let msg='✅ Binance OK | BTC: $'+(+t.price).toFixed(0);
-    if(CFG.mode==='live'&&CFG.apiKey){try{const a=await signedReq('GET','/api/v3/account');const u=(a.balances||[]).find(b=>b.asset==='USDC');msg+=' | USDC: $'+(u?+u.free.toFixed(2):'0');}catch(e){msg+=' | ❌ Klucze: '+e.message;}}
-    s.textContent=msg;s.style.color='var(--green)';
-    document.getElementById('conn-badge').className='badge bon';document.getElementById('conn-badge').textContent='ONLINE';
-  }catch(e){s.textContent='❌ '+e.message;s.style.color='var(--red)';}
+    lines.push('✅ Binance public OK | BTC: $'+(+t.price).toFixed(0));
+  }catch(e){lines.push('❌ Binance public: '+e.message);}
+  // 2. Worker (jeśli ustawiony)
+  if(CFG.workerUrl){
+    try{
+      const r=await fetch(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC');
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      lines.push('✅ Worker OK | ETH przez proxy: $'+(+d.price).toFixed(2));
+    }catch(e){lines.push('❌ Worker: '+e.message+' — sprawdź URL i czy worker jest wdrożony');}
+  } else if(CFG.mode==='live'){
+    lines.push('⚠️ Brak Worker URL — wklej URL z Cloudflare Dashboard');
+  }
+  // 3. Konto (LIVE + worker)
+  if(CFG.mode==='live'&&CFG.apiKey&&workerReady()){
+    try{
+      const a=await signedReq('GET','/api/v3/account');
+      const u=(a.balances||[]).find(b=>b.asset==='USDC');
+      lines.push('✅ Konto Binance OK | USDC: $'+(u?parseFloat(u.free).toFixed(2):'0'));
+    }catch(e){lines.push('❌ Konto: '+e.message);}
+  }
+  s.innerHTML=lines.join('<br>');
+  s.style.color=lines.every(l=>l.startsWith('✅'))?'var(--green)':'var(--gold)';
+  if(lines[0].startsWith('✅')){document.getElementById('conn-badge').className='badge bon';document.getElementById('conn-badge').textContent='ONLINE';}
 }
 function resetAll(){
   if(!confirm('Usunąć wszystkie pozycje, historię i dane bota?'))return;
