@@ -151,6 +151,9 @@ tr:hover td{background:rgba(255,255,255,.015);}
 
 /* ── SCORE RING ── */
 .score-ring{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11pt;flex-shrink:0;}
+/* ── CHART TF BUTTONS ── */
+.chart-tf-btn{padding:2px 9px;font-size:8.5pt;border-radius:4px;cursor:pointer;background:var(--bg4);color:var(--text2);border:1px solid var(--border);}
+.chart-tf-btn.on{background:rgba(88,166,255,.15);color:var(--accent);border-color:var(--accent);}
 
 /* ── STATS ── */
 .stat-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px;}
@@ -515,6 +518,26 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <button onclick="closeOverlay('modal-cfg')" style="margin-left:auto">Zamknij</button>
   </div>
   <div id="cfg-status" style="margin-top:8px;font-size:9pt;min-height:18px;color:var(--text2)"></div>
+</div></div>
+
+<!-- CHART MODAL -->
+<div class="overlay" id="modal-chart">
+<div class="modal" style="width:780px;max-width:96vw;">
+  <h2 id="chart-title" style="display:flex;align-items:center;gap:10px">
+    📊 Wykres — <span id="chart-sym"></span>
+    <span style="margin-left:auto;display:flex;gap:6px">
+      <button onclick="setChartTF('1d')" class="chart-tf-btn on" data-tf="1d">D</button>
+      <button onclick="setChartTF('4h')" class="chart-tf-btn" data-tf="4h">4H</button>
+      <button onclick="setChartTF('1h')" class="chart-tf-btn" data-tf="1h">1H</button>
+    </span>
+  </h2>
+  <div id="chart-status" style="font-size:8.5pt;color:var(--gold);margin-bottom:6px;min-height:16px"></div>
+  <canvas id="candle-canvas" style="width:100%;background:var(--bg3);border-radius:6px;display:block;"></canvas>
+  <div id="chart-legend" style="display:flex;gap:14px;margin-top:8px;font-size:8.5pt;flex-wrap:wrap"></div>
+  <div class="modal-btns" style="margin-top:10px">
+    <button onclick="refreshChart()">🔄 Odśwież</button>
+    <button onclick="closeOverlay('modal-chart')" style="margin-left:auto">Zamknij</button>
+  </div>
 </div></div>
 
 <!-- AI EXPLAIN MODAL -->
@@ -1582,6 +1605,7 @@ function renderPositions() {
       +'</div>'
       +'<div class="pos-footer">'
       +'<button class="ai-btn" onclick="openAiExplain(\''+pos.sym+'\')">🧠 Analiza AI</button>'
+      +'<button onclick="openChart(\''+pos.sym+'\')" style="background:rgba(88,166,255,.1);color:var(--accent);border-color:var(--accent);font-size:8pt;padding:2px 8px;border-radius:5px;cursor:pointer">📊 Wykres</button>'
       +'<button class="stop-btn" onclick="manualClose(\''+pos.sym+'\')" style="font-size:8pt;padding:2px 9px">Zamknij</button>'
       +'<span style="margin-left:auto;font-size:8pt;color:var(--text3)">'+CFG.mode.toUpperCase()+'</span>'
       +'</div></div>';
@@ -2714,6 +2738,212 @@ function applyMLWeights() {
   gi('ml-apply').style.color='var(--green)';
   gi('ml-apply').disabled=true;
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  CANDLESTICK CHART ENGINE
+// ═══════════════════════════════════════════════════════════════════
+var CHART = {
+  sym: null,
+  tf: '1d',
+  klines: [],
+  pos: null,   // powiązana pozycja
+
+  open: async function(sym) {
+    this.sym = sym;
+    this.pos = ST.positions.find(function(p){ return p.sym===sym; }) || null;
+    gi('chart-sym').textContent = sym.replace('USDC','/USDC');
+    gi('chart-status').textContent = 'Pobieranie danych...';
+    gi('modal-chart').className = 'overlay open';
+    document.querySelectorAll('.chart-tf-btn').forEach(function(b){ b.classList.toggle('on', b.dataset.tf===CHART.tf); });
+    await this.load();
+  },
+
+  load: async function() {
+    try {
+      gi('chart-status').textContent = 'Pobieranie '+this.tf+'...';
+      var limit = this.tf==='1d'?90 : this.tf==='4h'?120 : 100;
+      var raw = await getKlines(this.sym, this.tf, limit);
+      this.klines = raw.map(function(k){
+        return { t:+k[0], o:+k[1], h:+k[2], l:+k[3], c:+k[4], v:+k[5] };
+      });
+      gi('chart-status').textContent = '';
+      this.draw();
+    } catch(e) {
+      gi('chart-status').textContent = 'Błąd: '+e.message;
+    }
+  },
+
+  draw: function() {
+    var canvas = gi('candle-canvas');
+    if (!canvas || !this.klines.length) return;
+    var W = canvas.offsetWidth || 720;
+    var H = 340;
+    canvas.width = W; canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,W,H);
+
+    var klines = this.klines;
+    var n = klines.length;
+    var PAD = { l:55, r:12, t:20, b:32 };
+    var chartW = W - PAD.l - PAD.r;
+    var chartH = H - PAD.t - PAD.b;
+
+    // Zakres cen
+    var allH = klines.map(function(k){ return k.h; });
+    var allL = klines.map(function(k){ return k.l; });
+    var priceMax = Math.max.apply(null, allH);
+    var priceMin = Math.min.apply(null, allL);
+    var priceRange = priceMax - priceMin || 1;
+    // Dodaj margines 3%
+    priceMax += priceRange * 0.03;
+    priceMin -= priceRange * 0.03;
+    priceRange = priceMax - priceMin;
+
+    var toY = function(p){ return PAD.t + chartH * (1-(p-priceMin)/priceRange); };
+    var candleW = Math.max(2, Math.floor(chartW/n) - 1);
+    var candleX = function(i){ return PAD.l + i*(chartW/n) + (chartW/n - candleW)/2; };
+
+    // ── Tło i siatka ────────────────────────────────────────────────
+    ctx.fillStyle = '#161b22';
+    ctx.fillRect(PAD.l, PAD.t, chartW, chartH);
+
+    // Poziome linie siatki
+    ctx.strokeStyle = 'rgba(48,54,61,0.8)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2,4]);
+    var gridSteps = 5;
+    for (var g=0; g<=gridSteps; g++) {
+      var gy = PAD.t + chartH*(g/gridSteps);
+      ctx.beginPath(); ctx.moveTo(PAD.l, gy); ctx.lineTo(W-PAD.r, gy); ctx.stroke();
+      var gPrice = priceMax - (priceRange * g/gridSteps);
+      ctx.fillStyle = '#656d76'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
+      ctx.fillText(fp(gPrice), PAD.l-3, gy+3);
+    }
+    ctx.setLineDash([]);
+
+    // ── Poziomy TP / SL / Wejście (jeśli mamy pozycję) ──────────────
+    if (this.pos) {
+      var drawLevel = function(price, color, label) {
+        var y = toY(price);
+        if (y < PAD.t-5 || y > H-PAD.b+5) return;
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+        ctx.setLineDash([5,4]); ctx.beginPath();
+        ctx.moveTo(PAD.l, y); ctx.lineTo(W-PAD.r, y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color; ctx.font = 'bold 9px Segoe UI'; ctx.textAlign = 'left';
+        ctx.fillText(label+' '+fp(price), PAD.l+4, y-3);
+      };
+      drawLevel(this.pos.entry, '#58a6ff', '● Wejście');
+      drawLevel(this.pos.tp,    '#3fb950', '▲ TP');
+      drawLevel(this.pos.sl,    '#f85149', '▼ SL');
+      if (this.pos.highP && this.pos.highP > this.pos.entry) {
+        var trailP = this.pos.highP*(1-(this.pos.trailDist||CFG.trail));
+        drawLevel(trailP, '#f0a500', '~ Trail');
+      }
+    }
+
+    // ── Świece ───────────────────────────────────────────────────────
+    klines.forEach(function(k, i) {
+      var x  = candleX(i);
+      var xC = x + candleW/2;
+      var isUp = k.c >= k.o;
+      var bodyTop    = toY(Math.max(k.o, k.c));
+      var bodyBot    = toY(Math.min(k.o, k.c));
+      var bodyHeight = Math.max(1, bodyBot - bodyTop);
+      var color = isUp ? '#3fb950' : '#f85149';
+
+      // Knot
+      ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(xC, toY(k.h)); ctx.lineTo(xC, toY(k.l)); ctx.stroke();
+
+      // Body
+      if (isUp) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, bodyTop, candleW, bodyHeight);
+      } else {
+        ctx.fillStyle = 'rgba(248,81,73,0.15)';
+        ctx.fillRect(x, bodyTop, candleW, bodyHeight);
+        ctx.strokeStyle = color; ctx.lineWidth = 1;
+        ctx.strokeRect(x, bodyTop, candleW, bodyHeight);
+      }
+    });
+
+    // ── EMA 20 i EMA 50 ──────────────────────────────────────────────
+    var closes = klines.map(function(k){ return k.c; });
+    var drawEMA = function(period, color) {
+      var vals = emaArr(closes, period);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      ctx.beginPath();
+      vals.forEach(function(v,i){
+        var x = candleX(i)+candleW/2, y = toY(v);
+        i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    };
+    drawEMA(20, 'rgba(88,166,255,0.7)');
+    drawEMA(50, 'rgba(240,165,0,0.7)');
+
+    // ── Volume bars (dolne 15% wykresu) ─────────────────────────────
+    var vols = klines.map(function(k){ return k.v; });
+    var maxVol = Math.max.apply(null, vols) || 1;
+    var volH   = chartH * 0.12;
+    klines.forEach(function(k,i) {
+      var bh = Math.max(1, (k.v/maxVol)*volH);
+      var x  = candleX(i);
+      ctx.fillStyle = k.c>=k.o ? 'rgba(63,185,80,0.35)' : 'rgba(248,81,73,0.35)';
+      ctx.fillRect(x, PAD.t+chartH-bh, candleW, bh);
+    });
+
+    // ── Aktualna cena (linia prawa) ──────────────────────────────────
+    var lastClose = klines[n-1].c;
+    var liveP = WS.getPrice(this.sym) || lastClose;
+    var lpY = toY(liveP);
+    ctx.strokeStyle = 'rgba(88,166,255,0.9)'; ctx.lineWidth = 1;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(PAD.l, lpY); ctx.lineTo(W-PAD.r, lpY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#58a6ff'; ctx.font = 'bold 9px Segoe UI'; ctx.textAlign = 'right';
+    ctx.fillText(fp(liveP), W-PAD.r, lpY-3);
+
+    // ── Oś X — daty co N świec ───────────────────────────────────────
+    ctx.fillStyle = '#656d76'; ctx.font = '8px Segoe UI'; ctx.textAlign = 'center';
+    var step = Math.max(1, Math.floor(n/8));
+    klines.forEach(function(k,i) {
+      if (i % step !== 0) return;
+      var d = new Date(k.t);
+      var lbl = CHART.tf==='1d'
+        ? (d.getDate()+'.'+(d.getMonth()+1))
+        : (d.getDate()+'.'+(d.getMonth()+1)+' '+('0'+d.getHours()).slice(-2)+':00');
+      ctx.fillText(lbl, candleX(i)+candleW/2, H-PAD.b+12);
+    });
+
+    // ── Legenda ──────────────────────────────────────────────────────
+    var last = klines[n-1];
+    var chg  = ((last.c - klines[0].o)/klines[0].o*100).toFixed(2);
+    var legend = gi('chart-legend');
+    if (legend) {
+      legend.innerHTML =
+        '<span style="color:var(--text2)">O: <b>'+fp(last.o)+'</b></span>'+
+        '<span style="color:var(--green)">H: <b>'+fp(last.h)+'</b></span>'+
+        '<span style="color:var(--red)">L: <b>'+fp(last.l)+'</b></span>'+
+        '<span style="color:var(--text)">C: <b>'+fp(last.c)+'</b></span>'+
+        '<span style="color:'+(+chg>=0?'var(--green)':'var(--red)')+'">'+
+          (chg>=0?'+':'')+chg+'% ('+CHART.tf+')</span>'+
+        '<span style="color:var(--accent)">EMA20</span>'+
+        '<span style="color:var(--gold)">EMA50</span>';
+    }
+  }
+};
+
+function openChart(sym) { CHART.open(sym); }
+function setChartTF(tf) {
+  CHART.tf = tf;
+  document.querySelectorAll('.chart-tf-btn').forEach(function(b){
+    b.classList.toggle('on', b.dataset.tf===tf);
+  });
+  CHART.load();
+}
+function refreshChart() { if (CHART.sym) CHART.load(); }
 
 // ── INIT ───────────────────────────────────────────────────────────
 loadAll();
