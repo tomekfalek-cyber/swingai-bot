@@ -227,6 +227,8 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <button class="tab-btn" onclick="switchTab('history',this)">Historia</button>
     <button class="tab-btn" onclick="switchTab('stats',this)">Statystyki</button>
     <button class="tab-btn" onclick="switchTab('market',this)">Rynek</button>
+    <button class="tab-btn" onclick="switchTab('backtest',this)" style="color:var(--purple)">🔬 Backtest</button>
+    <button class="tab-btn" onclick="switchTab('ml',this)" style="color:var(--gold)">🧠 ML Wagi</button>
     <span style="margin-left:8px;font-size:8pt;color:var(--text3)" id="cycle-info"></span>
   </div>
   <div id="tab-wrap">
@@ -285,6 +287,97 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div id="tab-market" class="tab-pane" style="padding:12px;overflow-y:auto;">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;" id="market-cards">
         <div style="color:var(--text3);text-align:center;padding:30px;grid-column:1/-1">Uruchom bota aby załadować dane rynkowe</div>
+      </div>
+    </div>
+
+    <!-- BACKTEST -->
+    <div id="tab-backtest" class="tab-pane" style="overflow-y:auto;padding:14px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div>
+          <div class="sec-t" style="margin-bottom:8px">Konfiguracja backtestu</div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Para</span>
+            <select id="bt-sym" style="width:110px">
+              <option>BTCUSDC</option><option>ETHUSDC</option><option>BNBUSDC</option>
+              <option>SOLUSDC</option><option>XRPUSDC</option><option>DOGEUSDC</option>
+              <option>ADAUSDC</option><option>AVAXUSDC</option><option>LINKUSDC</option>
+            </select>
+          </div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Okres</span>
+            <select id="bt-days" style="width:110px">
+              <option value="90">3 miesiące</option>
+              <option value="180">6 miesięcy</option>
+              <option value="365" selected>1 rok</option>
+              <option value="730">2 lata</option>
+            </select>
+          </div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Kapitał startowy $</span><input id="bt-capital" type="number" value="1000" style="width:80px"></div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Wielkość pozycji %</span><input id="bt-size" type="number" value="10" min="1" max="50" style="width:80px"></div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Min Score BUY</span><input id="bt-score" type="number" value="62" min="40" max="90" style="width:80px"></div>
+          <div class="r2" style="margin-bottom:10px"><span class="lbl">TP% / SL%</span>
+            <span><input id="bt-tp" type="number" value="8" style="width:48px"> / <input id="bt-sl" type="number" value="4" style="width:48px"></span>
+          </div>
+          <button class="go" onclick="runBacktest()" id="bt-btn" style="width:100%;padding:7px">▶ Uruchom backtest</button>
+          <div id="bt-progress" style="margin-top:8px;font-size:8.5pt;color:var(--gold);min-height:18px"></div>
+        </div>
+        <div id="bt-kpi-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start">
+          <div class="kpi"><div class="k-val" id="bk-ret">--</div><div class="k-lbl">Zwrot total</div></div>
+          <div class="kpi"><div class="k-val" id="bk-wr">--</div><div class="k-lbl">Win Rate</div></div>
+          <div class="kpi"><div class="k-val" id="bk-trades">--</div><div class="k-lbl">Transakcji</div></div>
+          <div class="kpi"><div class="k-val" id="bk-avg">--</div><div class="k-lbl">Avg P/L%</div></div>
+          <div class="kpi"><div class="k-val" id="bk-dd">--</div><div class="k-lbl">Max Drawdown</div></div>
+          <div class="kpi"><div class="k-val" id="bk-sharpe">--</div><div class="k-lbl">Sharpe Ratio</div></div>
+          <div class="kpi"><div class="k-val" id="bk-best">--</div><div class="k-lbl">Najlepsza</div></div>
+          <div class="kpi"><div class="k-val" id="bk-worst">--</div><div class="k-lbl">Najgorsza</div></div>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div class="sec-t" style="margin-bottom:6px">Krzywa kapitału (backtest)</div>
+        <canvas id="bt-chart" height="120" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:6px;display:block;"></canvas>
+      </div>
+      <div>
+        <div class="sec-t" style="margin-bottom:6px">Lista transakcji backtestu</div>
+        <table><thead><tr><th>Data</th><th>Para</th><th>Wejście</th><th>Wyjście</th><th>P/L%</th><th>Powód</th><th>Score</th><th>Kapital</th></tr></thead>
+        <tbody id="bt-trades-body"><tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Uruchom backtest aby zobaczyć wyniki</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- ML WAGI -->
+    <div id="tab-ml" class="tab-pane" style="overflow-y:auto;padding:14px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+        <div>
+          <div class="sec-t" style="margin-bottom:8px">Optymalizacja wag (Decision Tree)</div>
+          <div style="font-size:8.5pt;color:var(--text2);margin-bottom:10px;line-height:1.7">
+            Algorytm analizuje dane historyczne z Binance i oblicza optymalne wagi dla każdego wskaźnika.<br>
+            Wyniki zastępują hardkodowane wagi w silniku scoringu.
+          </div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Para treningowa</span>
+            <select id="ml-sym" style="width:110px">
+              <option>BTCUSDC</option><option>ETHUSDC</option><option selected>SOLUSDC</option><option>XRPUSDC</option>
+            </select>
+          </div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Dni danych</span>
+            <select id="ml-days" style="width:110px">
+              <option value="180">6 miesięcy</option>
+              <option value="365" selected>1 rok</option>
+              <option value="500">~16 miesięcy</option>
+            </select>
+          </div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Cel zysku %</span><input id="ml-target" type="number" value="5" min="2" max="20" style="width:80px"> <small class="lbl">wzrost ceny w ciągu 10 dni</small></div>
+          <button class="go" onclick="runMLOptimize()" id="ml-btn" style="width:100%;padding:7px;background:rgba(188,140,255,.15);color:var(--purple);border-color:var(--purple)">🧠 Trenuj model</button>
+          <button onclick="applyMLWeights()" id="ml-apply" style="width:100%;padding:5px;margin-top:6px;display:none" class="ok-btn">✅ Zastosuj wagi w bocie</button>
+          <div id="ml-progress" style="margin-top:8px;font-size:8.5pt;color:var(--gold);min-height:18px"></div>
+        </div>
+        <div>
+          <div class="sec-t" style="margin-bottom:8px">Wagi wskaźników</div>
+          <div id="ml-weights-display">
+            <div style="color:var(--text3);font-size:9pt">Uruchom trening aby zobaczyć wagi</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="sec-t" style="margin-bottom:6px">Dokładność modelu na danych testowych</div>
+        <canvas id="ml-chart" height="100" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:6px;display:block;"></canvas>
+        <div id="ml-accuracy-box" style="margin-top:8px;font-size:8.5pt;color:var(--text2);line-height:1.8"></div>
       </div>
     </div>
 
@@ -1132,7 +1225,7 @@ function renderCooldowns() {
 function switchTab(v, btn) {
   document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('on'); });
   if (btn) btn.classList.add('on');
-  ['positions','history','stats','market'].forEach(function(t){ gi('tab-'+t).className='tab-pane'+(t===v?' on':''); });
+  ['positions','history','stats','market','backtest','ml'].forEach(function(t){ gi('tab-'+t).className='tab-pane'+(t===v?' on':''); });
   if (v==='stats') setTimeout(drawEquity,50);
 }
 
@@ -1229,6 +1322,398 @@ function log(msg,type) {
   const lc=gi('log-count'); if(lc) lc.textContent=box.children.length+' wpisow';
 }
 function clearLog() { gi('log-area').innerHTML=''; var lc=gi('log-count'); if(lc) lc.textContent=''; }
+
+// ── BACKTEST ENGINE ────────────────────────────────────────────────
+var btResults = null;
+var mlWeights = null; // przechowuje wagi z ML
+
+function calcIndicatorsForCandle(closes, highs, lows, i) {
+  // Wymaga min 35 świec wstecz
+  if (i < 35) return null;
+  var c  = closes.slice(0, i+1);
+  var h  = highs.slice(0, i+1);
+  var l  = lows.slice(0, i+1);
+  var rsiD  = rsi(c, 14);
+  var macdD = macd(c);
+  var bbD   = bband(c);
+  var e50   = ema(c, 50);
+  var e200  = ema(c, 200);
+  var price = c[c.length-1];
+  var trendD = price>e200 ? (price>e50?2:1) : (price>e50?0:-1);
+  var volArr = [];
+  for (var j=Math.max(0,i-19); j<=i; j++) volArr.push(closes[j]);
+  var volMean = volArr.reduce(function(a,b){ return a+b; },0)/volArr.length;
+  var mom5  = i>=5  ? (price/closes[i-5]-1)*100  : 0;
+  var mom10 = i>=10 ? (price/closes[i-10]-1)*100 : 0;
+  return { rsiD:rsiD, macdHist:macdD.hist, macdLine:macdD.line, bbPos:bbD.pos, trendD:trendD, mom5:mom5, mom10:mom10, atrVal:atr(h,l,c,14), price:price };
+}
+
+function scoreCandle(ind, weights) {
+  var w = weights || { rsi:30, macd:20, bb:18, trend:12, mom:8, vol:5 };
+  var score = 0;
+  // RSI
+  if      (ind.rsiD<=25) score += w.rsi*1.0;
+  else if (ind.rsiD<=32) score += w.rsi*0.8;
+  else if (ind.rsiD<=40) score += w.rsi*0.53;
+  else if (ind.rsiD<=48) score += w.rsi*0.27;
+  else if (ind.rsiD>=70) score -= w.rsi*0.5;
+  // MACD
+  if      (ind.macdHist>0 && ind.macdLine<0) score += w.macd*1.0;
+  else if (ind.macdHist>0)                    score += w.macd*0.6;
+  else if (ind.macdHist>-ind.atrVal*0.005)    score += w.macd*0.2;
+  else                                        score -= w.macd*0.25;
+  // BB
+  if      (ind.bbPos<0.08) score += w.bb*1.0;
+  else if (ind.bbPos<0.20) score += w.bb*0.72;
+  else if (ind.bbPos<0.35) score += w.bb*0.33;
+  else if (ind.bbPos>0.85) score -= w.bb*0.55;
+  // Trend
+  if      (ind.trendD===2)  score += w.trend*1.0;
+  else if (ind.trendD===1)  score += w.trend*0.67;
+  else if (ind.trendD===0)  score += w.trend*0.25;
+  else                      score -= w.trend*1.67;
+  // Momentum
+  if      (ind.mom5>0 && ind.mom10<0)    score += w.mom*1.0;
+  else if (ind.mom5<-5 && ind.mom10<-10) score += w.mom*0.625;
+  else if (ind.mom5>8)                   score -= w.mom*0.625;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+async function runBacktest() {
+  var sym     = gi('bt-sym').value;
+  var days    = parseInt(gi('bt-days').value);
+  var capital = parseFloat(gi('bt-capital').value);
+  var sizePct = parseFloat(gi('bt-size').value)/100;
+  var minScore= parseInt(gi('bt-score').value);
+  var tpPct   = parseFloat(gi('bt-tp').value)/100;
+  var slPct   = parseFloat(gi('bt-sl').value)/100;
+  var btn     = gi('bt-btn');
+  btn.disabled=true; btn.textContent='Pobieranie danych...';
+  gi('bt-progress').textContent = 'Pobieranie '+days+' dni danych z Binance...';
+
+  try {
+    var klines = await getKlines(sym, '1d', Math.min(days, 1000));
+    var closes = klines.map(function(k){ return +k[4]; });
+    var highs  = klines.map(function(k){ return +k[2]; });
+    var lows   = klines.map(function(k){ return +k[3]; });
+    var dates  = klines.map(function(k){ return new Date(+k[0]).toLocaleDateString('pl-PL'); });
+    var n = closes.length;
+    gi('bt-progress').textContent = 'Symulacja '+n+' swiec...';
+
+    var cap = capital;
+    var curve = [capital];
+    var trades = [];
+    var inPos = false;
+    var entryPrice=0, entryDate='', entryScore=0;
+    var slPrice=0, tpPrice=0;
+    var cooldown = 0;
+
+    for (var i=35; i<n; i++) {
+      var price = closes[i];
+
+      // Zamknij pozycje
+      if (inPos) {
+        var pnlPct = (price-entryPrice)/entryPrice;
+        var reason = null;
+        if (price <= slPrice)            reason = 'SL';
+        else if (price >= tpPrice)       reason = 'TP';
+        else if (i-cooldown > 7*1)       reason = 'TIMEOUT';  // 7 dni
+        if (reason) {
+          var pnl = cap * sizePct * pnlPct;
+          cap += pnl;
+          trades.push({ date:dates[i], sym:sym, entry:entryPrice, exit:price, pnlPct:+(pnlPct*100).toFixed(2), reason:reason, score:entryScore, cap:+cap.toFixed(2) });
+          inPos = false;
+          cooldown = i;
+          curve.push(+cap.toFixed(2));
+        }
+        continue;
+      }
+
+      // Szukaj wejscia
+      if (i - cooldown < 2) continue;  // min 2 bary cooldown
+      var ind = calcIndicatorsForCandle(closes, highs, lows, i);
+      if (!ind) continue;
+      var sc = scoreCandle(ind, mlWeights);
+      if (sc >= minScore) {
+        inPos = true;
+        entryPrice = price;
+        entryDate  = dates[i];
+        entryScore = sc;
+        slPrice    = price*(1-slPct);
+        tpPrice    = price*(1+tpPct);
+        cooldown   = i;
+      }
+    }
+    // Zamknij otwarta pozycje na koncu
+    if (inPos) {
+      var lastP = closes[n-1];
+      var pnl2  = cap * sizePct * (lastP-entryPrice)/entryPrice;
+      cap += pnl2;
+      trades.push({ date:dates[n-1], sym:sym, entry:entryPrice, exit:lastP, pnlPct:+((lastP-entryPrice)/entryPrice*100).toFixed(2), reason:'EOD', score:entryScore, cap:+cap.toFixed(2) });
+      curve.push(+cap.toFixed(2));
+    }
+
+    btResults = { trades:trades, curve:curve, capital:capital };
+    renderBacktestResults(trades, curve, capital);
+    gi('bt-progress').textContent = 'Gotowe — '+trades.length+' transakcji na '+n+' swiecach';
+  } catch(e) {
+    gi('bt-progress').textContent = 'Blad: '+e.message;
+  }
+  btn.disabled=false; btn.textContent='▶ Uruchom backtest';
+}
+
+function renderBacktestResults(trades, curve, startCap) {
+  if (!trades.length) {
+    gi('bk-ret').textContent='0%'; gi('bk-wr').textContent='0%'; gi('bk-trades').textContent='0';
+    return;
+  }
+  var wins   = trades.filter(function(t){ return t.pnlPct>0; }).length;
+  var wr     = (wins/trades.length*100).toFixed(1);
+  var endCap = curve[curve.length-1];
+  var ret    = ((endCap-startCap)/startCap*100).toFixed(1);
+  var avgPnl = (trades.reduce(function(a,t){ return a+t.pnlPct; },0)/trades.length).toFixed(2);
+  var best   = Math.max.apply(null, trades.map(function(t){ return t.pnlPct; }));
+  var worst  = Math.min.apply(null, trades.map(function(t){ return t.pnlPct; }));
+
+  // Max drawdown
+  var peak = curve[0], maxDD = 0;
+  curve.forEach(function(v){ if(v>peak) peak=v; var dd=(peak-v)/peak*100; if(dd>maxDD) maxDD=dd; });
+
+  // Sharpe (uproszczony)
+  var pnls = trades.map(function(t){ return t.pnlPct; });
+  var mean = pnls.reduce(function(a,b){ return a+b; },0)/pnls.length;
+  var std  = Math.sqrt(pnls.reduce(function(a,b){ return a+(b-mean)*(b-mean); },0)/pnls.length) || 1;
+  var sharpe = (mean/std * Math.sqrt(252/Math.max(1,trades.length))).toFixed(2);
+
+  var retC = +ret>=0 ? 'up' : 'dn';
+  setKpi('bk-ret', (ret>=0?'+':'')+ret+'%', 'k-val '+retC);
+  setKpi('bk-wr',  wr+'%',  'k-val '+(+wr>=50?'up':'dn'));
+  setKpi('bk-trades', trades.length, 'k-val');
+  setKpi('bk-avg', (mean>=0?'+':'')+avgPnl+'%', 'k-val '+(+avgPnl>=0?'up':'dn'));
+  setKpi('bk-dd',  '-'+maxDD.toFixed(1)+'%', 'k-val dn');
+  setKpi('bk-sharpe', sharpe, 'k-val '+(+sharpe>=1?'up':+sharpe>=0?'gold':'dn'));
+  setKpi('bk-best',  '+'+best.toFixed(1)+'%', 'k-val up');
+  setKpi('bk-worst', worst.toFixed(1)+'%', 'k-val dn');
+
+  // Wykres krzywej
+  drawBtChart(curve, startCap);
+
+  // Tabela transakcji
+  gi('bt-trades-body').innerHTML = trades.slice(0,60).map(function(t) {
+    var pc = t.reason==='TP'?'pill-tp':t.reason==='SL'?'pill-sl':'pill-wait';
+    return '<tr><td style="font-size:8pt;color:var(--text3)">'+t.date+'</td>'
+      +'<td><b>'+t.sym.replace('USDC','')+'</b></td>'
+      +'<td style="font-size:8.5pt">'+fp(t.entry)+'</td>'
+      +'<td style="font-size:8.5pt">'+fp(t.exit)+'</td>'
+      +'<td class="'+(t.pnlPct>=0?'up':'dn')+'">'+(t.pnlPct>=0?'+':'')+t.pnlPct+'%</td>'
+      +'<td><span class="pill '+pc+'">'+t.reason+'</span></td>'
+      +'<td style="color:var(--text3)">'+t.score+'</td>'
+      +'<td style="font-size:8.5pt">$'+t.cap+'</td></tr>';
+  }).join('');
+}
+
+function drawBtChart(curve, startCap) {
+  var canvas=gi('bt-chart'); if(!canvas) return;
+  var W=canvas.offsetWidth||700, H=120;
+  canvas.width=W; canvas.height=H;
+  var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
+  if (curve.length<2) return;
+  var mn=Math.min.apply(null,curve), mx=Math.max.apply(null,curve), range=mx-mn||1;
+  var toY=function(v){ return H-10-((v-mn)/range*(H-20)); };
+  var toX=function(i,n){ return 10+(i/(n-1||1))*(W-20); };
+  var lineC = curve[curve.length-1]>=startCap ? '#3fb950' : '#f85149';
+  var grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0, curve[curve.length-1]>=startCap?'rgba(63,185,80,.18)':'rgba(248,81,73,.18)');
+  grad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.moveTo(toX(0,curve.length),toY(curve[0]));
+  curve.forEach(function(v,i){ ctx.lineTo(toX(i,curve.length),toY(v)); });
+  ctx.lineTo(toX(curve.length-1,curve.length),H); ctx.lineTo(toX(0,curve.length),H); ctx.closePath();
+  ctx.fillStyle=grad; ctx.fill();
+  ctx.beginPath();
+  curve.forEach(function(v,i){ var x=toX(i,curve.length),y=toY(v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+  ctx.strokeStyle=lineC; ctx.lineWidth=2; ctx.stroke();
+  // Linia startu
+  var sy=toY(startCap); ctx.beginPath(); ctx.moveTo(10,sy); ctx.lineTo(W-10,sy);
+  ctx.strokeStyle='rgba(139,148,158,.35)'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(139,148,158,.7)'; ctx.font='9px Segoe UI';
+  ctx.fillText('Start: $'+startCap.toFixed(0), 14, sy-4);
+  ctx.fillText('Koniec: $'+curve[curve.length-1].toFixed(0), W-80, toY(curve[curve.length-1])-4);
+}
+
+// ── ML WEIGHT OPTIMIZER (Decision Tree / Information Gain) ─────────
+var mlTrainedWeights = null;
+
+async function runMLOptimize() {
+  var sym    = gi('ml-sym').value;
+  var days   = parseInt(gi('ml-days').value);
+  var target = parseFloat(gi('ml-target').value)/100;
+  var btn    = gi('ml-btn');
+  btn.disabled=true; gi('ml-progress').textContent='Pobieranie danych...';
+
+  try {
+    var klines = await getKlines(sym, '1d', Math.min(days, 1000));
+    var closes = klines.map(function(k){ return +k[4]; });
+    var highs  = klines.map(function(k){ return +k[2]; });
+    var lows   = klines.map(function(k){ return +k[3]; });
+    var n = closes.length;
+    gi('ml-progress').textContent = 'Budowanie datasetu z '+n+' swiec...';
+
+    // Zbuduj dataset: X = [rsiD, macdHist, bbPos, trendD, mom5, mom10], y = 1 jesli cena wrosla o >target% w ciagu 10 dni
+    var X = [], y = [];
+    for (var i=35; i<n-10; i++) {
+      var ind = calcIndicatorsForCandle(closes, highs, lows, i);
+      if (!ind) continue;
+      var future = closes[i+10];
+      var label  = (future/closes[i]-1) >= target ? 1 : 0;
+      X.push([
+        ind.rsiD,
+        ind.macdHist>0?1:0,
+        ind.bbPos,
+        ind.trendD,
+        ind.mom5,
+        ind.mom10
+      ]);
+      y.push(label);
+    }
+
+    gi('ml-progress').textContent = 'Trening na '+X.length+' przykladach...';
+    var result = trainDecisionWeights(X, y);
+    mlTrainedWeights = result.weights;
+
+    gi('ml-progress').textContent = 'Gotowe! Dokladnosc: '+result.acc+'%';
+    gi('ml-apply').style.display = '';
+    renderMLWeights(result);
+    drawMLChart(result);
+  } catch(e) {
+    gi('ml-progress').textContent = 'Blad: '+e.message;
+  }
+  btn.disabled=false;
+}
+
+function trainDecisionWeights(X, y) {
+  // Information gain dla kazdej cechy -> proporcjonalne wagi
+  var features = ['RSI (14)', 'MACD hist', 'BB pozycja', 'Trend EMA', 'Momentum 5d', 'Momentum 10d'];
+  var n = X.length;
+  var posRate = y.filter(function(v){ return v===1; }).length / n;
+
+  function entropy(p) {
+    if (p<=0||p>=1) return 0;
+    return -p*Math.log2(p) - (1-p)*Math.log2(1-p);
+  }
+  var baseEntropy = entropy(posRate);
+
+  // Wylicz information gain dla kazdej cechy
+  var gains = features.map(function(_, fi) {
+    // Podziel na 3 grupy (tercyle)
+    var vals = X.map(function(x){ return x[fi]; }).sort(function(a,b){ return a-b; });
+    var t1 = vals[Math.floor(n/3)], t2 = vals[Math.floor(2*n/3)];
+    var groups = [[],[],[]];
+    X.forEach(function(x,i){ var v=x[fi]; groups[v<=t1?0:v<=t2?1:2].push(y[i]); });
+    var weightedEnt = groups.reduce(function(sum,g){ if(!g.length) return sum; var p=g.filter(function(v){ return v===1; }).length/g.length; return sum+(g.length/n)*entropy(p); },0);
+    return Math.max(0, baseEntropy - weightedEnt);
+  });
+
+  var totalGain = gains.reduce(function(a,b){ return a+b; },0) || 1;
+  var normGains = gains.map(function(g){ return g/totalGain; });
+
+  // Mapuj wagi na scoring (RSI=30, MACD=20, BB=18, Trend=12, Mom=8, Vol=5 -> base=93)
+  var maxScore = 93;
+  var weights = {
+    rsi:   Math.round(normGains[0]*maxScore*1.2),   // RSI
+    macd:  Math.round(normGains[1]*maxScore*1.2),   // MACD
+    bb:    Math.round(normGains[2]*maxScore*1.2),   // BB
+    trend: Math.round(normGains[3]*maxScore*1.2),   // Trend
+    mom:   Math.round((normGains[4]+normGains[5])*maxScore*0.8), // Momentum
+    vol:   5                                         // Vol zawsze 5
+  };
+  // Normalizuj zeby suma wag = ok. 93
+  var total = weights.rsi+weights.macd+weights.bb+weights.trend+weights.mom+weights.vol;
+  var scale = 93/Math.max(total,1);
+  weights.rsi   = Math.max(5, Math.round(weights.rsi*scale));
+  weights.macd  = Math.max(5, Math.round(weights.macd*scale));
+  weights.bb    = Math.max(5, Math.round(weights.bb*scale));
+  weights.trend = Math.max(5, Math.round(weights.trend*scale));
+  weights.mom   = Math.max(3, Math.round(weights.mom*scale));
+
+  // Ocen na zbiorze testowym (ostatnie 20%)
+  var splitIdx = Math.floor(X.length*0.8);
+  var Xtest = X.slice(splitIdx), ytest = y.slice(splitIdx);
+  var correct = 0;
+  Xtest.forEach(function(x,i) {
+    var ind2 = { rsiD:x[0], macdHist:x[1]>0?0.001:-0.001, macdLine:0, bbPos:x[2], trendD:Math.round(x[3]), mom5:x[4], mom10:x[5], atrVal:1 };
+    var sc2 = scoreCandle(ind2, weights);
+    var pred = sc2 >= 62 ? 1 : 0;
+    if (pred===ytest[i]) correct++;
+  });
+  var acc = Xtest.length ? (correct/Xtest.length*100).toFixed(1) : 0;
+
+  return {
+    weights:weights, gains:gains, features:features,
+    posRate:(posRate*100).toFixed(1), acc:acc,
+    trainSize:splitIdx, testSize:Xtest.length
+  };
+}
+
+function renderMLWeights(result) {
+  var w = result.weights;
+  var base = {rsi:30, macd:20, bb:18, trend:12, mom:8, vol:5};
+  var names = ['RSI Daily (14)','MACD histogram','Bollinger Bands','Trend EMA50/200','Momentum 5/10d','Wolumen spike'];
+  var keys  = ['rsi','macd','bb','trend','mom','vol'];
+  var html  = '';
+  keys.forEach(function(k,i) {
+    var newW  = w[k]||0, oldW = base[k];
+    var delta = newW - oldW;
+    var barW  = Math.min(100, newW/40*100);
+    var barC  = newW>oldW?'var(--green)':newW<oldW?'var(--red)':'var(--gold)';
+    html += '<div style="margin-bottom:8px">'
+      +'<div style="display:flex;justify-content:space-between;font-size:8.5pt;margin-bottom:2px">'
+      +'<span class="lbl">'+names[i]+'</span>'
+      +'<span><b style="color:'+barC+'">'+newW+'</b> <span style="color:var(--text3)">(bylo: '+oldW+' | '+(delta>=0?'+':'')+delta+')</span></span>'
+      +'</div>'
+      +'<div class="pbar-wrap"><div class="pbar" style="width:'+barW+'%;background:'+barC+'"></div></div>'
+      +'</div>';
+  });
+  html += '<div style="margin-top:10px;padding:8px;background:var(--bg3);border-radius:5px;font-size:8.5pt;color:var(--text2)">'
+    +'<b>Zbior treningowy:</b> '+result.trainSize+' przykladow | <b>Testowy:</b> '+result.testSize
+    +'<br><b>Odsetek pozytywow (wzrost >'+gi('ml-target').value+'%):</b> '+result.posRate+'%'
+    +'<br><b>Dokladnosc na zbiorze testowym:</b> <span class="'+(+result.acc>=55?'up':'dn')+'">'+result.acc+'%</span>'
+    +'</div>';
+  gi('ml-weights-display').innerHTML = html;
+  gi('ml-accuracy-box').innerHTML =
+    '<b>Interpretacja:</b> Model na danych historycznych poprawnie przewidzial kierunek ruchu ceny w <b>'+result.acc+'%</b> przypadkow.<br>'
+    +'<span style="color:var(--text3)">Powyzej 55% = lepiej niz rzut moneta. Powyzej 60% = uzyteczny sygnal. Uwaga: wyniki historyczne nie gwarantuja przyszlosci.</span>';
+}
+
+function drawMLChart(result) {
+  var canvas=gi('ml-chart'); if(!canvas) return;
+  var W=canvas.offsetWidth||600, H=100;
+  canvas.width=W; canvas.height=H;
+  var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
+  var feats=result.features, gains=result.gains;
+  var maxG=Math.max.apply(null,gains)||1;
+  var barW=Math.floor((W-20)/feats.length)-4;
+  feats.forEach(function(f,i) {
+    var bh=Math.max(4,Math.round((gains[i]/maxG)*(H-30)));
+    var x=10+i*(barW+4), y=H-20-bh;
+    var c=gains[i]===Math.max.apply(null,gains)?'#3fb950':gains[i]>=gains.reduce(function(a,b){ return a+b; },0)/gains.length?'#58a6ff':'#484f58';
+    ctx.fillStyle=c;
+    ctx.fillRect(x,y,barW,bh);
+    ctx.fillStyle='rgba(230,237,243,.7)'; ctx.font='8px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(f.split(' ')[0], x+barW/2, H-5);
+  });
+  ctx.fillStyle='rgba(139,148,158,.5)'; ctx.font='9px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Information Gain per wskaznik (wiekszy = wazniejszy)', 10, 12);
+}
+
+function applyMLWeights() {
+  if (!mlTrainedWeights) return;
+  mlWeights = mlTrainedWeights;
+  log('Zastosowano wagi ML: RSI='+mlWeights.rsi+' MACD='+mlWeights.macd+' BB='+mlWeights.bb+' Trend='+mlWeights.trend, 'ok');
+  gi('ml-apply').textContent = 'Wagi aktywne w bocie';
+  gi('ml-apply').style.background='rgba(63,185,80,.15)';
+  gi('ml-apply').style.color='var(--green)';
+  gi('ml-apply').disabled=true;
+}
 
 // ── INIT ───────────────────────────────────────────────────────────
 loadAll();
