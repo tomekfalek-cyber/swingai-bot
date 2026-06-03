@@ -311,6 +311,8 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="r2"><span class="lbl">Straty z rzędu</span><span class="val" id="rb-losses">0</span></div>
     <div class="r2"><span class="lbl">Paper saldo</span><span class="val" id="rb-paper">$1000</span></div>
     <div class="r2"><span class="lbl">Worker proxy</span><span class="val" id="rb-worker">–</span></div>
+    <div class="r2"><span class="lbl">Fear &amp; Greed</span><span class="val" id="rb-fg">–</span></div>
+    <div class="r2"><span class="lbl">Telegram</span><span class="val" id="rb-tg">–</span></div>
   </div>
 
   <div class="sec">
@@ -392,6 +394,12 @@ tr:hover td{background:rgba(255,255,255,.015);}
   <div class="form-row"><label>Skan co (minuty)</label><input id="cfg-interval" type="number" value="15" min="5" max="120"></div>
   <div class="form-row"><label>Paper saldo startowe $</label><input id="cfg-paper-bal" type="number" value="1000" min="100"></div>
   <div class="form-row"><label>Min Score BUY (0-100)</label><input id="cfg-minscore" type="number" value="62" min="40" max="90"></div>
+  <div class="form-row"><label>Kelly — ryzyko max %</label><input id="cfg-risk" type="number" value="2" min="0.5" max="5" step="0.5"> <small class="lbl">% kapitału per trade (Kelly kalibruje automatycznie)</small></div>
+  <div class="form-row"><label>Fear &amp; Greed min</label><input id="cfg-fgmin" type="number" value="25" min="0" max="40"> <small class="lbl">Poniżej tej wartości bot nie otwiera pozycji</small></div>
+  <hr style="border-color:var(--border);margin:12px 0;">
+  <div style="font-size:8.5pt;color:var(--text2);margin-bottom:8px">📱 <b>Telegram powiadomienia</b> — opcjonalne. Utwórz bota przez <b>@BotFather</b>, pobierz token i chat_id.</div>
+  <div class="form-row"><label>Telegram Bot Token</label><input id="cfg-tg-token" type="password" placeholder="123456:ABC-DEF..."></div>
+  <div class="form-row"><label>Telegram Chat ID</label><input id="cfg-tg-chat" type="text" placeholder="Twój chat_id (np. -100123456)"></div>
   <div class="modal-btns">
     <button class="go" onclick="saveSettings()">💾 Zapisz</button>
     <button onclick="testConn()">🔌 Test połączenia</button>
@@ -418,8 +426,13 @@ tr:hover td{background:rgba(255,255,255,.015);}
 // ═══════════════════════════════════════════════
 //  CONFIG & STATE
 // ═══════════════════════════════════════════════
-let CFG={apiKey:'',secret:'',mode:'paper',workerUrl:'',tp:.08,sl:.04,trail:.045,maxPos:3,posSize:15,intervalMin:15,paperBal:1000,minScore:62};
-const PAIRS=['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC'];
+let CFG={apiKey:'',secret:'',mode:'paper',workerUrl:'',tgToken:'',tgChat:'',
+  tp:.08,sl:.04,trail:.045,maxPos:3,riskPct:2,intervalMin:15,paperBal:1000,minScore:62,fgMin:25};
+// 15 par — więcej okazji
+const PAIRS=['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
+             'ADAUSDC','AVAXUSDC','DOTUSDC','LINKUSDC','LTCUSDC','NEARUSDC',
+             'UNIUSDC','ATOMUSDC','SHIBUSDC'];
+const COMMISSION=0.001; // 0.1% Binance taker fee każda strona
 const BASE='https://api.binance.com';
 let ST={positions:[],trades:[],dailyPnl:0,dailyDate:'',cooldown:{},globalBlockUntil:0,consLoss:0,paperBal:1000,iter:0};
 let running=false,botTimer=null,nextScanAt=0,lastSigs=[],lastSignalData=null;
@@ -499,6 +512,85 @@ async function getTotal(){
 }
 
 // ═══════════════════════════════════════════════
+//  TELEGRAM
+// ═══════════════════════════════════════════════
+async function tgSend(msg){
+  if(!CFG.tgToken||!CFG.tgChat)return;
+  try{await fetch(`https://api.telegram.org/bot${CFG.tgToken}/sendMessage`,
+    {method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({chat_id:CFG.tgChat,text:msg,parse_mode:'HTML'})});}
+  catch(e){}
+}
+
+// ═══════════════════════════════════════════════
+//  FEAR & GREED INDEX
+// ═══════════════════════════════════════════════
+let fgCache={val:50,label:'Neutral',ts:0};
+async function getFearGreed(){
+  if(Date.now()-fgCache.ts<3600000)return fgCache; // cache 1h
+  try{
+    const r=await fetch('https://api.alternative.me/fng/?limit=1');
+    const d=await r.json();
+    fgCache={val:+d.data[0].value,label:d.data[0].value_classification,ts:Date.now()};
+  }catch(e){}
+  return fgCache;
+}
+
+// ═══════════════════════════════════════════════
+//  KELLY CRITERION — dynamiczny rozmiar pozycji
+// ═══════════════════════════════════════════════
+function kellySize(totalBalance){
+  const trades=ST.trades.slice(-30); // ostatnie 30 transakcji
+  if(trades.length<5){
+    // Za mało historii — użyj konserwatywnego % kapitału (2%)
+    return Math.max(10, totalBalance*(CFG.riskPct/100));
+  }
+  const wins=trades.filter(t=>t.pnl>0);
+  const losses=trades.filter(t=>t.pnl<=0);
+  const p=wins.length/trades.length; // win rate
+  const avgWin=wins.length?wins.reduce((a,t)=>a+t.pnlPct,0)/wins.length/100:CFG.tp;
+  const avgLoss=losses.length?Math.abs(losses.reduce((a,t)=>a+t.pnlPct,0)/losses.length)/100:CFG.sl;
+  const b=avgWin/avgLoss; // b = reward/risk ratio
+  // Kelly fraction = (b*p - (1-p)) / b
+  let kelly=((b*p-(1-p))/b);
+  kelly=Math.max(0.01,Math.min(0.05,kelly*0.5)); // Half-Kelly, max 5% kapitału
+  const size=totalBalance*kelly;
+  return Math.max(10,Math.round(size*100)/100);
+}
+
+// ═══════════════════════════════════════════════
+//  PUMP & DUMP FILTER
+// ═══════════════════════════════════════════════
+function isPumpDump(sig){
+  // Blokuj jeśli wolumen skoczył >300% w jednej świecy 4H lub cena +8% w 24h
+  if(sig.vol4R>4.0){
+    log('⚠️ PUMP wykryty '+sig.sym+': vol4R='+sig.vol4R+'x — pomijam','warn');
+    return true;
+  }
+  // mom5 > 15% w 5 dni = podejrzane
+  if(sig.mom5>15){
+    log('⚠️ Szybki wzrost '+sig.sym+': +'+sig.mom5+'% w 5d — pomijam','warn');
+    return true;
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════
+//  BTC CORRELATION GUARD
+// ═══════════════════════════════════════════════
+async function btcDropGuard(){
+  try{
+    const t=await getTicker('BTCUSDC');
+    const chg=+t.priceChangePercent;
+    if(chg<-5){
+      log('⛔ BTC spada '+chg.toFixed(1)+'% — blokuję altcoiny','warn');
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+// ═══════════════════════════════════════════════
 //  INDICATORS
 // ═══════════════════════════════════════════════
 function emaArr(a,p){const k=2/(p+1),o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o;}
@@ -530,14 +622,18 @@ function atr(h,l,c,p=14){
 //  SWING ENGINE
 // ═══════════════════════════════════════════════
 async function analyzeSwing(sym){
-  const[kd,k4]=await Promise.all([getKlines(sym,'1d',200),getKlines(sym,'4h',100)]);
+  // Pobieramy Daily + 4H + 1H (potwierdzenie wejścia)
+  const[kd,k4,k1h]=await Promise.all([getKlines(sym,'1d',200),getKlines(sym,'4h',100),getKlines(sym,'1h',50)]);
   const pk=k=>({c:k.map(x=>+x[4]),h:k.map(x=>+x[2]),l:k.map(x=>+x[3]),v:k.map(x=>+x[5])});
-  const d=pk(kd),h4=pk(k4);
+  const d=pk(kd),h4=pk(k4),h1=pk(k1h);
   const price=d.c.at(-1);
   const rsiD=rsi(d.c,14),rsiD21=rsi(d.c,21),macdD=macd(d.c),bbD=bb(d.c);
   const ema50=ema(d.c,50),ema200=ema(d.c,200),ema21=ema(d.c,21);
   const atrD=atr(d.h,d.l,d.c,14);
   const rsi4h=rsi(h4.c,14),macd4h=macd(h4.c),bb4h=bb(h4.c);
+  // 1H — potwierdzenie wejścia (RSI odbija od dołu, MACD rośnie)
+  const rsi1h=rsi(h1.c,14),macd1h=macd(h1.c);
+  const confirm1h=(rsi1h<50&&macd1h.hist>0)||(rsi1h<40); // 1H zaczyna rosnąć
   const trendD=price>ema200?(price>ema50?2:1):(price>ema50?0:-1);
   const volR=d.v.length>=20?d.v.at(-1)/(d.v.slice(-20).reduce((a,b)=>a+b,0)/20):1;
   const vol4R=h4.v.length>=20?h4.v.at(-1)/(h4.v.slice(-20).reduce((a,b)=>a+b,0)/20):1;
@@ -579,13 +675,23 @@ async function analyzeSwing(sym){
   else if(volR<0.4){score-=8;why.push('Bardzo niski wolumen');}
 
   if(macd4h.hist>0&&macdD.hist>0){score+=5;why.push('MACD 4H + Daily zgodność');}
+  // Bonus za potwierdzenie 1H
+  if(confirm1h){score+=5;why.push('1H potwierdza odwrócenie');}
+  else{score-=3;}
   if(trendD===-1&&rsiD>50){score=Math.min(score,15);why.push('🚫 BESSA: brak long');}
 
   score=Math.max(0,Math.min(100,Math.round(score)));
+
+  // TP/SL uwzględniają prowizję (2× 0.1% = 0.2% w sumie)
+  const fee=COMMISSION*2;
+  const slPrice=price*(1-CFG.sl+fee); // SL "wyżej" o prowizję
+  const tpPrice=price*(1+CFG.tp+fee); // TP "wyżej" o prowizję
+
   return{sym,price,rsiD:+rsiD.toFixed(1),rsiD21:+rsiD21.toFixed(1),rsi4h:+rsi4h.toFixed(1),
+    rsi1h:+rsi1h.toFixed(1),confirm1h,
     macdHist:macdD.hist,macdLine:macdD.line,bbPos:bbD.pos,bbUpper:bbD.upper,bbLower:bbD.lower,
     trendD,ema50,ema200,ema21,atrD,score,buy:score>=CFG.minScore,why,
-    slPrice:price*(1-CFG.sl),tpPrice:price*(1+CFG.tp),
+    slPrice,tpPrice,
     volR:+volR.toFixed(2),vol4R:+vol4R.toFixed(2),mom5:+mom5.toFixed(2),mom10:+mom10.toFixed(2)};
 }
 
@@ -736,27 +842,54 @@ async function closeTrade(pos,price,reason){
     ST.trades.unshift({sym:pos.sym,entry:pos.entry,exit:ep,qty:pos.qty,pnl:+pnl.toFixed(4),pnlPct:+pnlPct.toFixed(2),durH,reason,score:pos.score,ts:new Date().toLocaleString('pl-PL')});
     if(ST.trades.length>300)ST.trades=ST.trades.slice(0,300);
     ST.positions=ST.positions.filter(p=>p!==pos);saveAll();
-    log((pnl>=0?'🟢':'🔴')+' '+pos.sym+' P/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%) — '+reason,pnl>=0?'ok':'err');
+    const emoji=pnl>=0?'🟢':'🔴';
+    log(emoji+' '+pos.sym+' P/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%) — '+reason,pnl>=0?'ok':'err');
+    tgSend(emoji+' <b>'+reason+' '+pos.sym.replace('USDC','/USDC')+'</b>\nP/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%)\nCzas pozycji: '+durH+'h');
   }catch(e){log('❌ Zamknięcie '+pos.sym+': '+e.message,'err');ST.positions=ST.positions.filter(p=>p!==pos);saveAll();}
 }
 
-async function openTrade(sig){
+async function openTrade(sig,fg,btcDrop){
   if(ST.positions.length>=CFG.maxPos||ST.positions.some(p=>p.sym===sig.sym))return;
   if((ST.cooldown[sig.sym]||0)>Date.now()){log('⏳ Cooldown '+sig.sym,'warn');return;}
   if(ST.globalBlockUntil>Date.now()){log('⛔ Globalna blokada','warn');return;}
+
+  // Pump & Dump guard
+  if(isPumpDump(sig))return;
+
+  // Fear & Greed guard
+  if(fg&&fg.val<CFG.fgMin){
+    log('⛔ Fear & Greed='+fg.val+' ('+fg.label+') < '+CFG.fgMin+' — wstrzymuję wejścia','warn');
+    return;
+  }
+
+  // BTC correlation guard
+  if(btcDrop&&sig.sym!=='BTCUSDC'){
+    log('⛔ BTC spada mocno — blokuję '+sig.sym,'warn');
+    return;
+  }
+
   const usdc=await getUSDC();const total=await getTotal();
   if(ST.dailyPnl<-0.05*total){log('⛔ Dzienny limit strat','err');return;}
-  if(usdc<CFG.posSize){log('⚠️ Za mało USDC: $'+usdc.toFixed(2),'warn');return;}
-  log('🟢 BUY '+sig.sym+' @ '+fp(sig.price)+' score='+sig.score+' | '+CFG.mode.toUpperCase(),'ok');
+
+  // Kelly Criterion — dynamiczny rozmiar pozycji
+  const posSize=Math.min(kellySize(total),usdc*0.95);
+  if(posSize<10){log('⚠️ Za mało USDC lub Kelly=0: $'+usdc.toFixed(2),'warn');return;}
+
+  const rr=(CFG.tp/CFG.sl).toFixed(1);
+  log('🟢 BUY '+sig.sym+' @ '+fp(sig.price)+' score='+sig.score+' kelly=$'+posSize.toFixed(2)+' R:R='+rr+' | '+CFG.mode.toUpperCase(),'ok');
   try{
-    const res=await execBuy(sig.sym,CFG.posSize);
-    ST.positions.push({sym:sig.sym,entry:res.price||sig.price,qty:res.qty,cp:res.price||sig.price,
+    const res=await execBuy(sig.sym,posSize);
+    const pos={sym:sig.sym,entry:res.price||sig.price,qty:res.qty,cp:res.price||sig.price,
       sl:sig.slPrice,tp:sig.tpPrice,highP:res.price||sig.price,entryTs:Date.now(),
-      score:sig.score,why:sig.why.join(', ')});
-    saveAll();log('✅ Otwarto '+sig.sym+': '+((res.qty||0).toFixed(6))+' szt @ '+fp(res.price||sig.price),'ok');
+      score:sig.score,why:sig.why.join(', '),size:posSize};
+    ST.positions.push(pos);
+    saveAll();
+    log('✅ Otwarto '+sig.sym+': '+(pos.qty.toFixed(6))+' szt @ '+fp(pos.entry)+' | SL='+fp(pos.sl)+' TP='+fp(pos.tp),'ok');
     lastSignalData=sig;
     document.getElementById('btn-ai-last').style.display='';
     document.getElementById('last-signal-box').innerHTML=aiExplainSignal(sig);
+    // Telegram powiadomienie
+    tgSend('🟢 <b>BUY '+sig.sym.replace('USDC','/USDC')+'</b>\nCena: '+fp(pos.entry)+'\nScore: '+sig.score+'/100 | Kelly: $'+posSize.toFixed(2)+'\nSL: '+fp(pos.sl)+' | TP: '+fp(pos.tp)+'\n'+sig.why.slice(0,3).join(' • '));
   }catch(e){log('❌ BUY '+sig.sym+': '+e.message,'err');}
 }
 
@@ -783,10 +916,16 @@ async function botCycle(){
   sigs.sort((a,b)=>b.score-a.score);lastSigs=sigs;
   renderSigList(sigs);
 
+  // Fear & Greed + BTC guard — pobieramy raz na cały cykl
+  const fg=await getFearGreed();
+  const btcDrop=await btcDropGuard();
+  // Pokaż F&G w UI
+  setEl('rb-fg',fg.val+' — '+fg.label, 'val '+(fg.val<25?'dn':fg.val<40?'gold':'up'));
+
   if(ST.globalBlockUntil<=Date.now()){
     for(const s of sigs){
       if(!s.buy)continue;if(ST.positions.length>=CFG.maxPos)break;
-      await openTrade(s);
+      await openTrade(s,fg,btcDrop);
     }
   }
 
@@ -1149,6 +1288,8 @@ function openSettings(){
   setInput('cfg-tp',(CFG.tp*100).toFixed(1));setInput('cfg-sl',(CFG.sl*100).toFixed(1));setInput('cfg-trail',(CFG.trail*100).toFixed(1));
   setInput('cfg-maxpos',CFG.maxPos);setInput('cfg-size',CFG.posSize);setInput('cfg-interval',CFG.intervalMin);
   setInput('cfg-paper-bal',CFG.paperBal);setInput('cfg-minscore',CFG.minScore);
+  setInput('cfg-risk',CFG.riskPct||2);setInput('cfg-fgmin',CFG.fgMin||25);
+  setInput('cfg-tg-token',CFG.tgToken||'');setInput('cfg-tg-chat',CFG.tgChat||'');
   document.getElementById('modal-cfg').className='overlay open';
 }
 function saveSettings(){
@@ -1158,7 +1299,12 @@ function saveSettings(){
   CFG.tp=parseFloat(gi('cfg-tp').value)/100;CFG.sl=parseFloat(gi('cfg-sl').value)/100;CFG.trail=parseFloat(gi('cfg-trail').value)/100;
   CFG.maxPos=parseInt(gi('cfg-maxpos').value);CFG.posSize=parseFloat(gi('cfg-size').value);
   CFG.intervalMin=parseInt(gi('cfg-interval').value);CFG.paperBal=parseFloat(gi('cfg-paper-bal').value);CFG.minScore=parseInt(gi('cfg-minscore').value);
+  CFG.riskPct=parseFloat(gi('cfg-risk').value)||2;CFG.fgMin=parseInt(gi('cfg-fgmin').value)||25;
+  CFG.tgToken=gi('cfg-tg-token').value.trim();CFG.tgChat=gi('cfg-tg-chat').value.trim();
   saveCfg();
+  // Aktualizuj status Telegram w UI
+  const tge=document.getElementById('rb-tg');
+  if(tge){tge.textContent=CFG.tgToken?'✅ skonfigurowany':'–';tge.className=CFG.tgToken?'val up':'val neu';}
   gi('cfg-status').textContent='✅ Zapisano';gi('cfg-status').style.color='var(--green)';
   setEl('lim-maxpos',CFG.maxPos);setEl('lim-tp',(CFG.tp*100)+'%');setEl('lim-sl',(CFG.sl*100)+'%');setEl('lim-trail',(CFG.trail*100)+'%');
   setEl('lim-score',CFG.minScore+'/100');setEl('ai-minscore',CFG.minScore+'/100');
@@ -1251,8 +1397,12 @@ setEl('ai-minscore',CFG.minScore+'/100');setEl('rb-mode',CFG.mode.toUpperCase())
 const mb=document.getElementById('mode-badge');mb.textContent=CFG.mode.toUpperCase();mb.className=CFG.mode==='paper'?'badge bwarn':'badge bon';
 setEl('st-mode',CFG.mode.toUpperCase());setEl('rb-paper','$'+ST.paperBal.toFixed(2));
 renderPositions();renderHistory();renderStats();renderCooldowns();
-log('👋 SwingAI Bot Pro załadowany | min score BUY: '+CFG.minScore+' | tryb: '+CFG.mode.toUpperCase());
-log('ℹ️ Kliknij ▶ START BOT aby uruchomić autonomicznego agenta swing tradingowego');
+// Init Telegram status
+const tge=document.getElementById('rb-tg');
+if(tge){tge.textContent=CFG.tgToken?'✅ skonfigurowany':'–';tge.className=CFG.tgToken?'val up':'val neu';}
+document.getElementById('rb-fg').textContent='ładowanie...';
+log('👋 SwingAI Bot Pro v2 | '+PAIRS.length+' par | Kelly Criterion | Fear&Greed | Pump&Dump filter | 1H confirm');
+log('ℹ️ Tryb: '+CFG.mode.toUpperCase()+' | min score: '+CFG.minScore+' | max ryzyko: '+CFG.riskPct+'%/trade | F&G min: '+CFG.fgMin);
 </script>
 </body>
 </html>
