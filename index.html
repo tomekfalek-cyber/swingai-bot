@@ -365,6 +365,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Cel zysku %</span><input id="ml-target" type="number" value="5" min="2" max="20" style="width:80px"> <small class="lbl">wzrost ceny w ciągu 10 dni</small></div>
           <button class="go" onclick="runMLOptimize()" id="ml-btn" style="width:100%;padding:7px;background:rgba(188,140,255,.15);color:var(--purple);border-color:var(--purple)">🧠 Trenuj model</button>
           <button onclick="applyMLWeights()" id="ml-apply" style="width:100%;padding:5px;margin-top:6px;display:none" class="ok-btn">✅ Zastosuj wagi w bocie</button>
+          <button onclick="trainAllAI()" style="width:100%;padding:5px;margin-top:6px;background:rgba(63,185,80,.1);color:var(--green);border-color:var(--green)">🔄 Trenuj NB + GBM na Binance</button>
           <div id="ml-progress" style="margin-top:8px;font-size:8.5pt;color:var(--gold);min-height:18px"></div>
         </div>
         <div>
@@ -429,14 +430,21 @@ tr:hover td{background:rgba(255,255,255,.015);}
   </div>
 
   <div class="sec">
+    <div class="sec-t">🤖 Modele AI — status</div>
+    <div id="ai-status-panel" style="font-size:8.5pt;line-height:2;color:var(--text2)">
+      <span class="neu">NB — niewy trenowany</span><br>
+      <span class="neu">GBM — niewytrenowany</span><br>
+      <span class="neu">Adaptive — czeka na dane</span>
+    </div>
+  </div>
+  <div class="sec">
     <div class="sec-t">⚙️ Silnik AI — parametry</div>
-    <div class="r2"><span class="lbl">Min Score BUY</span><span class="val gold" id="ai-minscore">62/100</span></div>
-    <div class="r2"><span class="lbl">TF analizy</span><span class="val acc">Daily + 4H</span></div>
-    <div class="r2"><span class="lbl">Wskaźniki</span><span class="val" style="font-size:8pt">RSI, MACD, BB, EMA</span></div>
-    <div class="r2"><span class="lbl">RSI max BUY (D)</span><span class="val up">≤ 45</span></div>
-    <div class="r2"><span class="lbl">BB pos max BUY</span><span class="val">≤ 40%</span></div>
-    <div class="r2"><span class="lbl">Trend wymagany</span><span class="val">≥ boczny</span></div>
+    <div class="r2"><span class="lbl">Min Score/Prob BUY</span><span class="val gold" id="ai-minscore">62/100</span></div>
+    <div class="r2"><span class="lbl">Metoda decyzyjna</span><span class="val acc" id="ai-method-lbl">Score</span></div>
+    <div class="r2"><span class="lbl">TF analizy</span><span class="val acc">Daily + 4H + 1H</span></div>
+    <div class="r2"><span class="lbl">Formacje swiec</span><span class="val">8 wzorców</span></div>
     <div class="r2"><span class="lbl">Bessa blokada</span><span class="val dn">poniżej EMA200</span></div>
+    <div class="r2"><span class="lbl">Adaptive thresh</span><span class="val" id="ai-adaptive-thresh">--</span></div>
   </div>
 </div>
 
@@ -746,13 +754,58 @@ async function analyzeSwing(sym) {
   if (trendD===-1 && rsiD>50) { score=Math.min(score,15); why.push('BESSA: brak long'); }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
+  // ── Pattern Recognition (Module 3) ─────────────────────────────
+  const opens = kd.map(x=>+x[1]);
+  const patResult = PATTERNS.detect(d.c, opens, d.h, d.l);
+  // Formacje bullish dodaja do score, bearish odejmuja
+  let patScore = 0;
+  if (patResult.bullish > 0) {
+    patScore = Math.min(15, patResult.bullish * 6);
+    score    = Math.min(100, score + patScore);
+    patResult.patterns.filter(p=>p.type==='bullish').forEach(p=>why.push(p.name));
+  }
+  if (patResult.bearish > 0) {
+    patScore = -Math.min(12, patResult.bearish * 5);
+    score    = Math.max(0, score + patScore);
+    patResult.patterns.filter(p=>p.type==='bearish').forEach(p=>why.push('⚠'+p.name));
+  }
+
+  // ── Cechy dla NB/GBM (Module 1 & 2) ─────────────────────────────
+  const nbFeatures  = NB.discretize({ rsiD, macdHist:macdD.hist, bbPos:bbD.pos, trendD, mom5, confirm1h });
+  const gbmFeatures = [ rsiD/100, macdD.hist>0?1:0, bbD.pos, (trendD+1)/3, mom5/20, mom10/20, confirm1h?1:0, volR/3 ];
+
+  // ── NB prediction (Module 1) ─────────────────────────────────────
+  const nbPred = NB.predict({ rsiD, macdHist:macdD.hist, bbPos:bbD.pos, trendD, mom5, confirm1h });
+  const gbmProb = GBM.predict(gbmFeatures);
+
+  // Ensemble: score (40%) + NB (30%) + GBM (30%) gdy wytrenowane
+  let finalProb = 0.5;
+  let aiMethod  = 'Score';
+  if (NB.trained && GBM.trained) {
+    const scoreNorm = score/100;
+    finalProb = scoreNorm*0.4 + nbPred.prob*0.3 + gbmProb*0.3;
+    aiMethod  = 'Ensemble(Score+NB+GBM)';
+    if (nbPred.label==='SKIP' && gbmProb<0.4) {
+      why.push('AI odradza wejscie');
+    }
+  } else if (NB.trained) {
+    finalProb = score/100*0.6 + nbPred.prob*0.4;
+    aiMethod  = 'Score+NaiveBayes';
+  }
+
+  const effectiveMinScore = ADAPTIVE.getMinScore();
+  const buy = finalProb >= effectiveMinScore/100;
+
   return {
     sym, price,
     rsiD:+rsiD.toFixed(1), rsi4h:+rsi4h.toFixed(1), rsi1h:+rsi1h.toFixed(1), confirm1h,
     macdHist:macdD.hist, macdLine:macdD.line,
     bbPos:bbD.pos, bbUpper:bbD.upper, bbLower:bbD.lower,
     trendD, ema50, ema200, ema21, atrD,
-    score, buy:score>=CFG.minScore, why,
+    score, finalProb:+finalProb.toFixed(3), buy,
+    nbPred, gbmProb:+gbmProb.toFixed(3), aiMethod,
+    patterns:patResult.patterns, patScore,
+    why, nbFeatures, gbmFeatures,
     slPrice:price*(1-CFG.sl+FEE), tpPrice:price*(1+CFG.tp+FEE),
     volR:+volR.toFixed(2), vol4R:+vol4R.toFixed(2),
     mom5:+mom5.toFixed(2), mom10:+mom10.toFixed(2)
@@ -770,9 +823,36 @@ function buildGauge(name, val, mn, mx, color, textOnly) {
 function aiExplainSignal(sig) {
   const trendMap = ['ponizej EMA200','ponizej EMA50','ponad EMA200','ponad EMA50+200'];
   const trend = trendMap[Math.max(0,Math.min(3,sig.trendD+1))];
+  const prob  = sig.finalProb !== undefined ? sig.finalProb : sig.score/100;
+  const probPct = (prob*100).toFixed(1);
   const c = sig.buy ? 'var(--green)' : 'var(--text2)';
-  const h = sig.buy ? 'BUY score '+sig.score+'/100' : 'Brak setupu — score '+sig.score+'/100';
-  return '<b style="color:'+c+'">'+(sig.buy?'🟢 ':'')+h+'</b><br>Cena '+fp(sig.price)+', trend: '+trend+'. RSI(D)='+sig.rsiD+', RSI(4H)='+sig.rsi4h+', 1H: '+(sig.confirm1h?'potwierdza ✓':'nie potwierdza')+'.<br>MACD hist '+(sig.macdHist>0?'<span class="up">rosnie</span>':'<span class="dn">opada</span>')+', BB '+(sig.bbPos*100).toFixed(0)+'%.'+(sig.buy?'<br><span style="color:var(--text3)">'+sig.why.slice(0,3).join(' • ')+'</span>':'');
+
+  let html = '<b style="color:'+c+'">'+(sig.buy?'🟢 BUY ':'⚪ WAIT ')+'P(wzrost)='+probPct+'% | Score '+sig.score+'/100</b><br>';
+  html += '<span style="color:var(--text3);font-size:8pt">Metoda: '+(sig.aiMethod||'Score')+'</span><br>';
+  html += 'Trend: '+trend+' | RSI(D)='+sig.rsiD+' RSI(4H)='+sig.rsi4h+'<br>';
+  html += 'MACD '+(sig.macdHist>0?'<span class="up">↑</span>':'<span class="dn">↓</span>')+' BB='+(sig.bbPos*100).toFixed(0)+'% 1H:'+(sig.confirm1h?'✓':'✗');
+
+  // NB
+  if (sig.nbPred && NB.trained) {
+    const nbC = sig.nbPred.label==='BUY'?'up':sig.nbPred.label==='SKIP'?'dn':'neu';
+    html += '<br>NB: <span class="'+nbC+'">'+sig.nbPred.label+' ('+Math.round(sig.nbPred.prob*100)+'%)</span>';
+  }
+  // GBM
+  if (GBM.trained) {
+    const gbmC = sig.gbmProb>0.6?'up':sig.gbmProb<0.4?'dn':'neu';
+    html += ' | GBM: <span class="'+gbmC+'">'+(sig.gbmProb*100).toFixed(0)+'%</span>';
+  }
+  // Formacje
+  if (sig.patterns && sig.patterns.length) {
+    html += '<br>';
+    sig.patterns.forEach(function(p){
+      html += '<span class="pill '+(p.type==='bullish'?'pill-buy':'pill-sl')+'" style="margin-right:2px">'+p.name+'</span>';
+    });
+  }
+  if (sig.buy && sig.why) {
+    html += '<br><span style="color:var(--text3);font-size:7.5pt">'+sig.why.filter(function(w){ return !w.includes('Hammer')&&!w.includes('Engulfing')&&!w.includes('Star'); }).slice(0,3).join(' • ')+'</span>';
+  }
+  return html;
 }
 
 function aiExplainPosition(pos, sig) {
@@ -789,12 +869,20 @@ function aiExplainPosition(pos, sig) {
 
   const entryHTML = '<div class="ai-section-title">Dlaczego bot wszedl</div><p>Pozycja <b>'+sym+'/USDC</b> przy <b>'+fp(pos.entry)+'</b> — score <b>'+pos.score+'/100</b>.</p><div style="margin-top:4px">'+tags+'</div>';
   const stateHTML = '<div class="ai-section-title" style="margin-top:14px">Stan pozycji</div><p>Otwarta <b>'+ageH+'h</b>. P/L: <b class="'+(+pnlPct>=0?'up':'dn')+'">'+(+pnlPct>=0?'+':'')+pnlPct+'% ('+(+pnl>=0?'+':'')+'$'+pnl+')</b>. Szczyt: '+fp(pos.highP)+' (+'+highPct+'%).</p><p style="margin-top:5px">Do TP: <b class="up">+'+distTP+'%</b> | Do SL: <b class="dn">-'+distSL+'%</b> | Trailing: <b class="gold">'+trail+'</b></p>';
-  let indHTML = '<div class="ai-section-title" style="margin-top:14px">Wskazniki</div>';
+  let indHTML = '<div class="ai-section-title" style="margin-top:14px">Wskazniki + AI</div>';
   if (sig) {
     indHTML += buildGauge('RSI Daily', sig.rsiD, 0, 100, sig.rsiD<=35?'var(--green)':sig.rsiD>=65?'var(--red)':'var(--accent)');
     indHTML += buildGauge('RSI 4H',   sig.rsi4h,0, 100, sig.rsi4h<=35?'var(--green)':sig.rsi4h>=65?'var(--red)':'var(--accent)');
     indHTML += buildGauge('BB pos %', +(sig.bbPos*100).toFixed(0), 0, 100, sig.bbPos<0.3?'var(--green)':sig.bbPos>0.7?'var(--red)':'var(--accent)');
     indHTML += buildGauge('MACD', sig.macdHist>=0?'rosnie':'opada','','', sig.macdHist>=0?'var(--green)':'var(--red)', true);
+    if (NB.trained) indHTML += buildGauge('NaiveBayes P(BUY)', +(sig.nbPred&&sig.nbPred.prob||0.5)*100, 0, 100, (sig.nbPred&&sig.nbPred.prob||0.5)>0.55?'var(--green)':(sig.nbPred&&sig.nbPred.prob||0.5)<0.45?'var(--red)':'var(--gold)');
+    if (GBM.trained)indHTML += buildGauge('GBM P(BUY)', +(sig.gbmProb||0.5)*100, 0, 100, (sig.gbmProb||0.5)>0.55?'var(--green)':(sig.gbmProb||0.5)<0.45?'var(--red)':'var(--gold)');
+    if (sig.finalProb!==undefined) indHTML += buildGauge('Ensemble P(BUY)', +sig.finalProb*100, 0, 100, sig.finalProb>0.55?'var(--green)':sig.finalProb<0.45?'var(--red)':'var(--gold)');
+    if (sig.patterns&&sig.patterns.length) {
+      indHTML += '<div style="margin-top:6px"><b style="font-size:8pt">Formacje swiecowe:</b> ';
+      sig.patterns.forEach(function(p){ indHTML += '<span class="pill '+(p.type==='bullish'?'pill-buy':'pill-sl')+'" title="'+p.desc+'">'+p.name+'</span> '; });
+      indHTML += '</div>';
+    }
   }
   let rec='', recC='var(--text2)';
   if      (+pnlPct >= CFG.tp*100*0.7)     { rec='Zbliżasz sie do TP. Rozważ zacieśnienie trailing stop.';   recC='var(--green)'; }
@@ -842,7 +930,12 @@ async function closeTrade(pos, price, reason) {
       if (ST.consLoss >= 3) { ST.globalBlockUntil=Date.now()+6*3600000; log('3 straty z rzedu — blokada 6h','err'); }
     } else { ST.consLoss=0; }
     ST.trades.unshift({sym:pos.sym, entry:pos.entry, exit:ep, qty:pos.qty,
-      pnl:+pnl.toFixed(4), pnlPct:+pnlPct.toFixed(2), durH, reason, score:pos.score, ts:new Date().toLocaleString('pl-PL')});
+      pnl:+pnl.toFixed(4), pnlPct:+pnlPct.toFixed(2), durH, reason, score:pos.score,
+      finalProb:pos.finalProb, aiMethod:pos.aiMethod,
+      nbFeatures:pos.nbFeatures, gbmFeatures:pos.gbmFeatures,
+      ts:new Date().toLocaleString('pl-PL')});
+    // Adaptive learning — retrenuj co 5 zamknietych transakcji
+    if (ST.trades.length % 5 === 0) { setTimeout(function(){ ADAPTIVE.retrain(); }, 500); }
     if (ST.trades.length > 300) ST.trades = ST.trades.slice(0,300);
     ST.positions = ST.positions.filter(p => p !== pos);
     saveAll();
@@ -874,6 +967,8 @@ async function openTrade(sig, fg, btcDrop) {
     ST.positions.push({sym:sig.sym, entry:res.price||sig.price, qty:res.qty,
       cp:res.price||sig.price, sl:sig.slPrice, tp:sig.tpPrice,
       highP:res.price||sig.price, entryTs:Date.now(), score:sig.score,
+      finalProb:sig.finalProb, aiMethod:sig.aiMethod,
+      nbFeatures:sig.nbFeatures, gbmFeatures:sig.gbmFeatures,
       why:sig.why.join(', '), size:posSize});
     saveAll();
     log('Otwarto '+sig.sym+' '+((res.qty||0).toFixed(6))+' @ '+fp(res.price||sig.price),'ok');
@@ -929,6 +1024,12 @@ async function botCycle() {
   renderCooldowns();
 
   gi('last-scan').textContent = new Date().toLocaleTimeString('pl-PL');
+  // Aktualizuj metode AI w panelu
+  var methEl = gi('ai-method-lbl');
+  if (methEl) { methEl.textContent = NB.trained&&GBM.trained?'Ensemble(NB+GBM+Score)':NB.trained?'Score+NaiveBayes':'Score (brak historii)'; }
+  var athEl = gi('ai-adaptive-thresh');
+  if (athEl) { athEl.textContent = ADAPTIVE.getMinScore()+'/100'; athEl.className='val '+(ADAPTIVE.minScoreAdjusted&&ADAPTIVE.minScoreAdjusted!==CFG.minScore?'gold':'neu'); }
+  updateAIStatusPanel();
   nextScanAt = Date.now() + CFG.intervalMin*60000;
   const buys = sigs.filter(function(s){ return s.buy; }).length;
   setStatus('Skan #'+ST.iter+' — '+buys+' BUY | nastepny za '+CFG.intervalMin+'min');
@@ -957,6 +1058,8 @@ async function startBot() {
   gi('ai-dot').className = 'ai-dot scan';
   gi('rb-status').textContent = '🟢 Aktywny'; gi('rb-status').className = 'val up';
   log('Bot uruchomiony | '+CFG.mode.toUpperCase()+' | skan co '+CFG.intervalMin+'min','ok');
+  // Retrenuj AI na historii z poprzednich sesji
+  setTimeout(function(){ ADAPTIVE.retrain(); updateAIStatusPanel(); }, 800);
   await botCycle();
   gi('ai-dot').className = 'ai-dot';
   botTimer = setInterval(async function() {
@@ -1061,10 +1164,13 @@ function renderSigList(sigs) {
       +'<div class="pbar-wrap" style="flex:1"><div class="pbar" style="width:'+s.score+'%;background:'+c+'"></div></div>'
       +'<span style="font-size:8.5pt;font-weight:900;color:'+c+'">'+s.score+'</span></div>'
       +'<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">'
-      +'<span class="ind-chip" style="color:'+(s.rsiD<=35?'var(--green)':s.rsiD>=65?'var(--red)':'var(--text2)')+'">RSI-D '+s.rsiD+'</span>'
-      +'<span class="ind-chip" style="color:'+(s.macdHist>0?'var(--green)':'var(--red)')+'">MACD '+(s.macdHist>0?'up':'dn')+'</span>'
+      +'<span class="ind-chip" style="color:'+(s.rsiD<=35?'var(--green)':s.rsiD>=65?'var(--red)':'var(--text2)')+'">RSI '+s.rsiD+'</span>'
+      +'<span class="ind-chip" style="color:'+(s.macdHist>0?'var(--green)':'var(--red)')+'">MACD '+(s.macdHist>0?'↑':'↓')+'</span>'
       +'<span class="ind-chip" style="color:'+(s.bbPos<0.25?'var(--green)':s.bbPos>0.75?'var(--red)':'var(--text2)')+'">BB '+(s.bbPos*100).toFixed(0)+'%</span>'
-      +'<span class="ind-chip" style="color:'+(s.confirm1h?'var(--green)':'var(--text3)')+'">1H '+(s.confirm1h?'ok':'-')+'</span></div>'
+      +(s.nbPred&&NB.trained?'<span class="ind-chip" style="color:'+(s.nbPred.prob>0.55?'var(--green)':s.nbPred.prob<0.45?'var(--red)':'var(--gold)')+'">NB '+(s.nbPred.prob*100).toFixed(0)+'%</span>':'')
+      +(GBM.trained?'<span class="ind-chip" style="color:'+(s.gbmProb>0.55?'var(--green)':s.gbmProb<0.45?'var(--red)':'var(--gold)')+'">GBM '+(s.gbmProb*100).toFixed(0)+'%</span>':'')
+      +(s.patterns&&s.patterns.length?'<span class="ind-chip" style="color:var(--purple)">📊 '+s.patterns.length+' form.</span>':'')
+      +'</div>'
       +'<div style="font-size:7.5pt;color:var(--text3);margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+s.why.slice(0,2).join(' • ')+'</div>'
       +'</div>';
   }).join('');
@@ -1322,6 +1428,277 @@ function log(msg,type) {
   const lc=gi('log-count'); if(lc) lc.textContent=box.children.length+' wpisow';
 }
 function clearLog() { gi('log-area').innerHTML=''; var lc=gi('log-count'); if(lc) lc.textContent=''; }
+
+// ═══════════════════════════════════════════════════════════════════
+//  AI MODULE 1: NAÏVE BAYES CLASSIFIER
+//  Oblicza P(wzrost | wskazniki) na podstawie historii transakcji bota
+//  Prawdziwy probabilistyczny klasyfikator ML
+// ═══════════════════════════════════════════════════════════════════
+var NB = {
+  // Przechowuje histogramy cech dla klasy 1 (win) i 0 (loss)
+  model: null,
+  trained: false,
+  trainCount: 0,
+
+  // Dyskretyzacja cech do binow
+  discretize: function(features) {
+    return [
+      features.rsiD<=30?0:features.rsiD<=45?1:features.rsiD<=60?2:3,   // RSI: 4 biny
+      features.macdHist>0.001?2:features.macdHist>-0.001?1:0,           // MACD: 3 biny
+      features.bbPos<0.2?0:features.bbPos<0.5?1:features.bbPos<0.8?2:3, // BB: 4 biny
+      features.trendD+1,                                                  // Trend: 0-3
+      features.mom5<-5?0:features.mom5<0?1:features.mom5<5?2:3,          // Mom5: 4 biny
+      features.confirm1h?1:0                                              // 1H: 0/1
+    ];
+  },
+
+  train: function(tradesHistory) {
+    if (tradesHistory.length < 10) return false;
+    // Inicjalizacja: smoothing Laplace'a
+    var classes = [0,1];
+    var nFeats = 6;
+    var bins   = [4,3,4,4,4,2];
+    var counts = {0:{}, 1:{}};
+    var classCounts = {0:0, 1:0};
+    classes.forEach(function(c) {
+      for (var f=0; f<nFeats; f++) {
+        for (var b=0; b<bins[f]; b++) {
+          counts[c][f+'_'+b] = 1; // Laplace smoothing
+        }
+      }
+    });
+    tradesHistory.forEach(function(t) {
+      if (!t.nbFeatures) return;
+      var label = t.pnl > 0 ? 1 : 0;
+      classCounts[label]++;
+      t.nbFeatures.forEach(function(bin, f) {
+        counts[label][f+'_'+bin] = (counts[label][f+'_'+bin]||1) + 1;
+      });
+    });
+    var total = classCounts[0] + classCounts[1];
+    if (total < 5) return false;
+    this.model = { counts:counts, classCounts:classCounts, total:total, bins:bins, nFeats:nFeats };
+    this.trained = true;
+    this.trainCount = total;
+    return true;
+  },
+
+  predict: function(features) {
+    if (!this.trained || !this.model) return { prob:0.5, confidence:'low', label:'NEUTRAL' };
+    var m = this.model;
+    var bins = this.discretize(features);
+    var logProbs = {};
+    [0,1].forEach(function(c) {
+      var logP = Math.log((m.classCounts[c]+1) / (m.total+2)); // prior z smoothingiem
+      for (var f=0; f<m.nFeats; f++) {
+        var key = f+'_'+bins[f];
+        var cnt = m.counts[c][key] || 1;
+        var total = Object.keys(m.counts[c]).filter(function(k){ return k.startsWith(f+'_'); })
+                       .reduce(function(sum,k){ return sum+(m.counts[c][k]||0); }, 0);
+        logP += Math.log(cnt / Math.max(total, 1));
+      }
+      logProbs[c] = logP;
+    });
+    // Softmax z log-prawdopodobienstw
+    var maxLP = Math.max(logProbs[0], logProbs[1]);
+    var e0 = Math.exp(logProbs[0]-maxLP), e1 = Math.exp(logProbs[1]-maxLP);
+    var prob = e1 / (e0+e1);
+    var conf = prob>0.7||prob<0.3 ? 'high' : prob>0.6||prob<0.4 ? 'medium' : 'low';
+    return { prob:+prob.toFixed(3), confidence:conf, label: prob>0.55?'BUY':prob<0.45?'SKIP':'NEUTRAL' };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  AI MODULE 2: GRADIENT BOOSTING (Mini GBM — 20 drzew)
+//  Seria korygujacych klasyfikatorow trenowanych na rezydualach
+// ═══════════════════════════════════════════════════════════════════
+var GBM = {
+  trees: [],
+  learningRate: 0.1,
+  trained: false,
+  accuracy: 0,
+
+  // Prosty stumpy decisiontree (depth=2)
+  buildStump: function(X, residuals) {
+    var nFeats = X[0].length, bestGain = -Infinity, bestTree = null;
+    for (var fi=0; fi<nFeats; fi++) {
+      var vals = X.map(function(x){ return x[fi]; }).sort(function(a,b){ return a-b; });
+      // Sprawdz 5 prog
+      for (var ti=1; ti<5; ti++) {
+        var thresh = vals[Math.floor(ti*vals.length/5)];
+        var left=[], right=[];
+        X.forEach(function(x,i){ (x[fi]<=thresh?left:right).push(residuals[i]); });
+        if (!left.length||!right.length) continue;
+        var lMean=left.reduce(function(a,b){ return a+b; },0)/left.length;
+        var rMean=right.reduce(function(a,b){ return a+b; },0)/right.length;
+        var gain = left.length*lMean*lMean + right.length*rMean*rMean;
+        if (gain > bestGain) { bestGain=gain; bestTree={fi:fi,thresh:thresh,lVal:lMean,rVal:rMean}; }
+      }
+    }
+    return bestTree;
+  },
+
+  train: function(X, y) {
+    if (X.length < 20) return false;
+    this.trees = [];
+    var F = new Array(X.length).fill(0.5); // F0 = mean
+    var nTrees = 20;
+    for (var t=0; t<nTrees; t++) {
+      // Gradient = y - F (dla log-loss uproszczonego do MSE)
+      var residuals = y.map(function(yi,i){ return yi - F[i]; });
+      var tree = this.buildStump(X, residuals);
+      if (!tree) break;
+      this.trees.push(tree);
+      // Aktualizuj F
+      F = F.map(function(fi,i) {
+        var pred = X[i][tree.fi] <= tree.thresh ? tree.lVal : tree.rVal;
+        return fi + GBM.learningRate * pred;
+      });
+    }
+    // Ocena dokladnosci
+    var correct = 0;
+    F.forEach(function(f,i){ if ((f>0.5?1:0) === y[i]) correct++; });
+    this.accuracy = +(correct/F.length*100).toFixed(1);
+    this.trained = true;
+    return true;
+  },
+
+  predict: function(x) {
+    if (!this.trained||!this.trees.length) return 0.5;
+    var F = 0.5;
+    this.trees.forEach(function(tree) {
+      F += GBM.learningRate * (x[tree.fi]<=tree.thresh ? tree.lVal : tree.rVal);
+    });
+    return Math.max(0, Math.min(1, F));
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  AI MODULE 3: CANDLESTICK PATTERN RECOGNITION
+//  Rozpoznaje 8 formacji swiecowych z udokumentowana skutecznoscia
+// ═══════════════════════════════════════════════════════════════════
+var PATTERNS = {
+  detect: function(closes, opens, highs, lows) {
+    var n = closes.length;
+    if (n < 5) return { patterns:[], score:0, bullish:0, bearish:0 };
+    var patterns = [];
+    var o=opens, h=highs, l=lows, c=closes;
+    var i = n-1; // ostatnia swiecza
+
+    // Pomocnicze
+    var body   = function(i){ return Math.abs(c[i]-o[i]); };
+    var range  = function(i){ return h[i]-l[i]; };
+    var isUp   = function(i){ return c[i]>o[i]; };
+    var isDown = function(i){ return c[i]<o[i]; };
+    var atrVal = (range(i)+range(i-1)+range(i-2))/3||1;
+
+    // 1. HAMMER (bullish reversal) — maly body gorny, dlugi dolny cien
+    var lowerShadow = isUp(i) ? o[i]-l[i] : c[i]-l[i];
+    var upperShadow = isUp(i) ? h[i]-c[i] : h[i]-o[i];
+    if (body(i)<atrVal*0.3 && lowerShadow>body(i)*2 && upperShadow<body(i)*0.5 && isDown(i-1)) {
+      patterns.push({ name:'Hammer', type:'bullish', strength:75, desc:'Silne odrzucenie w dol — kupujacy przejeli kontrole' });
+    }
+
+    // 2. BULLISH ENGULFING — zielona swieca calkowicie ogarnia czerwona
+    if (isDown(i-1) && isUp(i) && o[i]<c[i-1] && c[i]>o[i-1] && body(i)>body(i-1)*1.1) {
+      patterns.push({ name:'Bullish Engulfing', type:'bullish', strength:82, desc:'Mocne odwrocenie — popyt przytlocil podaz' });
+    }
+
+    // 3. MORNING STAR (3 swiece — silny bullish reversal)
+    if (n>=3 && isDown(i-2) && body(i-1)<atrVal*0.25 && isUp(i) && c[i]>(o[i-2]+c[i-2])/2) {
+      patterns.push({ name:'Morning Star', type:'bullish', strength:85, desc:'Klasyczna formacja odwrocenia trendu spadkowego' });
+    }
+
+    // 4. DOJI (niezdecydowanie — sygnał zalezy od kontekstu)
+    if (body(i)<atrVal*0.1 && range(i)>atrVal*0.3) {
+      var dojiType = isDown(i-1)||isDown(i-2) ? 'bullish' : 'neutral';
+      patterns.push({ name:'Doji', type:dojiType, strength:55, desc:'Rynek niezdecydowany — czekaj na potwierdzenie' });
+    }
+
+    // 5. PIERCING LINE — otwiera ponizej zamkniecia, zamyka powyzej polowy
+    if (isDown(i-1) && isUp(i) && o[i]<l[i-1] && c[i]>(o[i-1]+c[i-1])/2 && c[i]<o[i-1]) {
+      patterns.push({ name:'Piercing Line', type:'bullish', strength:70, desc:'Kupujacy weszli po wczorajszej bessie' });
+    }
+
+    // 6. THREE WHITE SOLDIERS (3 rosnace swiece)
+    if (n>=3 && isUp(i) && isUp(i-1) && isUp(i-2) && c[i]>c[i-1] && c[i-1]>c[i-2] && body(i)>atrVal*0.4 && body(i-1)>atrVal*0.4) {
+      patterns.push({ name:'Three White Soldiers', type:'bullish', strength:80, desc:'Trzecia z rzedu wzrostowa swiecza — silny trend' });
+    }
+
+    // 7. SHOOTING STAR (bearish — ostrzezenie)
+    var upperSh2 = isUp(i) ? h[i]-c[i] : h[i]-o[i];
+    var lowerSh2 = isUp(i) ? o[i]-l[i] : c[i]-l[i];
+    if (body(i)<atrVal*0.3 && upperSh2>body(i)*2 && lowerSh2<body(i)*0.5 && isUp(i-1)) {
+      patterns.push({ name:'Shooting Star', type:'bearish', strength:72, desc:'Odrzucenie wzrostu — ostrzezenie przed korektą' });
+    }
+
+    // 8. BEARISH ENGULFING (ostrzezenie)
+    if (isUp(i-1) && isDown(i) && o[i]>c[i-1] && c[i]<o[i-1] && body(i)>body(i-1)*1.1) {
+      patterns.push({ name:'Bearish Engulfing', type:'bearish', strength:78, desc:'Podaz przejela kontrole — rozważ wstrzymanie wejscia' });
+    }
+
+    var bullish = patterns.filter(function(p){ return p.type==='bullish'; }).length;
+    var bearish = patterns.filter(function(p){ return p.type==='bearish'; }).length;
+    var score   = patterns.reduce(function(sum,p){ return sum+(p.type==='bullish'?p.strength:-p.strength); },0);
+
+    return { patterns:patterns, score:score, bullish:bullish, bearish:bearish };
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  AI MODULE 4: ADAPTIVE LEARNING
+//  Bot uczy sie na wlasnych transakcjach — dostosowuje progi co N trade
+// ═══════════════════════════════════════════════════════════════════
+var ADAPTIVE = {
+  minScoreAdjusted: null,   // dostosowany prog wejscia
+  lastTrainSize: 0,
+
+  // Trenuj NB i GBM na historii bota
+  retrain: function() {
+    var trades = ST.trades.filter(function(t){ return t.nbFeatures; });
+    if (trades.length < 15) return;
+    if (trades.length === this.lastTrainSize) return; // nic nowego
+    this.lastTrainSize = trades.length;
+
+    // Trenuj Naïve Bayes
+    var nbOk = NB.train(trades);
+
+    // Przygotuj dataset dla GBM
+    var X = trades.map(function(t){ return t.gbmFeatures || t.nbFeatures || []; }).filter(function(x){ return x.length>0; });
+    var y = trades.map(function(t){ return t.pnl>0?1:0; });
+    if (X.length >= 20) GBM.train(X, y);
+
+    // Dostosuj minScore na podstawie win rate ostatnich 20 transakcji
+    var recent = ST.trades.slice(0,20);
+    var wr = recent.filter(function(t){ return t.pnl>0; }).length / Math.max(recent.length,1);
+    if (wr < 0.4 && this.minScoreAdjusted !== null) {
+      this.minScoreAdjusted = Math.min(85, (this.minScoreAdjusted||CFG.minScore) + 3);
+      log('Adaptive: win rate '+Math.round(wr*100)+'% — zaostrzam min score do '+this.minScoreAdjusted,'warn');
+    } else if (wr > 0.65 && recent.length >= 10) {
+      this.minScoreAdjusted = Math.max(50, (this.minScoreAdjusted||CFG.minScore) - 2);
+      log('Adaptive: win rate '+Math.round(wr*100)+'% — luzuje min score do '+this.minScoreAdjusted,'ok');
+    } else if (this.minScoreAdjusted === null) {
+      this.minScoreAdjusted = CFG.minScore;
+    }
+
+    log('AI retrained: NB='+nbOk+' GBM='+GBM.accuracy+'% trades='+trades.length, 'ok');
+    updateAIStatusPanel();
+  },
+
+  // Efektywny prog wejscia (adaptive lub config)
+  getMinScore: function() {
+    return this.minScoreAdjusted !== null ? this.minScoreAdjusted : CFG.minScore;
+  }
+};
+
+// ─── Panel statusu AI ────────────────────────────────────────────
+function updateAIStatusPanel() {
+  var el = gi('ai-status-panel'); if(!el) return;
+  var nbS  = NB.trained  ? '<span class="up">NB aktywny ('+NB.trainCount+' obs.)</span>'  : '<span class="neu">NB niewy trenowany</span>';
+  var gbmS = GBM.trained ? '<span class="up">GBM aktywny ('+GBM.accuracy+'% acc.)</span>'  : '<span class="neu">GBM niewytrenowany</span>';
+  var adS  = ADAPTIVE.minScoreAdjusted!==null ? '<span class="gold">Prog: '+ADAPTIVE.getMinScore()+'</span>' : '<span class="neu">Prog: '+CFG.minScore+'</span>';
+  el.innerHTML = nbS+'<br>'+gbmS+'<br>'+adS;
+}
 
 // ── BACKTEST ENGINE ────────────────────────────────────────────────
 var btResults = null;
@@ -1703,6 +2080,52 @@ function drawMLChart(result) {
   });
   ctx.fillStyle='rgba(139,148,158,.5)'; ctx.font='9px Segoe UI'; ctx.textAlign='left';
   ctx.fillText('Information Gain per wskaznik (wiekszy = wazniejszy)', 10, 12);
+}
+
+// Trenuj NB + GBM na danych historycznych Binance (bez historii transakcji)
+async function trainAllAI() {
+  var sym  = gi('ml-sym').value;
+  var days = parseInt(gi('ml-days').value);
+  var targetPct = parseFloat(gi('ml-target').value)/100;
+  gi('ml-progress').textContent = 'Pobieranie danych historycznych...';
+  try {
+    var klines = await getKlines(sym, '1d', Math.min(days, 1000));
+    var closes = klines.map(function(k){ return +k[4]; });
+    var highs  = klines.map(function(k){ return +k[2]; });
+    var lows   = klines.map(function(k){ return +k[3]; });
+    var opens  = klines.map(function(k){ return +k[1]; });
+    var n = closes.length;
+    gi('ml-progress').textContent = 'Budowanie datasetu z '+n+' dni...';
+
+    // Zbuduj syntetyczne "transakcje" do trenowania NB i GBM
+    var synTrades = [];
+    var X_gbm = [], y_gbm = [];
+    for (var i=35; i<n-10; i++) {
+      var ind = calcIndicatorsForCandle(closes, highs, lows, i);
+      if (!ind) continue;
+      var futureRet = (closes[i+10]/closes[i])-1;
+      var label = futureRet >= targetPct ? 1 : 0;
+      var nbF  = NB.discretize({ rsiD:ind.rsiD, macdHist:ind.macdHist, bbPos:ind.bbPos, trendD:ind.trendD, mom5:ind.mom5, confirm1h:ind.macdHist>0 });
+      var gbmF = [ ind.rsiD/100, ind.macdHist>0?1:0, ind.bbPos, (ind.trendD+1)/3, ind.mom5/20, ind.mom10/20, ind.macdHist>0?1:0, 1 ];
+      synTrades.push({ nbFeatures:nbF, gbmFeatures:gbmF, pnl:label>0?1:-1 });
+      X_gbm.push(gbmF); y_gbm.push(label);
+    }
+
+    gi('ml-progress').textContent = 'Trening NB...';
+    var nbOk = NB.train(synTrades);
+    gi('ml-progress').textContent = 'Trening GBM (20 drzew)...';
+    var gbmOk = GBM.train(X_gbm, y_gbm);
+    ADAPTIVE.minScoreAdjusted = CFG.minScore; // reset adaptive
+
+    var msg = 'NB: '+(nbOk?'OK':'blad')+' | GBM: '+(gbmOk?'OK (acc: '+GBM.accuracy+'%)':'blad')+' | proba: '+synTrades.length;
+    gi('ml-progress').textContent = msg;
+    gi('ml-apply').style.display = '';
+    updateAIStatusPanel();
+    log('AI trening zakończony: '+msg, 'ok');
+  } catch(e) {
+    gi('ml-progress').textContent = 'Blad: '+e.message;
+    log('trainAllAI blad: '+e.message,'err');
+  }
 }
 
 function applyMLWeights() {
