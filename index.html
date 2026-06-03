@@ -446,6 +446,12 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="r2"><span class="lbl">Formacje swiec</span><span class="val">8 wzorców</span></div>
     <div class="r2"><span class="lbl">Bessa blokada</span><span class="val dn">poniżej EMA200</span></div>
     <div class="r2"><span class="lbl">Adaptive thresh</span><span class="val" id="ai-adaptive-thresh">--</span></div>
+    <div class="r2"><span class="lbl">Q-Learning updates</span><span class="val" id="ai-ql-updates">0</span></div>
+    <div class="r2"><span class="lbl">Per-pair skalibrowanych</span><span class="val" id="ai-pp-count">0</span></div>
+  </div>
+  <div class="sec">
+    <div class="sec-t">📖 Order Book (ostatni skan)</div>
+    <div id="obi-panel" style="font-size:8.5pt;color:var(--text2);line-height:1.9">Brak danych</div>
   </div>
 </div>
 
@@ -558,20 +564,11 @@ function saveCfg() { try { localStorage.setItem('swingai_cfg_v3', JSON.stringify
 function saveModels() {
   try {
     var payload = {
-      nb: {
-        model:   NB.model,
-        trained: NB.trained,
-        trainCount: NB.trainCount
-      },
-      gbm: {
-        trees:    GBM.trees,
-        trained:  GBM.trained,
-        accuracy: GBM.accuracy
-      },
-      adaptive: {
-        minScoreAdjusted: ADAPTIVE.minScoreAdjusted,
-        lastTrainSize:    ADAPTIVE.lastTrainSize
-      },
+      nb: { model:NB.model, trained:NB.trained, trainCount:NB.trainCount },
+      gbm: { trees:GBM.trees, trained:GBM.trained, accuracy:GBM.accuracy },
+      adaptive: { minScoreAdjusted:ADAPTIVE.minScoreAdjusted, lastTrainSize:ADAPTIVE.lastTrainSize },
+      ql: QL.save(),
+      pairParams: PAIR_PARAMS.save(),
       savedAt: Date.now()
     };
     localStorage.setItem('swingai_models_v1', JSON.stringify(payload));
@@ -603,8 +600,11 @@ function loadModels() {
       ADAPTIVE.minScoreAdjusted = p.adaptive.minScoreAdjusted;
       ADAPTIVE.lastTrainSize    = p.adaptive.lastTrainSize || 0;
     }
+    if (p.ql)         QL.load(p.ql);
+    if (p.pairParams) PAIR_PARAMS.load(p.pairParams);
     var age = Math.round((Date.now()-(p.savedAt||0))/3600000);
-    log('Modele AI zaladowane z pamieci (trenowane '+age+'h temu): NB='+NB.trained+' GBM='+GBM.trained, 'ok');
+    var qlS = QL.stats();
+    log('Modele AI zaladowane ('+age+'h temu): NB='+NB.trained+' GBM='+GBM.trained+' QL='+qlS.updates+'upd pairParams='+Object.keys(PAIR_PARAMS.params).length, 'ok');
     return true;
   } catch(e) {
     log('loadModels blad: '+e.message, 'warn');
@@ -761,8 +761,9 @@ function atr(h,l,c,p=14) {
 
 // ── SWING ENGINE ───────────────────────────────────────────────────
 async function analyzeSwing(sym) {
-  const [kd,k4,k1h] = await Promise.all([
-    getKlines(sym,'1d',200), getKlines(sym,'4h',100), getKlines(sym,'1h',50)
+  const [kd,k4,k1h,obiData] = await Promise.all([
+    getKlines(sym,'1d',200), getKlines(sym,'4h',100), getKlines(sym,'1h',50),
+    OBI.fetch(sym)
   ]);
   const pk = k => ({c:k.map(x=>+x[4]), h:k.map(x=>+x[2]), l:k.map(x=>+x[3]), v:k.map(x=>+x[5])});
   const d=pk(kd), h4=pk(k4), h1=pk(k1h);
@@ -829,31 +830,53 @@ async function analyzeSwing(sym) {
     patResult.patterns.filter(p=>p.type==='bearish').forEach(p=>why.push('⚠'+p.name));
   }
 
+  // ── Module 5: Order Book Imbalance ──────────────────────────────
+  const obiScore = OBI.score(obiData.ratio);
+  if (obiScore > 0)  { score = Math.min(100, score + obiScore); why.push('OBI '+OBI.label(obiData.ratio)); }
+  if (obiScore < 0)  { score = Math.max(0,   score + obiScore); why.push('OBI '+OBI.label(obiData.ratio)); }
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
   // ── Cechy dla NB/GBM (Module 1 & 2) ─────────────────────────────
   const nbFeatures  = NB.discretize({ rsiD, macdHist:macdD.hist, bbPos:bbD.pos, trendD, mom5, confirm1h });
-  const gbmFeatures = [ rsiD/100, macdD.hist>0?1:0, bbD.pos, (trendD+1)/3, mom5/20, mom10/20, confirm1h?1:0, volR/3 ];
+  const gbmFeatures = [ rsiD/100, macdD.hist>0?1:0, bbD.pos, (trendD+1)/3, mom5/20, mom10/20, confirm1h?1:0, volR/3, obiData.ratio ];
 
-  // ── NB prediction (Module 1) ─────────────────────────────────────
-  const nbPred = NB.predict({ rsiD, macdHist:macdD.hist, bbPos:bbD.pos, trendD, mom5, confirm1h });
+  // ── NB + GBM predictions ─────────────────────────────────────────
+  const nbPred  = NB.predict({ rsiD, macdHist:macdD.hist, bbPos:bbD.pos, trendD, mom5, confirm1h });
   const gbmProb = GBM.predict(gbmFeatures);
 
-  // Ensemble: score (40%) + NB (30%) + GBM (30%) gdy wytrenowane
-  let finalProb = 0.5;
-  let aiMethod  = 'Score';
-  if (NB.trained && GBM.trained) {
-    const scoreNorm = score/100;
-    finalProb = scoreNorm*0.4 + nbPred.prob*0.3 + gbmProb*0.3;
-    aiMethod  = 'Ensemble(Score+NB+GBM)';
-    if (nbPred.label==='SKIP' && gbmProb<0.4) {
-      why.push('AI odradza wejscie');
-    }
-  } else if (NB.trained) {
-    finalProb = score/100*0.6 + nbPred.prob*0.4;
-    aiMethod  = 'Score+NaiveBayes';
+  // ── Module 7: Q-Learning suggestion ─────────────────────────────
+  const qlSig = { rsiD, macdHist:macdD.hist, trendD, bbPos:bbD.pos, obiRatio:obiData.ratio };
+  const qlSugg = QL.suggests(qlSig);
+  let qlBonus = 0;
+  if (qlSugg) {
+    if (qlSugg.action === 'BUY'  && qlSugg.confidence > 0.05) { qlBonus =  8; why.push('QL rekomenduje BUY'); }
+    if (qlSugg.action === 'HOLD' && qlSugg.confidence > 0.05) { qlBonus = -10; why.push('QL sugeruje czekac'); }
+    score = Math.max(0, Math.min(100, score + qlBonus));
   }
 
-  const effectiveMinScore = ADAPTIVE.getMinScore();
+  // ── Ensemble: Score(35%) + NB(25%) + GBM(25%) + OBI(10%) + QL(5%) ─
+  let finalProb = score/100;
+  let aiMethod  = 'Score';
+  const obiNorm = (obiData.ratio - 0.3) / 0.4; // normalizuj 0.3-0.7 → 0-1
+  if (NB.trained && GBM.trained) {
+    finalProb = score/100*0.35 + nbPred.prob*0.25 + gbmProb*0.25
+              + Math.max(0,Math.min(1,obiNorm))*0.10
+              + (qlSugg&&qlSugg.action==='BUY'?1:0)*0.05;
+    aiMethod = 'Ensemble(Score+NB+GBM+OBI+QL)';
+    if (nbPred.label==='SKIP' && gbmProb<0.4) why.push('AI odradza wejscie');
+  } else if (NB.trained) {
+    finalProb = score/100*0.55 + nbPred.prob*0.35 + Math.max(0,Math.min(1,obiNorm))*0.10;
+    aiMethod  = 'Score+NB+OBI';
+  }
+
+  // ── Module 6: Per-pair effective minScore ────────────────────────
+  const pairP = PAIR_PARAMS.get(sym);
+  const effectiveMinScore = pairP ? pairP.minScore : ADAPTIVE.getMinScore();
   const buy = finalProb >= effectiveMinScore/100;
+
+  // ── Per-pair dynamic TP/SL override ─────────────────────────────
+  const ppSL = pairP ? pairP.sl/100 : CFG.sl;
+  const ppTP = pairP ? pairP.tp/100 : CFG.tp;
 
   return {
     sym, price,
@@ -862,10 +885,12 @@ async function analyzeSwing(sym) {
     bbPos:bbD.pos, bbUpper:bbD.upper, bbLower:bbD.lower,
     trendD, ema50, ema200, ema21, atrD,
     score, finalProb:+finalProb.toFixed(3), buy,
-    nbPred, gbmProb:+gbmProb.toFixed(3), aiMethod,
+    nbPred, gbmProb:+gbmProb.toFixed(3), qlSugg, aiMethod,
+    obiRatio:obiData.ratio, obiScore, obiLabel:OBI.label(obiData.ratio),
     patterns:patResult.patterns, patScore,
     why, nbFeatures, gbmFeatures,
-    slPrice:price*(1-CFG.sl+FEE), tpPrice:price*(1+CFG.tp+FEE),
+    slPrice:price*(1-ppSL+FEE), tpPrice:price*(1+ppTP+FEE),
+    pairParams:pairP,
     volR:+volR.toFixed(2), vol4R:+vol4R.toFixed(2),
     mom5:+mom5.toFixed(2), mom10:+mom10.toFixed(2)
   };
@@ -900,6 +925,20 @@ function aiExplainSignal(sig) {
   if (GBM.trained) {
     const gbmC = sig.gbmProb>0.6?'up':sig.gbmProb<0.4?'dn':'neu';
     html += ' | GBM: <span class="'+gbmC+'">'+(sig.gbmProb*100).toFixed(0)+'%</span>';
+  }
+  // OBI
+  if (sig.obiRatio !== undefined) {
+    const obiC = sig.obiRatio>=0.58?'up':sig.obiRatio<=0.42?'dn':'neu';
+    html += ' | OBI: <span class="'+obiC+'">'+sig.obiLabel+'</span>';
+  }
+  // Q-Learning
+  if (sig.qlSugg && QL.trained) {
+    const qlC = sig.qlSugg.action==='BUY'?'up':'dn';
+    html += '<br>QL: <span class="'+qlC+'">'+sig.qlSugg.action+' (Q='+sig.qlSugg.qBuy.toFixed(3)+')</span>';
+  }
+  // Per-pair params
+  if (sig.pairParams) {
+    html += '<br><span style="color:var(--text3);font-size:7.5pt">Per-pair: TP='+sig.pairParams.tp+'% SL='+sig.pairParams.sl+'% score='+sig.pairParams.minScore+' WR='+sig.pairParams.winRate+'%</span>';
   }
   // Formacje
   if (sig.patterns && sig.patterns.length) {
@@ -1213,8 +1252,16 @@ async function closeTrade(pos, price, reason) {
       finalProb:pos.finalProb, aiMethod:pos.aiMethod,
       nbFeatures:pos.nbFeatures, gbmFeatures:pos.gbmFeatures,
       ts:new Date().toLocaleString('pl-PL')});
+    // Module 7: Q-Learning update — reward = pnlPct (znormalizowany)
+    if (pos.qlSig) {
+      var qlReward = Math.max(-1, Math.min(1, pnlPct/10)); // normalizuj do [-1,1]
+      var qlAction = pnl > 0 ? 'BUY' : 'HOLD'; // retrospektywnie
+      QL.update(pos.qlSig, qlAction, qlReward);
+    }
     // Adaptive learning — retrenuj co 5 zamknietych transakcji
-    if (ST.trades.length % 5 === 0) { setTimeout(function(){ ADAPTIVE.retrain(); }, 500); }
+    if (ST.trades.length % 5 === 0) {
+      setTimeout(function(){ ADAPTIVE.retrain(); PAIR_PARAMS.optimizeAll(); }, 500);
+    }
     if (ST.trades.length > 300) ST.trades = ST.trades.slice(0,300);
     ST.positions = ST.positions.filter(p => p !== pos);
     saveAll();
@@ -1262,6 +1309,7 @@ async function openTrade(sig, fg, btcDrop) {
       highP:execP, entryTs:Date.now(), score:sig.score,
       finalProb:sig.finalProb, aiMethod:sig.aiMethod,
       nbFeatures:sig.nbFeatures, gbmFeatures:sig.gbmFeatures,
+      qlSig:{ rsiD:sig.rsiD, macdHist:sig.macdHist, trendD:sig.trendD, bbPos:sig.bbPos, obiRatio:sig.obiRatio },
       why:sig.why.join(', '), size:posSize,
       rr:execLevels.rr, atrPct:execLevels.atrPct});
     saveAll();
@@ -1322,11 +1370,24 @@ async function botCycle() {
   renderCooldowns();
 
   gi('last-scan').textContent = new Date().toLocaleTimeString('pl-PL');
-  // Aktualizuj metode AI w panelu
+  // Aktualizuj panele AI
   var methEl = gi('ai-method-lbl');
-  if (methEl) { methEl.textContent = NB.trained&&GBM.trained?'Ensemble(NB+GBM+Score)':NB.trained?'Score+NaiveBayes':'Score (brak historii)'; }
+  if (methEl) { methEl.textContent = NB.trained&&GBM.trained?'Ensemble(Score+NB+GBM+OBI+QL)':NB.trained?'Score+NB+OBI':'Score (brak historii)'; }
   var athEl = gi('ai-adaptive-thresh');
-  if (athEl) { athEl.textContent = ADAPTIVE.getMinScore()+'/100'; athEl.className='val '+(ADAPTIVE.minScoreAdjusted&&ADAPTIVE.minScoreAdjusted!==CFG.minScore?'gold':'neu'); }
+  if (athEl) { athEl.textContent=ADAPTIVE.getMinScore()+'/100'; athEl.className='val '+(ADAPTIVE.minScoreAdjusted&&ADAPTIVE.minScoreAdjusted!==CFG.minScore?'gold':'neu'); }
+  var qlE = gi('ai-ql-updates');
+  if (qlE) { var qs=QL.stats(); qlE.textContent=qs.updates+' (ε='+qs.epsilon+'%)'; qlE.className='val '+(QL.trained?'up':'neu'); }
+  var ppE = gi('ai-pp-count');
+  if (ppE) { var ppN2=Object.keys(PAIR_PARAMS.params).length; ppE.textContent=ppN2+' par'; ppE.className='val '+(ppN2>0?'up':'neu'); }
+  // OBI panel
+  var obiEl = gi('obi-panel');
+  if (obiEl && sigs.length) {
+    obiEl.innerHTML = sigs.map(function(s){
+      if (s.obiRatio===undefined) return '';
+      var c = s.obiRatio>=0.58?'up':s.obiRatio<=0.42?'dn':'neu';
+      return '<span class="lbl">'+s.sym.replace('USDC','')+'</span> <span class="'+c+'">'+(s.obiRatio*100).toFixed(0)+'%</span> ';
+    }).join('');
+  }
   updateAIStatusPanel();
   nextScanAt = Date.now() + CFG.intervalMin*60000;
   const buys = sigs.filter(function(s){ return s.buy; }).length;
@@ -1470,7 +1531,9 @@ function renderSigList(sigs) {
       +'<span class="ind-chip" style="color:'+(s.bbPos<0.25?'var(--green)':s.bbPos>0.75?'var(--red)':'var(--text2)')+'">BB '+(s.bbPos*100).toFixed(0)+'%</span>'
       +(s.nbPred&&NB.trained?'<span class="ind-chip" style="color:'+(s.nbPred.prob>0.55?'var(--green)':s.nbPred.prob<0.45?'var(--red)':'var(--gold)')+'">NB '+(s.nbPred.prob*100).toFixed(0)+'%</span>':'')
       +(GBM.trained?'<span class="ind-chip" style="color:'+(s.gbmProb>0.55?'var(--green)':s.gbmProb<0.45?'var(--red)':'var(--gold)')+'">GBM '+(s.gbmProb*100).toFixed(0)+'%</span>':'')
-      +(s.patterns&&s.patterns.length?'<span class="ind-chip" style="color:var(--purple)">📊 '+s.patterns.length+' form.</span>':'')
+      +(s.patterns&&s.patterns.length?'<span class="ind-chip" style="color:var(--purple)">📊 '+s.patterns.length+'x</span>':'')
+      +(s.obiRatio!==undefined?'<span class="ind-chip" style="color:'+(s.obiRatio>=0.58?'var(--green)':s.obiRatio<=0.42?'var(--red)':'var(--text2)')+'">OBI '+(s.obiRatio*100).toFixed(0)+'%</span>':'')
+      +(QL.trained&&s.qlSugg?'<span class="ind-chip" style="color:'+(s.qlSugg.action==='BUY'?'var(--green)':'var(--red)')+'">QL:'+(s.qlSugg.action==='BUY'?'↑':'↓')+'</span>':'')
       +'</div>'
       +'<div style="font-size:7.5pt;color:var(--text3);margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+s.why.slice(0,2).join(' • ')+'</div>'
       +'</div>';
@@ -1735,6 +1798,209 @@ function log(msg,type) {
 function clearLog() { gi('log-area').innerHTML=''; var lc=gi('log-count'); if(lc) lc.textContent=''; }
 
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  AI MODULE 5: ORDER BOOK IMBALANCE
+//  bid_vol / (bid_vol + ask_vol) > 0.65 → bullish pressure
+//  Pobiera top 20 poziomow order booka z Binance /api/v3/depth
+// ═══════════════════════════════════════════════════════════════════
+var OBI = {
+  cache: {},   // sym -> {ratio, ts}
+  TTL: 60000,  // 60s cache (nie warto częściej — to dane intraday)
+
+  fetch: async function(sym) {
+    var now = Date.now();
+    if (this.cache[sym] && now - this.cache[sym].ts < this.TTL) {
+      return this.cache[sym];
+    }
+    try {
+      var d = await pub('/api/v3/depth', {symbol:sym, limit:20});
+      var bidVol = d.bids.reduce(function(s,b){ return s + parseFloat(b[1])*parseFloat(b[0]); }, 0);
+      var askVol = d.asks.reduce(function(s,a){ return s + parseFloat(a[1])*parseFloat(a[0]); }, 0);
+      var total  = bidVol + askVol;
+      var ratio  = total > 0 ? bidVol / total : 0.5;
+      var spread = d.asks[0] && d.bids[0]
+        ? (parseFloat(d.asks[0][0]) - parseFloat(d.bids[0][0])) / parseFloat(d.bids[0][0]) * 100
+        : 0;
+      var result = { ratio:+ratio.toFixed(3), bidVol, askVol, spread:+spread.toFixed(4), ts:now };
+      this.cache[sym] = result;
+      return result;
+    } catch(e) {
+      return { ratio:0.5, bidVol:0, askVol:0, spread:0, ts:now };
+    }
+  },
+
+  // Zwraca score -15 do +15 dla scoringu swing
+  score: function(ratio) {
+    if (ratio >= 0.70) return 15;   // silny buying pressure
+    if (ratio >= 0.65) return 10;
+    if (ratio >= 0.58) return 5;
+    if (ratio <= 0.30) return -15;  // silny selling pressure
+    if (ratio <= 0.35) return -10;
+    if (ratio <= 0.42) return -5;
+    return 0;
+  },
+
+  label: function(ratio) {
+    if (ratio >= 0.65) return 'Bids dominują (' + (ratio*100).toFixed(0) + '%)';
+    if (ratio <= 0.35) return 'Asks dominują (' + ((1-ratio)*100).toFixed(0) + '%)';
+    return 'Równowaga (' + (ratio*100).toFixed(0) + '%)';
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  AI MODULE 6: PER-PAIR PARAMETER OPTIMIZATION
+//  Każda para uczy się optymalnych TP/SL/minScore z własnej historii
+// ═══════════════════════════════════════════════════════════════════
+var PAIR_PARAMS = {
+  params: {},  // sym -> {tp, sl, minScore, winRate, trades}
+
+  // Przelicz optymalne parametry dla danej pary
+  optimize: function(sym) {
+    var trades = ST.trades.filter(function(t){ return t.sym === sym; });
+    if (trades.length < 8) return null; // za malo danych
+
+    var wins   = trades.filter(function(t){ return t.pnl > 0; });
+    var losses = trades.filter(function(t){ return t.pnl <= 0; });
+    var winRate = wins.length / trades.length;
+
+    // Srednie P/L dla wins i losses
+    var avgWinPct  = wins.length   ? wins.reduce(function(a,t){ return a+t.pnlPct; },0)/wins.length     : CFG.tp*100;
+    var avgLossPct = losses.length ? Math.abs(losses.reduce(function(a,t){ return a+t.pnlPct; },0)/losses.length) : CFG.sl*100;
+
+    // Optymalny TP = 90% najczestszego wyniku wins (nie przesadzaj)
+    var sortedWins = wins.map(function(t){ return t.pnlPct; }).sort(function(a,b){ return a-b; });
+    var medianWin  = sortedWins[Math.floor(sortedWins.length*0.5)] || avgWinPct;
+
+    // TP: mediana wygranych, min 3%, max 20%
+    var optTP = Math.max(3, Math.min(20, medianWin * 0.9));
+    // SL: srednia strat * 0.8 (ucinaj straty szybciej niz srednia), min 1.5%, max 10%
+    var optSL = Math.max(1.5, Math.min(10, avgLossPct * 0.8));
+    // MinScore: jezeli win rate < 45% — zaostrzaj, jezeli > 65% — luzuj
+    var optScore = CFG.minScore;
+    if (winRate < 0.45) optScore = Math.min(80, CFG.minScore + Math.round((0.45-winRate)*100));
+    if (winRate > 0.65) optScore = Math.max(50, CFG.minScore - Math.round((winRate-0.65)*60));
+
+    var p = {
+      tp:       +optTP.toFixed(1),
+      sl:       +optSL.toFixed(1),
+      minScore: optScore,
+      winRate:  +(winRate*100).toFixed(1),
+      trades:   trades.length,
+      rr:       +(optTP/optSL).toFixed(2)
+    };
+    this.params[sym] = p;
+    return p;
+  },
+
+  // Zwraca parametry dla pary (z optymalizacji lub domyslne)
+  get: function(sym) {
+    return this.params[sym] || null;
+  },
+
+  // Przelicz wszystkie pary z historia
+  optimizeAll: function() {
+    var updated = 0;
+    PAIRS.forEach(function(sym) {
+      var p = PAIR_PARAMS.optimize(sym);
+      if (p) updated++;
+    });
+    if (updated > 0) {
+      log('Per-pair optymalizacja: '+updated+' par zaktualizowanych', 'ok');
+      saveModels();
+    }
+  },
+
+  // Zapisz/wczytaj z modeli
+  save: function() { return this.params; },
+  load: function(data) { if (data) this.params = data; }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  AI MODULE 7: Q-LEARNING (Reinforcement Learning)
+//  Bot uczy sie kiedy NIE wchodzic — na podstawie nagrod/kar
+//  State = (rsiD_bin, macd_bin, trend, obi_bin)
+//  Actions = BUY / HOLD
+//  Reward = pnl% po zamknieciu pozycji
+// ═══════════════════════════════════════════════════════════════════
+var QL = {
+  Q: {},           // Q[state][action] = value
+  alpha:  0.15,    // learning rate
+  gamma:  0.90,    // discount factor
+  epsilon: 0.10,   // exploration rate (10% losowe decyzje)
+  trained: false,
+  updates: 0,
+
+  // Enkoduj stan -> string klucz
+  stateKey: function(sig) {
+    var rBin  = sig.rsiD<=30?0:sig.rsiD<=45?1:sig.rsiD<=60?2:3;
+    var mBin  = sig.macdHist>0?1:0;
+    var tBin  = sig.trendD+1;
+    var oBin  = sig.obiRatio ? (sig.obiRatio>=0.58?2:sig.obiRatio<=0.42?0:1) : 1;
+    var bbBin = sig.bbPos<0.25?0:sig.bbPos<0.5?1:2;
+    return rBin+'_'+mBin+'_'+tBin+'_'+oBin+'_'+bbBin;
+  },
+
+  // Inicjalizuj Q dla nowego stanu
+  initState: function(key) {
+    if (!this.Q[key]) this.Q[key] = { BUY:0.0, HOLD:0.0 };
+  },
+
+  // Wybierz akcje (epsilon-greedy)
+  chooseAction: function(sig) {
+    var key = this.stateKey(sig);
+    this.initState(key);
+    // Eksploracja — losowa akcja
+    if (Math.random() < this.epsilon) return Math.random() > 0.5 ? 'BUY' : 'HOLD';
+    // Eksploatacja — najlepsza znana akcja
+    return this.Q[key].BUY >= this.Q[key].HOLD ? 'BUY' : 'HOLD';
+  },
+
+  // Zaktualizuj Q po zamknieciu pozycji
+  update: function(sig, action, reward) {
+    if (!sig) return;
+    var key = this.stateKey(sig);
+    this.initState(key);
+    var oldVal  = this.Q[key][action];
+    var maxNext = Math.max(this.Q[key].BUY, this.Q[key].HOLD);
+    // Bellman equation
+    this.Q[key][action] = oldVal + this.alpha * (reward + this.gamma * maxNext - oldVal);
+    this.updates++;
+    this.trained = this.updates >= 10;
+    // Zmniejszaj eksploracje w miare nauki (min 5%)
+    this.epsilon = Math.max(0.05, 0.10 - this.updates * 0.001);
+  },
+
+  // Czy Q sugeruje BUY dla danego sygnalu?
+  suggests: function(sig) {
+    if (!this.trained) return null; // za malo danych
+    var key = this.stateKey(sig);
+    this.initState(key);
+    var diff = this.Q[key].BUY - this.Q[key].HOLD;
+    return {
+      action: diff > 0 ? 'BUY' : 'HOLD',
+      confidence: Math.abs(diff),
+      qBuy:  +this.Q[key].BUY.toFixed(4),
+      qHold: +this.Q[key].HOLD.toFixed(4)
+    };
+  },
+
+  // Zapisz/wczytaj Q-table
+  save: function() { return { Q:this.Q, updates:this.updates, epsilon:this.epsilon }; },
+  load: function(d) {
+    if (!d) return;
+    this.Q       = d.Q       || {};
+    this.updates = d.updates || 0;
+    this.epsilon = d.epsilon || 0.10;
+    this.trained = this.updates >= 10;
+  },
+
+  stats: function() {
+    var states = Object.keys(this.Q).length;
+    var buyPref = Object.values(this.Q).filter(function(v){ return v.BUY > v.HOLD; }).length;
+    return { states:states, buyPref:buyPref, updates:this.updates, epsilon:+(this.epsilon*100).toFixed(1) };
+  }
+};
+
 //  AI MODULE 1: NAÏVE BAYES CLASSIFIER
 //  Oblicza P(wzrost | wskazniki) na podstawie historii transakcji bota
 //  Prawdziwy probabilistyczny klasyfikator ML
@@ -2000,10 +2266,14 @@ var ADAPTIVE = {
 // ─── Panel statusu AI ────────────────────────────────────────────
 function updateAIStatusPanel() {
   var el = gi('ai-status-panel'); if(!el) return;
-  var nbS  = NB.trained  ? '<span class="up">NB aktywny ('+NB.trainCount+' obs.)</span>'  : '<span class="neu">NB niewy trenowany</span>';
-  var gbmS = GBM.trained ? '<span class="up">GBM aktywny ('+GBM.accuracy+'% acc.)</span>'  : '<span class="neu">GBM niewytrenowany</span>';
-  var adS  = ADAPTIVE.minScoreAdjusted!==null ? '<span class="gold">Prog: '+ADAPTIVE.getMinScore()+'</span>' : '<span class="neu">Prog: '+CFG.minScore+'</span>';
-  el.innerHTML = nbS+'<br>'+gbmS+'<br>'+adS;
+  var nbS  = NB.trained  ? '<span class="up">NB aktywny ('+NB.trainCount+' obs.)</span>'  : '<span class="neu">NB niewytrenowany</span>';
+  var gbmS = GBM.trained ? '<span class="up">GBM aktywny (acc:'+GBM.accuracy+'%)</span>'  : '<span class="neu">GBM niewytrenowany</span>';
+  var qlS  = QL.stats();
+  var qlTxt= QL.trained  ? '<span class="up">QL aktywny ('+qlS.updates+' upd, ε='+qlS.epsilon+'%)</span>' : '<span class="neu">QL ('+qlS.updates+' upd — min 10)</span>';
+  var ppN  = Object.keys(PAIR_PARAMS.params).length;
+  var ppTxt= ppN>0 ? '<span class="up">Per-pair: '+ppN+' par skalibrowanych</span>' : '<span class="neu">Per-pair: brak historii</span>';
+  var adS  = ADAPTIVE.minScoreAdjusted!==null ? '<span class="gold">Adaptive prog: '+ADAPTIVE.getMinScore()+'</span>' : '<span class="neu">Prog: '+CFG.minScore+'</span>';
+  el.innerHTML = nbS+'<br>'+gbmS+'<br>'+qlTxt+'<br>'+ppTxt+'<br>'+adS;
 }
 
 // ── BACKTEST ENGINE ────────────────────────────────────────────────
