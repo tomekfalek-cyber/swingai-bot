@@ -405,6 +405,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="r2"><span class="lbl">Straty z rzędu</span><span class="val" id="rb-losses">0</span></div>
     <div class="r2"><span class="lbl">Paper saldo</span><span class="val" id="rb-paper">$1000</span></div>
     <div class="r2"><span class="lbl">Worker proxy</span><span class="val" id="rb-worker">–</span></div>
+    <div class="r2"><span class="lbl">WebSocket</span><span class="val" id="rb-ws">Polling</span></div>
     <div class="r2"><span class="lbl">Fear &amp; Greed</span><span class="val" id="rb-fg">–</span></div>
     <div class="r2"><span class="lbl">Telegram</span><span class="val" id="rb-tg">–</span></div>
   </div>
@@ -895,14 +896,215 @@ function aiExplainPosition(pos, sig) {
   return '<div class="ai-explain-block">'+entryHTML+'</div><div class="ai-explain-block">'+stateHTML+'</div><div class="ai-explain-block">'+indHTML+'</div><div class="ai-explain-block">'+recHTML+'</div>';
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  IMPROVEMENT 1: WEBSOCKET — live stream cen
+//  Binance stream: wss://stream.binance.com:9443/stream
+//  Aktualizuje pos.cp w czasie rzeczywistym i wywoluje checkTrail()
+// ═══════════════════════════════════════════════════════════════════
+var WS = {
+  socket: null,
+  active: false,
+  livePrice: {},   // sym -> lastPrice
+  lastPing: 0,
+
+  buildStreamUrl: function() {
+    var streams = PAIRS.map(function(s){ return s.toLowerCase()+'@miniTicker'; });
+    return 'wss://stream.binance.com:9443/stream?streams='+streams.join('/');
+  },
+
+  connect: function() {
+    if (this.socket && this.socket.readyState < 2) return; // juz podlaczony
+    try {
+      this.socket = new WebSocket(this.buildStreamUrl());
+      this.active = false;
+
+      this.socket.onopen = function() {
+        WS.active = true;
+        WS.lastPing = Date.now();
+        log('WebSocket polaczony — live ceny aktywne', 'ok');
+        updateWSStatus(true);
+      };
+
+      this.socket.onmessage = function(evt) {
+        try {
+          var msg = JSON.parse(evt.data);
+          var d   = msg.data || msg;
+          var sym = (d.s || '').toUpperCase();
+          var price = parseFloat(d.c || d.lastPrice || 0);
+          if (!sym || !price) return;
+          WS.livePrice[sym] = price;
+          WS.lastPing = Date.now();
+          // Aktualizuj otwarte pozycje i sprawdz trailing stop
+          ST.positions.forEach(function(pos) {
+            if (pos.sym !== sym) return;
+            pos.cp = price;
+            if (price > (pos.highP || pos.entry)) pos.highP = price;
+            WS.checkTrail(pos, price);
+          });
+        } catch(e) {}
+      };
+
+      this.socket.onerror = function(e) {
+        log('WebSocket blad — przelaczam na polling', 'warn');
+        WS.active = false;
+        updateWSStatus(false);
+      };
+
+      this.socket.onclose = function() {
+        WS.active = false;
+        updateWSStatus(false);
+        if (running) {
+          log('WebSocket zamkniety — rekonektuję za 10s', 'warn');
+          setTimeout(function(){ WS.connect(); }, 10000);
+        }
+      };
+    } catch(e) {
+      log('WebSocket niedostępny: '+e.message, 'warn');
+    }
+  },
+
+  disconnect: function() {
+    this.active = false;
+    if (this.socket) { try { this.socket.close(); } catch(e){} }
+    this.socket = null;
+    updateWSStatus(false);
+    log('WebSocket rozlaczony', 'warn');
+  },
+
+  // Sprawdz trailing stop na zywej cenie (wywolywane z onmessage)
+  checkTrail: function(pos, cp) {
+    var pnlPct = (cp - pos.entry) / pos.entry * 100;
+    var trail  = pos.highP * (1 - CFG.trail);
+    if (cp <= pos.sl) {
+      wsExitQueue.push({pos:pos, cp:cp, reason:'STOP LOSS (live)'});
+    } else if (cp >= pos.tp) {
+      wsExitQueue.push({pos:pos, cp:cp, reason:'TAKE PROFIT (live)'});
+    } else if (cp <= trail && pnlPct > 1.5) {
+      wsExitQueue.push({pos:pos, cp:cp, reason:'TRAILING STOP (live)'});
+    } else if (pnlPct <= -12) {
+      wsExitQueue.push({pos:pos, cp:cp, reason:'EMERGENCY STOP (live)'});
+    }
+  },
+
+  getPrice: function(sym) {
+    return this.livePrice[sym] || null;
+  },
+
+  isAlive: function() {
+    return this.active && (Date.now() - this.lastPing < 30000);
+  }
+};
+
+// Kolejka wyjsc z WS (aby nie wywolywac async z onmessage)
+var wsExitQueue = [];
+setInterval(async function() {
+  if (!wsExitQueue.length) return;
+  var item = wsExitQueue.shift();
+  // Sprawdz duplikaty
+  if (!ST.positions.find(function(p){ return p===item.pos; })) return;
+  await closeTrade(item.pos, item.cp, item.reason);
+  renderPositions();
+  renderHistory();
+}, 500);
+
+// Watchdog — rekonektuj jesli WS martwy podczas pracy bota
+setInterval(function() {
+  if (running && !WS.isAlive()) {
+    WS.connect();
+  }
+}, 15000);
+
+function updateWSStatus(active) {
+  var el = gi('rb-ws');
+  if (!el) return;
+  el.textContent  = active ? 'LIVE ⚡' : 'Polling';
+  el.className    = 'val '+(active?'up':'neu');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  IMPROVEMENT 2: CORRELATION MATRIX
+//  Blokuje wejscie gdy >2 silnie skorelowane pary sa juz otwarte
+// ═══════════════════════════════════════════════════════════════════
+// Grupy korelacji (empiryczne — altcoiny silnie podazaja za BTC)
+var CORR_GROUPS = [
+  ['BTCUSDC'],                                          // BTC osobno
+  ['ETHUSDC','BNBUSDC'],                                // L1 large cap
+  ['SOLUSDC','AVAXUSDC','NEARUSDC','DOTUSDC'],          // L1 alt
+  ['XRPUSDC','ADAUSDC','LTCUSDC'],                      // payments/store-of-value
+  ['DOGEUSDC','SHIBUSDC'],                              // memecoins
+  ['LINKUSDC','UNIUSDC','ATOMUSDC']                     // DeFi
+];
+
+function corrGroupOf(sym) {
+  for (var i=0; i<CORR_GROUPS.length; i++) {
+    if (CORR_GROUPS[i].indexOf(sym) !== -1) return i;
+  }
+  return -1;
+}
+
+function corrBlocked(sym) {
+  var group = corrGroupOf(sym);
+  if (group === -1) return false;
+  // Policz ile pozycji z tej samej grupy jest juz otwartych
+  var openInGroup = ST.positions.filter(function(p){
+    return corrGroupOf(p.sym) === group;
+  }).length;
+  // Maksymalnie 1 pozycja z grupy (wyjątek: BTC zawsze dopuszczony)
+  if (group === 0) return false; // BTC nie blokowany
+  if (openInGroup >= 1) {
+    log('CORR: '+sym+' — juz mam pozycje w tej grupie korelacji','warn');
+    return true;
+  }
+  // Dodatkowy check: jesli >60% otwartych pozycji to alts z tej samej grupy BTC
+  var totalOpen = ST.positions.length;
+  if (totalOpen >= 2) {
+    var altGroups = ST.positions.map(function(p){ return corrGroupOf(p.sym); });
+    var nonBtc = altGroups.filter(function(g){ return g > 0; }).length;
+    if (nonBtc >= 2 && group > 1) {
+      log('CORR: zbyt wiele skorelowanych altcoinow ('+nonBtc+') — blokuje '+sym,'warn');
+      return true;
+    }
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  IMPROVEMENT 3: DYNAMIC TP/SL BASED ON ATR
+//  TP = entry + 2.5 x ATR(14 Daily)
+//  SL = entry - 1.5 x ATR(14 Daily)
+//  Trailing = 1.2 x ATR (zamiast stałego %)
+// ═══════════════════════════════════════════════════════════════════
+function calcDynamicLevels(price, atrVal, fee) {
+  fee = fee || FEE;
+  var atr14 = atrVal || price * CFG.sl; // fallback na % jesli brak ATR
+  var tpDist = Math.max(price * CFG.tp,  2.5 * atr14);
+  var slDist = Math.max(price * CFG.sl,  1.5 * atr14);
+  // Upewnij sie ze R:R >= 1.5:1
+  if (tpDist / slDist < 1.5) tpDist = slDist * 1.8;
+  return {
+    tp:     price * (1 + tpDist/price + fee),
+    sl:     price * (1 - slDist/price + fee),
+    trail:  Math.max(CFG.trail, 1.2 * atr14 / price),
+    rr:     +(tpDist / slDist).toFixed(2),
+    atrPct: +(atr14/price*100).toFixed(2)
+  };
+}
+
 // ── POSITION MANAGEMENT ────────────────────────────────────────────
 async function checkPositions() {
   for (const pos of [...ST.positions]) {
     try {
-      const t = await getTicker(pos.sym); const cp = +t.lastPrice;
+      // Użyj live ceny z WS jesli dostepna, w przeciwnym razie polling
+      let cp = WS.isAlive() ? WS.getPrice(pos.sym) : null;
+      if (!cp) {
+        const t = await getTicker(pos.sym);
+        cp = +t.lastPrice;
+      }
       if (cp > (pos.highP||pos.entry)) pos.highP = cp;
       const pnlPct = (cp-pos.entry)/pos.entry*100;
-      const trail  = pos.highP*(1-CFG.trail);
+      // Dynamiczny trailing — z ATR pozycji lub fallback na CFG
+      const trailDist = pos.trailDist || CFG.trail;
+      const trail     = pos.highP*(1-trailDist);
       let reason = null;
       if      (cp <= pos.sl)                        reason = 'STOP LOSS';
       else if (cp >= pos.tp)                        reason = 'TAKE PROFIT';
@@ -956,26 +1158,45 @@ async function openTrade(sig, fg, btcDrop) {
   if (isPumpDump(sig)) return;
   if (fg && fg.val < CFG.fgMin) { log('Fear&Greed='+fg.val+' ('+fg.label+') < min '+CFG.fgMin,'warn'); return; }
   if (btcDrop && sig.sym !== 'BTCUSDC') return;
+  // Correlation guard
+  if (corrBlocked(sig.sym)) return;
   const total = await getTotal();
   if (ST.dailyPnl < -0.05*total) { log('Dzienny limit strat','err'); return; }
   const usdc    = await getUSDC();
   const posSize = Math.min(kellySize(total), usdc*0.95);
   if (posSize < 10) { log('Za malo USDC: $'+usdc.toFixed(2),'warn'); return; }
-  log('BUY '+sig.sym+' @ '+fp(sig.price)+' score='+sig.score+' kelly=$'+posSize.toFixed(2)+' | '+CFG.mode.toUpperCase(),'ok');
+
+  // Dynamic TP/SL based on ATR
+  const levels  = calcDynamicLevels(sig.price, sig.atrD, FEE);
+  const tpPrice = levels.tp;
+  const slPrice = levels.sl;
+  const trailDist = levels.trail;
+
+  log('BUY '+sig.sym+' @ '+fp(sig.price)+' score='+sig.score+' kelly=$'+posSize.toFixed(2)+
+      ' | TP='+fp(tpPrice)+' SL='+fp(slPrice)+' ATR='+levels.atrPct+'% R:R='+levels.rr+' | '+CFG.mode.toUpperCase(),'ok');
   try {
     const res = await execBuy(sig.sym, posSize);
-    ST.positions.push({sym:sig.sym, entry:res.price||sig.price, qty:res.qty,
-      cp:res.price||sig.price, sl:sig.slPrice, tp:sig.tpPrice,
-      highP:res.price||sig.price, entryTs:Date.now(), score:sig.score,
+    const execP = res.price || sig.price;
+    // Przelicz poziomy na cenie wykonania
+    const execLevels = calcDynamicLevels(execP, sig.atrD, FEE);
+    ST.positions.push({sym:sig.sym, entry:execP, qty:res.qty,
+      cp:execP, sl:execLevels.sl, tp:execLevels.tp,
+      trailDist:execLevels.trail,
+      highP:execP, entryTs:Date.now(), score:sig.score,
       finalProb:sig.finalProb, aiMethod:sig.aiMethod,
       nbFeatures:sig.nbFeatures, gbmFeatures:sig.gbmFeatures,
-      why:sig.why.join(', '), size:posSize});
+      why:sig.why.join(', '), size:posSize,
+      rr:execLevels.rr, atrPct:execLevels.atrPct});
     saveAll();
-    log('Otwarto '+sig.sym+' '+((res.qty||0).toFixed(6))+' @ '+fp(res.price||sig.price),'ok');
+    log('Otwarto '+sig.sym+' '+((res.qty||0).toFixed(6))+' @ '+fp(execP)+' | R:R='+execLevels.rr,'ok');
     lastSignalData = sig;
     gi('btn-ai-last').style.display = '';
     gi('last-signal-box').innerHTML = aiExplainSignal(sig);
-    tgSend('🟢 <b>BUY '+sig.sym.replace('USDC','/USDC')+'</b>\nCena: '+fp(res.price||sig.price)+'\nScore: '+sig.score+'/100 | Kelly: $'+posSize.toFixed(2)+'\nSL: '+fp(sig.slPrice)+' | TP: '+fp(sig.tpPrice));
+    tgSend('🟢 <b>BUY '+sig.sym.replace('USDC','/USDC')+'</b>\n'+
+      'Cena: '+fp(execP)+' | Kelly: $'+posSize.toFixed(2)+'\n'+
+      'TP: '+fp(execLevels.tp)+' | SL: '+fp(execLevels.sl)+'\n'+
+      'ATR: '+execLevels.atrPct+'% | R:R: '+execLevels.rr+':1\n'+
+      'Score: '+sig.score+'/100 | P(wzrost): '+(sig.finalProb*100||sig.score).toFixed(0)+'%');
   } catch(e) { log('BUY '+sig.sym+': '+e.message,'err'); }
 }
 
@@ -1058,6 +1279,8 @@ async function startBot() {
   gi('ai-dot').className = 'ai-dot scan';
   gi('rb-status').textContent = '🟢 Aktywny'; gi('rb-status').className = 'val up';
   log('Bot uruchomiony | '+CFG.mode.toUpperCase()+' | skan co '+CFG.intervalMin+'min','ok');
+  // Uruchom WebSocket
+  WS.connect();
   // Retrenuj AI na historii z poprzednich sesji
   setTimeout(function(){ ADAPTIVE.retrain(); updateAIStatusPanel(); }, 800);
   await botCycle();
@@ -1077,6 +1300,7 @@ function stopBot() {
   gi('ai-dot').className = 'ai-dot off';
   gi('rb-status').textContent = 'Zatrzymany'; gi('rb-status').className = 'val neu';
   gi('rb-next').textContent = '--';
+  WS.disconnect();
   log('Bot zatrzymany','warn'); setStatus('Bot zatrzymany');
 }
 async function forceScan() {
@@ -1211,6 +1435,10 @@ function renderPositions() {
       +'<div class="pos-stat"><div class="l"><span class="up">TP</span></div><div class="v up" style="font-size:9pt">'+fp(pos.tp)+' (+'+distTP+'%)</div></div>'
       +'<div class="pos-stat"><div class="l"><span class="gold">Trailing</span></div><div class="v gold" style="font-size:9pt">'+fp(trail)+'</div></div>'
       +'<div class="pos-stat"><div class="l">Szczyt</div><div class="v" style="font-size:9pt">'+fp(pos.highP)+'</div></div>'
+      +'<div class="pos-stat"><div class="l">R:R</div><div class="v gold" style="font-size:9pt">'+(pos.rr||'-')+':1</div></div>'
+      +'<div class="pos-stat"><div class="l">ATR%</div><div class="v neu" style="font-size:9pt">'+(pos.atrPct||'-')+'%</div></div>'
+      +'<div class="pos-stat"><div class="l">Trailing dist</div><div class="v gold" style="font-size:9pt">'+((pos.trailDist||CFG.trail)*100).toFixed(1)+'%</div></div>'
+      +'<div class="pos-stat"><div class="l">Src ceny</div><div class="v '+(WS.isAlive()&&WS.getPrice(pos.sym)?'up':'neu')+'" style="font-size:8pt">'+(WS.isAlive()&&WS.getPrice(pos.sym)?'⚡ WebSocket':'📊 Polling')+'</div></div>'
       +'</div>'
       +'<div class="pos-footer">'
       +'<button class="ai-btn" onclick="openAiExplain(\''+pos.sym+'\')">🧠 Analiza AI</button>'
