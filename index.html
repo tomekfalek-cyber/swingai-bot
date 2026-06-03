@@ -904,7 +904,10 @@ function aiExplainPosition(pos, sig) {
 var WS = {
   socket: null,
   active: false,
-  livePrice: {},   // sym -> lastPrice
+  blocked: false,    // true gdy siec blokuje WS (np. Zscaler)
+  retries: 0,
+  maxRetries: 3,     // po 3 nieudanych probach — trwaly polling, bez spamu
+  livePrice: {},
   lastPing: 0,
 
   buildStreamUrl: function() {
@@ -913,13 +916,16 @@ var WS = {
   },
 
   connect: function() {
+    if (this.blocked) return;                              // siec blokuje — nie probuj
     if (this.socket && this.socket.readyState < 2) return; // juz podlaczony
     try {
       this.socket = new WebSocket(this.buildStreamUrl());
       this.active = false;
 
       this.socket.onopen = function() {
-        WS.active = true;
+        WS.active   = true;
+        WS.retries  = 0;
+        WS.blocked  = false;
         WS.lastPing = Date.now();
         log('WebSocket polaczony — live ceny aktywne', 'ok');
         updateWSStatus(true);
@@ -934,7 +940,6 @@ var WS = {
           if (!sym || !price) return;
           WS.livePrice[sym] = price;
           WS.lastPing = Date.now();
-          // Aktualizuj otwarte pozycje i sprawdz trailing stop
           ST.positions.forEach(function(pos) {
             if (pos.sym !== sym) return;
             pos.cp = price;
@@ -944,31 +949,40 @@ var WS = {
         } catch(e) {}
       };
 
-      this.socket.onerror = function(e) {
-        log('WebSocket blad — przelaczam na polling', 'warn');
+      this.socket.onerror = function() {
         WS.active = false;
         updateWSStatus(false);
+        // Nie loguj bledu co probe — tylko raz
+        if (WS.retries === 0) log('WebSocket zablokowany (Zscaler/firewall) — bot uzywa polling REST API', 'warn');
       };
 
       this.socket.onclose = function() {
         WS.active = false;
         updateWSStatus(false);
-        if (running) {
-          log('WebSocket zamkniety — rekonektuję za 10s', 'warn');
-          setTimeout(function(){ WS.connect(); }, 10000);
+        WS.retries++;
+        if (WS.retries >= WS.maxRetries) {
+          WS.blocked = true;
+          log('WebSocket niedostepny po '+WS.maxRetries+' probach — trwaly polling aktywny. Bot dziala normalnie.', 'warn');
+          updateWSStatus(false);
+          return; // brak dalszych prob
         }
+        // Kolejna proba z exponential backoff (10s, 20s, 40s)
+        var delay = 10000 * Math.pow(2, WS.retries - 1);
+        setTimeout(function(){ if (running && !WS.blocked) WS.connect(); }, delay);
       };
     } catch(e) {
-      log('WebSocket niedostępny: '+e.message, 'warn');
+      WS.blocked = true;
+      log('WebSocket niedostepny — polling aktywny', 'warn');
     }
   },
 
   disconnect: function() {
-    this.active = false;
+    this.active  = false;
+    this.blocked = false;
+    this.retries = 0;
     if (this.socket) { try { this.socket.close(); } catch(e){} }
     this.socket = null;
     updateWSStatus(false);
-    log('WebSocket rozlaczony', 'warn');
   },
 
   // Sprawdz trailing stop na zywej cenie (wywolywane z onmessage)
@@ -1007,18 +1021,23 @@ setInterval(async function() {
   renderHistory();
 }, 500);
 
-// Watchdog — rekonektuj jesli WS martwy podczas pracy bota
+// Watchdog — rekonektuj jesli WS padl, ale tylko gdy nie jest trwale zablokowany
 setInterval(function() {
-  if (running && !WS.isAlive()) {
+  if (running && !WS.blocked && !WS.isAlive() && WS.retries < WS.maxRetries) {
     WS.connect();
   }
-}, 15000);
+}, 30000);
 
 function updateWSStatus(active) {
   var el = gi('rb-ws');
   if (!el) return;
-  el.textContent  = active ? 'LIVE ⚡' : 'Polling';
-  el.className    = 'val '+(active?'up':'neu');
+  if (active) {
+    el.textContent = 'LIVE ⚡'; el.className = 'val up';
+  } else if (WS.blocked) {
+    el.textContent = 'Polling (firewall)'; el.className = 'val neu';
+  } else {
+    el.textContent = 'Polling'; el.className = 'val neu';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
