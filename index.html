@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -315,7 +315,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
           </div>
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Kapitał startowy $</span><input id="bt-capital" type="number" value="1000" style="width:80px"></div>
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Wielkość pozycji %</span><input id="bt-size" type="number" value="10" min="1" max="50" style="width:80px"></div>
-          <div class="r2" style="margin-bottom:6px"><span class="lbl">Min Score BUY</span><input id="bt-score" type="number" value="62" min="40" max="90" style="width:80px"></div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Min Score BUY</span><input id="bt-score" type="number" value="65" min="40" max="90" style="width:80px"></div>
           <div class="r2" style="margin-bottom:10px"><span class="lbl">TP% / SL%</span>
             <span><input id="bt-tp" type="number" value="8" style="width:48px"> / <input id="bt-sl" type="number" value="4" style="width:48px"></span>
           </div>
@@ -559,7 +559,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
 let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.08, sl:0.04, trail:0.045, maxPos:3, riskPct:2,
-  intervalMin:30, paperBal:1000, minScore:58, fgMin:25
+  intervalMin:30, paperBal:1000, minScore:65, fgMin:25
 };
 const PAIRS = ['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
                'ADAUSDC','AVAXUSDC','DOTUSDC','LINKUSDC','LTCUSDC','NEARUSDC',
@@ -842,12 +842,15 @@ async function analyzeSwing(sym) {
   // ── Pattern Recognition (Module 3) ─────────────────────────────
   const opens = kd.map(x=>+x[1]);
   const patResult = PATTERNS.detect(d.c, opens, d.h, d.l);
-  // Formacje bullish dodaja do score, bearish odejmuja
+  // Formacje bullish dodaja do score (wymagany wolumen > 1.3x dla odwrócenia)
   let patScore = 0;
   if (patResult.bullish > 0) {
-    patScore = Math.min(15, patResult.bullish * 6);
+    // Formacje odwrócenia wymagają potwierdzenia wolumenem
+    const volOk = volR >= 1.3;
+    const effectiveBullish = volOk ? patResult.bullish : Math.floor(patResult.bullish * 0.5);
+    patScore = Math.min(15, effectiveBullish * 6);
     score    = Math.min(100, score + patScore);
-    patResult.patterns.filter(p=>p.type==='bullish').forEach(p=>why.push(p.name));
+    patResult.patterns.filter(p=>p.type==='bullish').forEach(p=>why.push(p.name + (volOk ? '' : '(słaby vol)')));
   }
   if (patResult.bearish > 0) {
     patScore = -Math.min(12, patResult.bearish * 5);
@@ -1866,8 +1869,8 @@ var OBI = {
   // Zmiana: obniżone progi BUY (0.60 zamiast 0.65) — częstsze sygnały
   score: function(ratio) {
     if (ratio >= 0.70) return 15;   // silny buying pressure
-    if (ratio >= 0.60) return 10;   // obniżono z 0.65
-    if (ratio >= 0.54) return 5;    // obniżono z 0.58
+    if (ratio >= 0.65) return 10;
+    if (ratio >= 0.58) return 5;
     if (ratio <= 0.30) return -15;  // silny selling pressure
     if (ratio <= 0.35) return -10;
     if (ratio <= 0.42) return -5;
@@ -2280,7 +2283,7 @@ var ADAPTIVE = {
       this.minScoreAdjusted = Math.min(85, (this.minScoreAdjusted||CFG.minScore) + 3);
       log('Adaptive: win rate '+Math.round(wr*100)+'% — zaostrzam min score do '+this.minScoreAdjusted,'warn');
     } else if (wr > 0.65 && recent.length >= 10) {
-      this.minScoreAdjusted = Math.max(50, (this.minScoreAdjusted||CFG.minScore) - 2);
+      this.minScoreAdjusted = Math.max(63, (this.minScoreAdjusted||CFG.minScore) - 2);
       log('Adaptive: win rate '+Math.round(wr*100)+'% — luzuje min score do '+this.minScoreAdjusted,'ok');
     } else if (this.minScoreAdjusted === null) {
       this.minScoreAdjusted = CFG.minScore;
@@ -2983,5 +2986,6 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
 
 
