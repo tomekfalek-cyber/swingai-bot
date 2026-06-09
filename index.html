@@ -678,8 +678,12 @@ async function getFearGreed() {
 
 // ── KELLY CRITERION ────────────────────────────────────────────────
 function kellySize(total) {
+  const fixedSize = CFG.posSize || 15; // rozmiar z konfiguracji (pole "Rozmiar pozycji $")
   const trades = ST.trades.slice(-30);
-  if (trades.length < 5) return Math.max(10, total * (CFG.riskPct/100));
+  if (trades.length < 5) {
+    // Brak historii — zwróć mniejszy z: rozmiar z cfg lub % kapitału
+    return Math.min(fixedSize, Math.max(10, total * (CFG.riskPct/100)));
+  }
   const wins   = trades.filter(t => t.pnl > 0);
   const losses = trades.filter(t => t.pnl <= 0);
   const p    = wins.length / trades.length;
@@ -688,7 +692,9 @@ function kellySize(total) {
   const b = avgW / avgL;
   let kelly = (b*p - (1-p)) / b;
   kelly = Math.max(0.01, Math.min(0.05, kelly * 0.5));
-  return Math.max(10, Math.round(total * kelly * 100) / 100);
+  const kellySz = Math.max(10, Math.round(total * kelly * 100) / 100);
+  // Nie przekraczaj limitu CFG.posSize — Kelly może skalować w górę ale respektujemy limit użytkownika
+  return Math.min(fixedSize, kellySz);
 }
 
 // ── PUMP & DUMP FILTER ─────────────────────────────────────────────
@@ -889,7 +895,7 @@ async function execSell(sym, qty) {
   }
   if (CFG.exchange === 'bybit') return bybExecSell(sym, qty);
   const d = await signedReq('POST', '/api/v3/order',
-    {symbol:sym, side:'SELL', type:'MARKET', quantity:qty});
+    {symbol:sym, side:'SELL', type:'MARKET', quantity:qty.toFixed(6)});
   return {price:+(d.fills?.[0]?.price||d.price||0), qty:+d.executedQty};
 }
 async function getTotal() {
@@ -1478,6 +1484,10 @@ async function checkPositions() {
 }
 
 async function closeTrade(pos, price, reason) {
+  // Guard: nie zamykaj dwa razy tej samej pozycji (WS + polling mogą trafić równocześnie)
+  if (!ST.positions.includes(pos)) return;
+  // Usuń od razu z listy — każde kolejne wywołanie dla tej samej pos zostanie odfiltrowane
+  ST.positions = ST.positions.filter(p => p !== pos);
   log('Zamykam '+pos.sym+' — '+reason, reason.includes('PROFIT')?'ok':'warn');
   try {
     const res    = await execSell(pos.sym, pos.qty);
@@ -1507,15 +1517,13 @@ async function closeTrade(pos, price, reason) {
       setTimeout(function(){ ADAPTIVE.retrain(); PAIR_PARAMS.optimizeAll(); }, 500);
     }
     if (ST.trades.length > 300) ST.trades = ST.trades.slice(0,300);
-    ST.positions = ST.positions.filter(p => p !== pos);
     saveAll();
     const e2 = pnl>=0 ? '🟢' : '🔴';
     log(e2+' '+pos.sym+' P/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%) — '+reason, pnl>=0?'ok':'err');
     tgSend(e2+' <b>'+reason+' '+pos.sym.replace('USDC','/USDC')+'</b>\nP/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%)\nCzas: '+durH+'h');
   } catch(e) {
     log('Zamkniecie '+pos.sym+': '+e.message, 'err');
-    ST.positions = ST.positions.filter(p => p !== pos);
-    saveAll();
+    saveAll(); // pozycja już usunięta z listy na początku closeTrade()
   }
 }
 
@@ -1659,6 +1667,10 @@ async function startBot() {
   if (CFG.mode === 'live') {
     if (!CFG.apiKey || !CFG.secret) { alert('Tryb LIVE wymaga kluczy Binance API. Otworz Konfiguracja.'); return; }
     if (!workerReady()) { alert('Tryb LIVE wymaga Cloudflare Worker URL. Otworz Konfiguracja.'); return; }
+  }
+  if (CFG.mode === 'bybit') {
+    if (!CFG.bybApiKey || !CFG.bybSecret) { alert('Tryb Bybit EU wymaga kluczy Bybit API. Otworz Konfiguracja.'); return; }
+    if (!bybWorkerReady()) { alert('Tryb Bybit EU wymaga Cloudflare Worker URL (pole Bybit). Otworz Konfiguracja.'); return; }
   }
   running = true;
   gi('btn-run').style.display  = 'none';
