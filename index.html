@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -559,7 +559,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
 let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.08, sl:0.04, trail:0.045, maxPos:3, riskPct:2,
-  intervalMin:15, paperBal:1000, minScore:62, fgMin:25
+  intervalMin:15, paperBal:1000, minScore:55, fgMin:25
 };
 const PAIRS = ['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
                'ADAUSDC','AVAXUSDC','DOTUSDC','LINKUSDC','LTCUSDC','NEARUSDC',
@@ -877,18 +877,19 @@ async function analyzeSwing(sym) {
     score = Math.max(0, Math.min(100, score + qlBonus));
   }
 
-  // ── Ensemble: Score(35%) + NB(25%) + GBM(25%) + OBI(10%) + QL(5%) ─
+  // ── Ensemble: Score(45%) + NB(20%) + GBM(20%) + OBI(10%) + QL(5%) ─
+  // Zmiana: wyższy udział Score (45% zamiast 35%) — score ma więcej danych niż ML na początku
   let finalProb = score/100;
   let aiMethod  = 'Score';
   const obiNorm = (obiData.ratio - 0.3) / 0.4; // normalizuj 0.3-0.7 → 0-1
   if (NB.trained && GBM.trained) {
-    finalProb = score/100*0.35 + nbPred.prob*0.25 + gbmProb*0.25
+    finalProb = score/100*0.45 + nbPred.prob*0.20 + gbmProb*0.20
               + Math.max(0,Math.min(1,obiNorm))*0.10
               + (qlSugg&&qlSugg.action==='BUY'?1:0)*0.05;
     aiMethod = 'Ensemble(Score+NB+GBM+OBI+QL)';
     if (nbPred.label==='SKIP' && gbmProb<0.4) why.push('AI odradza wejscie');
   } else if (NB.trained) {
-    finalProb = score/100*0.55 + nbPred.prob*0.35 + Math.max(0,Math.min(1,obiNorm))*0.10;
+    finalProb = score/100*0.60 + nbPred.prob*0.30 + Math.max(0,Math.min(1,obiNorm))*0.10;
     aiMethod  = 'Score+NB+OBI';
   }
 
@@ -1303,7 +1304,13 @@ async function openTrade(sig, fg, btcDrop) {
   if ((ST.cooldown[sig.sym]||0) > Date.now()) { log('Cooldown '+sig.sym,'warn'); return; }
   if (ST.globalBlockUntil > Date.now())        { log('Globalna blokada','warn'); return; }
   if (isPumpDump(sig)) return;
-  if (fg && fg.val < CFG.fgMin) { log('Fear&Greed='+fg.val+' ('+fg.label+') < min '+CFG.fgMin,'warn'); return; }
+  if (fg && fg.val < CFG.fgMin) {
+    if (fg.val < 15) { log('Fear&Greed='+fg.val+' ('+fg.label+') — ekstremalna panika, blokada','warn'); return; }
+    // Zamiast blokady — kara punktowa -10, dalej pozwala na BUY przy mocnym sygnale
+    log('Fear&Greed='+fg.val+' ('+fg.label+') < '+CFG.fgMin+' — kara -10 do score','warn');
+    sig = Object.assign({}, sig, { score: Math.max(0, sig.score - 10), finalProb: Math.max(0, sig.finalProb - 0.10) });
+    if (sig.finalProb < (PAIR_PARAMS.get(sig.sym) ? PAIR_PARAMS.get(sig.sym).minScore : ADAPTIVE.getMinScore())/100) return;
+  }
   if (btcDrop && sig.sym !== 'BTCUSDC') return;
   // Correlation guard
   if (corrBlocked(sig.sym)) return;
@@ -1854,10 +1861,11 @@ var OBI = {
   },
 
   // Zwraca score -15 do +15 dla scoringu swing
+  // Zmiana: obniżone progi BUY (0.60 zamiast 0.65) — częstsze sygnały
   score: function(ratio) {
     if (ratio >= 0.70) return 15;   // silny buying pressure
-    if (ratio >= 0.65) return 10;
-    if (ratio >= 0.58) return 5;
+    if (ratio >= 0.60) return 10;   // obniżono z 0.65
+    if (ratio >= 0.54) return 5;    // obniżono z 0.58
     if (ratio <= 0.30) return -15;  // silny selling pressure
     if (ratio <= 0.35) return -10;
     if (ratio <= 0.42) return -5;
@@ -2973,3 +2981,5 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
+
