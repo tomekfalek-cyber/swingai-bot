@@ -948,8 +948,8 @@ function rsiDivergence(closes, rsiArr, lookback) {
   if (n < lookback + 2) return { bull: false, bear: false };
 
   // Znajdź dwa ostatnie lokalne minima ceny (dołki)
-  var priceLows = [], rsiLows = [];
-  var priceHighs = [], rsiHighs = [];
+  var priceLows = [];
+  var priceHighs = [];
   for (var i = n - lookback; i < n - 1; i++) {
     if (closes[i] < closes[i-1] && closes[i] < closes[i+1]) {
       priceLows.push({ i: i, v: closes[i], r: rsiArr[i] });
@@ -1558,6 +1558,10 @@ async function openTrade(sig, fg, btcDrop) {
       ' | TP='+fp(tpPrice)+' SL='+fp(slPrice)+' ATR='+levels.atrPct+'% R:R='+levels.rr+' | '+CFG.mode.toUpperCase(),'ok');
   try {
     const res = await execBuy(sig.sym, posSize);
+    // Guard: odrzuć zlecenie jeśli qty=0 lub NaN (np. Bybit nie zwrócił fill)
+    if (!res || !res.qty || res.qty <= 0 || isNaN(res.qty)) {
+      log('BUY '+sig.sym+' — qty=0 lub blad fill, pozycja NIE otwarta','err'); return;
+    }
     const execP = res.price || sig.price;
     // Przelicz poziomy na cenie wykonania
     const execLevels = calcDynamicLevels(execP, sig.atrD, FEE);
@@ -1685,6 +1689,7 @@ async function startBot() {
   setTimeout(function(){ ADAPTIVE.retrain(); updateAIStatusPanel(); }, 800);
   await botCycle();
   gi('ai-dot').className = 'ai-dot';
+  if (!running) return;
   botTimer = setInterval(async function() {
     gi('ai-dot').className = 'ai-dot scan';
     await botCycle();
@@ -2041,11 +2046,17 @@ async function testConn() {
   } else {
     try { const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'}); lines.push('Binance OK | BTC: $'+(+t.price).toFixed(0)); } catch(e){ lines.push('Binance ERR: '+e.message); }
   }
-  if (CFG.workerUrl) {
-    try { const r=await fetch(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); lines.push('Worker OK | ETH: $'+(+d.price).toFixed(2)); } catch(e){ lines.push('Worker ERR: '+e.message); }
-  } else if (CFG.mode==='live') { lines.push('Brak Worker URL — wymagany do LIVE'); }
-  if (CFG.mode==='live'&&CFG.apiKey&&workerReady()) {
-    try { const a=await signedReq('GET','/api/v3/account'); const u=(a.balances||[]).find(function(b){ return b.asset==='USDC'; }); lines.push('Konto OK | USDC: $'+(u?parseFloat(u.free).toFixed(2):'0')); } catch(e){ lines.push('Konto ERR: '+e.message); }
+  if (CFG.exchange !== 'bybit') {
+    if (CFG.workerUrl) {
+      try { const r=await fetch(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); lines.push('Binance Worker OK | ETH: $'+(+d.price).toFixed(2)); } catch(e){ lines.push('Binance Worker ERR: '+e.message); }
+    } else if (CFG.mode==='live') { lines.push('Brak Binance Worker URL — wymagany do LIVE'); }
+    if (CFG.mode==='live'&&CFG.apiKey&&workerReady()) {
+      try { const a=await signedReq('GET','/api/v3/account'); const u=(a.balances||[]).find(function(b){ return b.asset==='USDC'; }); lines.push('Binance Konto OK | USDC: $'+(u?parseFloat(u.free).toFixed(2):'0')); } catch(e){ lines.push('Binance Konto ERR: '+e.message); }
+    }
+  } else {
+    if (CFG.bybWorker) {
+      try { const r=await fetch(CFG.bybWorker+'/proxy/v5/market/tickers?category=spot&symbol=BTCUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('Bybit Worker OK'); } catch(e){ lines.push('Bybit Worker ERR: '+e.message); }
+    } else if (CFG.mode==='live') { lines.push('Brak Bybit Worker URL — wymagany do LIVE'); }
   }
   s.innerHTML=lines.join('<br>'); s.style.color='var(--green)';
   gi('conn-badge').className='badge bon'; gi('conn-badge').textContent='ONLINE';
@@ -2581,9 +2592,6 @@ function calcIndicatorsForCandle(closes, highs, lows, i) {
   var e200  = ema(c, 200);
   var price = c[c.length-1];
   var trendD = price>e200 ? (price>e50?2:1) : (price>e50?0:-1);
-  var volArr = [];
-  for (var j=Math.max(0,i-19); j<=i; j++) volArr.push(closes[j]);
-  var volMean = volArr.reduce(function(a,b){ return a+b; },0)/volArr.length;
   var mom5  = i>=5  ? (price/closes[i-5]-1)*100  : 0;
   var mom10 = i>=10 ? (price/closes[i-10]-1)*100 : 0;
   return { rsiD:rsiD, macdHist:macdD.hist, macdLine:macdD.line, bbPos:bbD.pos, trendD:trendD, mom5:mom5, mom10:mom10, atrVal:atr(h,l,c,14), price:price };
@@ -2957,7 +2965,6 @@ async function trainAllAI() {
     var closes = klines.map(function(k){ return +k[4]; });
     var highs  = klines.map(function(k){ return +k[2]; });
     var lows   = klines.map(function(k){ return +k[3]; });
-    var opens  = klines.map(function(k){ return +k[1]; });
     var n = closes.length;
     gi('ml-progress').textContent = 'Budowanie datasetu z '+n+' dni...';
 
