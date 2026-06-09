@@ -1,4 +1,4 @@
-﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -125,7 +125,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
 /* ── MODALS ── */
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;}
 .overlay.open{display:flex;}
-.modal{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:22px;width:580px;max-height:88vh;overflow-y:auto;}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:22px;width:740px;max-width:96vw;max-height:88vh;overflow-y:auto;}
 .modal h2{font-size:11pt;margin-bottom:14px;color:var(--accent);}
 .form-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
 .form-row label{min-width:135px;color:var(--text2);font-size:9pt;}
@@ -485,34 +485,31 @@ tr:hover td{background:rgba(255,255,255,.015);}
     </select>
   </div>
 
-  <!-- Binance — zawsze widoczne -->
-  <div style="background:rgba(88,166,255,.05);border:1px solid rgba(88,166,255,.15);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-    <div style="font-size:8pt;color:var(--accent);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟡 Binance</div>
-    <div class="form-row"><label>Binance API Key</label><input id="cfg-key" type="password" placeholder="Wklej klucz Binance API"></div>
-    <div class="form-row"><label>Binance Secret</label><input id="cfg-secret" type="password" placeholder="Wklej Secret Binance"></div>
-    <div class="form-row">
-      <label>Cloudflare Worker URL</label>
-      <input id="cfg-worker" type="text" placeholder="https://swingai.TWOJA-NAZWA.workers.dev">
-    </div>
-    <div style="font-size:8pt;color:var(--text3);line-height:1.6;margin-top:4px">
-      Worker (proxy CORS) wymagany do handlu LIVE. Darmowy plan Cloudflare: 100 000 req/dzień.<br>
-      dash.cloudflare.com → Workers &amp; Pages → Create Worker → wklej kod → Deploy → skopiuj URL.
-    </div>
-  </div>
+  <!-- Binance + Bybit EU — 2 kolumny -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
 
-  <!-- Bybit EU — zawsze widoczne -->
-  <div style="background:rgba(240,165,0,.05);border:1px solid rgba(240,165,0,.2);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-    <div style="font-size:8pt;color:var(--gold);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟠 Bybit EU</div>
-    <div class="form-row"><label>Bybit API Key</label><input id="cfg-byb-key" type="password" placeholder="Wklej klucz Bybit API"></div>
-    <div class="form-row"><label>Bybit Secret</label><input id="cfg-byb-secret" type="password" placeholder="Wklej Bybit Secret"></div>
-    <div class="form-row">
-      <label>Worker URL (Bybit)</label>
-      <input id="cfg-byb-worker" type="text" placeholder="https://swingai-bybit.TWOJA-NAZWA.workers.dev">
+    <div style="background:rgba(88,166,255,.05);border:1px solid rgba(88,166,255,.25);border-radius:6px;padding:10px 12px;">
+      <div style="font-size:8pt;color:var(--accent);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟡 Binance</div>
+      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">API Key</div>
+        <input id="cfg-key" type="password" placeholder="Binance API Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Secret</div>
+        <input id="cfg-secret" type="password" placeholder="Binance Secret" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+      <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Worker URL (CORS proxy)</div>
+        <input id="cfg-worker" type="text" placeholder="https://swingai.xxx.workers.dev" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+      <div style="font-size:7.5pt;color:var(--text3);margin-top:5px;line-height:1.5">Worker wymagany do LIVE.<br>dash.cloudflare.com → Workers → Create</div>
     </div>
-    <div style="font-size:8pt;color:var(--text3);line-height:1.6;margin-top:4px">
-      Bybit: klucz z uprawnieniem <b>Unified Trading → Read + Trade (Spot)</b>. Worker proxy do <code>api.bybit.com</code>.<br>
-      Dane rynkowe (świece, ticker) pobierane bezpośrednio — bez proxy.
+
+    <div style="background:rgba(240,165,0,.05);border:2px solid rgba(240,165,0,.4);border-radius:6px;padding:10px 12px;">
+      <div style="font-size:8pt;color:var(--gold);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟠 Bybit EU</div>
+      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">API Key</div>
+        <input id="cfg-byb-key" type="password" placeholder="Bybit API Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Secret</div>
+        <input id="cfg-byb-secret" type="password" placeholder="Bybit Secret" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+      <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Worker URL (Bybit proxy)</div>
+        <input id="cfg-byb-worker" type="text" placeholder="https://swingai-byb.xxx.workers.dev" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+      <div style="font-size:7.5pt;color:var(--text3);margin-top:5px;line-height:1.5">Klucz: Unified Trading → Read+Trade Spot.<br>Świece i ticker bez proxy.</div>
     </div>
+
   </div>
   <hr style="border-color:var(--border);margin:12px 0;">
   <div class="form-row"><label>Take Profit %</label><input id="cfg-tp" type="number" value="8" step="0.5" min="3" max="30"></div>
@@ -3228,6 +3225,7 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
 
 
 
