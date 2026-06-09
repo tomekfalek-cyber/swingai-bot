@@ -1712,6 +1712,7 @@ async function forceScan() {
   if (!running) return;
   clearInterval(botTimer);
   await botCycle();
+  if (!running) return;
   botTimer = setInterval(async function(){ gi('ai-dot').className='ai-dot scan'; await botCycle(); gi('ai-dot').className='ai-dot'; }, CFG.intervalMin*60000);
 }
 
