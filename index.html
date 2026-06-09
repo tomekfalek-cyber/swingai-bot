@@ -1,4 +1,4 @@
-﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -407,6 +407,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="r2"><span class="lbl">P/L dzienny</span><span class="val" id="rb-pnl">$0.00</span></div>
     <div class="r2"><span class="lbl">Straty z rzędu</span><span class="val" id="rb-losses">0</span></div>
     <div class="r2"><span class="lbl">Paper saldo</span><span class="val" id="rb-paper">$1000</span></div>
+    <div class="r2"><span class="lbl">Giełda</span><span class="val" id="rb-exchange">Binance</span></div>
     <div class="r2"><span class="lbl">Worker proxy</span><span class="val" id="rb-worker">–</span></div>
     <div class="r2"><span class="lbl">WebSocket</span><span class="val" id="rb-ws">Polling</span></div>
     <div class="r2"><span class="lbl">Fear &amp; Greed</span><span class="val" id="rb-fg">–</span></div>
@@ -479,22 +480,46 @@ tr:hover td{background:rgba(255,255,255,.015);}
   <div class="form-row"><label>Tryb handlu</label>
     <select id="cfg-mode" onchange="onModeChange(this.value)">
       <option value="paper">📝 PAPER — symulacja (bezpieczny start)</option>
-      <option value="live">💰 LIVE — realne transakcje Binance</option>
+      <option value="live">💰 LIVE — Binance (realne transakcje)</option>
+      <option value="bybit">💰 LIVE — Bybit EU (realne transakcje)</option>
     </select>
   </div>
-  <div class="form-row"><label>Binance API Key</label><input id="cfg-key" type="password" placeholder="Wklej klucz Binance API"></div>
-  <div class="form-row"><label>Binance Secret</label><input id="cfg-secret" type="password" placeholder="Wklej Secret Binance"></div>
-  <div class="form-row" id="row-worker">
-    <label>Cloudflare Worker URL</label>
-    <input id="cfg-worker" type="text" placeholder="https://swingai.TWOJA-NAZWA.workers.dev">
+
+  <!-- Binance -->
+  <div id="section-binance">
+    <div style="font-size:8pt;color:var(--text3);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.5px">Binance</div>
+    <div class="form-row"><label>Binance API Key</label><input id="cfg-key" type="password" placeholder="Wklej klucz Binance API"></div>
+    <div class="form-row"><label>Binance Secret</label><input id="cfg-secret" type="password" placeholder="Wklej Secret Binance"></div>
+    <div class="form-row" id="row-worker">
+      <label>Cloudflare Worker URL</label>
+      <input id="cfg-worker" type="text" placeholder="https://swingai.TWOJA-NAZWA.workers.dev">
+    </div>
+    <div id="worker-guide" style="display:none;background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:5px;padding:10px 13px;font-size:8.5pt;color:var(--accent);margin-bottom:10px;line-height:1.8;">
+      <b>🔧 Jak skonfigurować Worker (jednorazowo, 5 minut):</b><br>
+      1. Wejdź na <b>dash.cloudflare.com</b> → <i>Workers &amp; Pages</i> → <i>Create Worker</i><br>
+      2. Kliknij <b>Edit code</b> → wklej kod z pliku <code>swingai_worker.js</code><br>
+      3. Kliknij <b>Deploy</b> → skopiuj URL workera (np. <code>https://swingai.xxx.workers.dev</code>)<br>
+      4. Wklej URL w polu powyżej i zapisz<br>
+      <span style="color:var(--text3)">✓ Darmowy plan: 100 000 req/dzień — w zupełności wystarczy</span>
+    </div>
   </div>
-  <div id="worker-guide" style="display:none;background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.2);border-radius:5px;padding:10px 13px;font-size:8.5pt;color:var(--accent);margin-bottom:10px;line-height:1.8;">
-    <b>🔧 Jak skonfigurować Worker (jednorazowo, 5 minut):</b><br>
-    1. Wejdź na <b>dash.cloudflare.com</b> → <i>Workers &amp; Pages</i> → <i>Create Worker</i><br>
-    2. Kliknij <b>Edit code</b> → wklej kod z pliku <code>swingai_worker.js</code><br>
-    3. Kliknij <b>Deploy</b> → skopiuj URL workera (np. <code>https://swingai.xxx.workers.dev</code>)<br>
-    4. Wklej URL w polu powyżej i zapisz<br>
-    <span style="color:var(--text3)">✓ Darmowy plan: 100 000 req/dzień — w zupełności wystarczy</span>
+
+  <!-- Bybit EU -->
+  <div id="section-bybit" style="display:none">
+    <div style="font-size:8pt;color:var(--text3);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.5px">Bybit EU</div>
+    <div class="alert-box" style="margin-bottom:8px">
+      Bybit EU: <b>api.bybit.com</b> (serwery EU). W ustawieniach Bybit włącz klucz z uprawnieniem <b>Unified Trading</b> i <b>Read+Trade</b>. Wymagany Cloudflare Worker jako proxy CORS.
+    </div>
+    <div class="form-row"><label>Bybit API Key</label><input id="cfg-byb-key" type="password" placeholder="Wklej klucz Bybit API"></div>
+    <div class="form-row"><label>Bybit Secret</label><input id="cfg-byb-secret" type="password" placeholder="Wklej Bybit Secret"></div>
+    <div class="form-row">
+      <label>Worker URL (Bybit)</label>
+      <input id="cfg-byb-worker" type="text" placeholder="https://swingai-bybit.TWOJA-NAZWA.workers.dev">
+    </div>
+    <div style="font-size:8pt;color:var(--text3);margin-top:4px;line-height:1.6">
+      Worker dla Bybit musi proxy do <code>api.bybit.com</code> zamiast <code>api.binance.com</code>.<br>
+      Dane rynkowe (świece) pobierane są bezpośrednio z Bybit REST API bez proxy.
+    </div>
   </div>
   <hr style="border-color:var(--border);margin:12px 0;">
   <div class="form-row"><label>Take Profit %</label><input id="cfg-tp" type="number" value="8" step="0.5" min="3" max="30"></div>
@@ -559,7 +584,8 @@ tr:hover td{background:rgba(255,255,255,.015);}
 let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.08, sl:0.04, trail:0.045, maxPos:3, riskPct:2,
-  intervalMin:30, paperBal:1000, minScore:65, fgMin:25
+  intervalMin:30, paperBal:1000, minScore:65, fgMin:25,
+  exchange:'binance', bybApiKey:'', bybSecret:'', bybWorker:''
 };
 const PAIRS = ['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
                'ADAUSDC','AVAXUSDC','DOTUSDC','LINKUSDC','LTCUSDC','NEARUSDC',
@@ -691,6 +717,103 @@ async function btcDropGuard() {
   return false;
 }
 
+// ── BYBIT EU API ───────────────────────────────────────────────────
+const BYBIT_BASE = 'https://api.bybit.com';
+
+async function bybHmac(msg) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(CFG.bybSecret), {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+  return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function bybWorkerReady() { return !!(CFG.bybWorker && CFG.bybWorker.startsWith('https://')); }
+
+async function bybSignedReq(method, path, params={}) {
+  if (!bybWorkerReady()) throw new Error('Brak Bybit Worker URL');
+  const ts = Date.now().toString();
+  const recv = '5000';
+  const qs = new URLSearchParams(params).toString();
+  const toSign = ts + CFG.bybApiKey + recv + (method==='GET' ? qs : JSON.stringify(params));
+  const signature = await bybHmac(toSign);
+  const headers = {
+    'X-BAPI-API-KEY':   CFG.bybApiKey,
+    'X-BAPI-TIMESTAMP': ts,
+    'X-BAPI-RECV-WINDOW': recv,
+    'X-BAPI-SIGN':      signature,
+    'Content-Type':     'application/json'
+  };
+  const proxyBase = CFG.bybWorker + '/proxy';
+  const url = method==='GET'
+    ? proxyBase + path + (qs ? '?'+qs : '')
+    : proxyBase + path;
+  const r = await fetch(url, {
+    method,
+    headers,
+    body: method!=='GET' ? JSON.stringify(params) : undefined
+  });
+  if (!r.ok) throw new Error('Bybit HTTP ' + r.status);
+  const d = await r.json();
+  if (d.retCode !== 0) throw new Error('Bybit: ' + d.retMsg);
+  return d.result;
+}
+
+// Publiczne dane z Bybit (świece, ticker) — bez proxy
+async function bybPub(path, params={}) {
+  const qs = Object.keys(params).length ? '?'+new URLSearchParams(params) : '';
+  const r = await fetch(BYBIT_BASE + path + qs);
+  if (!r.ok) throw new Error('Bybit pub ' + r.status);
+  const d = await r.json();
+  if (d.retCode !== 0) throw new Error('Bybit: ' + d.retMsg);
+  return d.result;
+}
+
+// Adapter: pobierz świece z Bybit w formacie Binance [ts,o,h,l,c,v]
+async function bybGetKlines(sym, tf, limit) {
+  const tfMap = {'1d':'D','4h':'240','1h':'60','15m':'15'};
+  const bybTf = tfMap[tf] || 'D';
+  // Bybit używa symboli bez USDC → USDT, ale obsługuje też USDC
+  const d = await bybPub('/v5/market/kline', {category:'linear', symbol:sym, interval:bybTf, limit:limit||200});
+  // Bybit zwraca [startTime, openPrice, highPrice, lowPrice, closePrice, volume, turnover]
+  return (d.list || []).reverse().map(function(k){
+    return [+k[0], k[1], k[2], k[3], k[4], k[5]];
+  });
+}
+
+async function bybGetTicker(sym) {
+  const d = await bybPub('/v5/market/tickers', {category:'linear', symbol:sym});
+  const t = (d.list||[])[0] || {};
+  return { lastPrice: t.lastPrice, priceChangePercent: t.price24hPcnt ? (+t.price24hPcnt*100).toFixed(2) : '0' };
+}
+
+async function bybGetUSDC() {
+  if (CFG.mode === 'paper') return ST.paperBal;
+  const d = await bybSignedReq('GET', '/v5/account/wallet-balance', {accountType:'UNIFIED'});
+  const coin = ((d.list||[])[0]?.coin||[]).find(function(c){ return c.coin==='USDC'; });
+  return coin ? +coin.availableToWithdraw : 0;
+}
+
+async function bybExecBuy(sym, quoteQty) {
+  if (CFG.mode === 'paper') {
+    const t = await bybGetTicker(sym); const p = +t.lastPrice;
+    ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
+  }
+  const d = await bybSignedReq('POST', '/v5/order/create', {
+    category:'linear', symbol:sym, side:'Buy', orderType:'Market', qty:quoteQty.toFixed(2), marketUnit:'quoteCoin'
+  });
+  return {price:+d.avgPrice||0, qty:+d.cumExecQty||0};
+}
+
+async function bybExecSell(sym, qty) {
+  if (CFG.mode === 'paper') {
+    const t = await bybGetTicker(sym); const p = +t.lastPrice;
+    ST.paperBal += p * qty; return {price:p, qty};
+  }
+  const d = await bybSignedReq('POST', '/v5/order/create', {
+    category:'linear', symbol:sym, side:'Sell', orderType:'Market', qty:qty.toFixed(6)
+  });
+  return {price:+d.avgPrice||0, qty:+d.cumExecQty||qty};
+}
+
 // ── BINANCE API ────────────────────────────────────────────────────
 async function hmac(msg) {
   const enc = new TextEncoder();
@@ -716,16 +839,18 @@ async function pub(path, params={}) {
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
-const getKlines = (s,tf,n=200) => pub('/api/v3/klines', {symbol:s, interval:tf, limit:n});
-const getTicker = (s) => pub('/api/v3/ticker/24hr', {symbol:s});
+const getKlines = (s,tf,n=200) => CFG.exchange==='bybit' ? bybGetKlines(s,tf,n) : pub('/api/v3/klines', {symbol:s, interval:tf, limit:n});
+const getTicker = (s) => CFG.exchange==='bybit' ? bybGetTicker(s) : pub('/api/v3/ticker/24hr', {symbol:s});
 
 async function getUSDC() {
   if (CFG.mode === 'paper') return ST.paperBal;
+  if (CFG.exchange === 'bybit') return bybGetUSDC();
   const d = await signedReq('GET', '/api/v3/account');
   const b = (d.balances||[]).find(x => x.asset==='USDC');
   return b ? +b.free : 0;
 }
 async function execBuy(sym, quoteQty) {
+  if (CFG.exchange === 'bybit') return bybExecBuy(sym, quoteQty);
   if (CFG.mode === 'paper') {
     const t = await getTicker(sym); const p = +t.lastPrice;
     ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
@@ -735,6 +860,7 @@ async function execBuy(sym, quoteQty) {
   return {price:+(d.fills?.[0]?.price||d.price||0), qty:+d.executedQty};
 }
 async function execSell(sym, qty) {
+  if (CFG.exchange === 'bybit') return bybExecSell(sym, qty);
   if (CFG.mode === 'paper') {
     const t = await getTicker(sym); const p = +t.lastPrice;
     ST.paperBal += p * qty; return {price:p, qty};
@@ -784,6 +910,53 @@ function atr(h,l,c,p=14) {
   return trs.slice(-p).reduce((a,b)=>a+b,0)/p;
 }
 
+// ── RSI DYWERGENCJA ────────────────────────────────────────────────
+// Bycza: cena robi niższy dół (lower low), RSI robi wyższy dół (higher low)
+// Niedźwiedzia: cena robi wyższy szczyt, RSI robi niższy szczyt
+function rsiDivergence(closes, rsiArr, lookback) {
+  lookback = lookback || 14;
+  var n = closes.length;
+  if (n < lookback + 2) return { bull: false, bear: false };
+
+  // Znajdź dwa ostatnie lokalne minima ceny (dołki)
+  var priceLows = [], rsiLows = [];
+  var priceHighs = [], rsiHighs = [];
+  for (var i = n - lookback; i < n - 1; i++) {
+    if (closes[i] < closes[i-1] && closes[i] < closes[i+1]) {
+      priceLows.push({ i: i, v: closes[i], r: rsiArr[i] });
+    }
+    if (closes[i] > closes[i-1] && closes[i] > closes[i+1]) {
+      priceHighs.push({ i: i, v: closes[i], r: rsiArr[i] });
+    }
+  }
+
+  var bull = false, bear = false;
+  // Bycza dywergencja: cena lower low, RSI higher low
+  if (priceLows.length >= 2) {
+    var p1 = priceLows[priceLows.length - 2];
+    var p2 = priceLows[priceLows.length - 1];
+    if (p2.v < p1.v && p2.r > p1.r + 2) bull = true; // min 2 pkt RSI różnicy
+  }
+  // Niedźwiedzia dywergencja: cena higher high, RSI lower high
+  if (priceHighs.length >= 2) {
+    var h1 = priceHighs[priceHighs.length - 2];
+    var h2 = priceHighs[priceHighs.length - 1];
+    if (h2.v > h1.v && h2.r < h1.r - 2) bear = true;
+  }
+  return { bull: bull, bear: bear };
+}
+
+// ── RSI ARRAY (pełna tablica wartości RSI) ─────────────────────────
+function rsiArray(closes, period) {
+  period = period || 14;
+  var result = [];
+  for (var i = 0; i < closes.length; i++) {
+    if (i < period) { result.push(50); continue; }
+    result.push(rsi(closes.slice(0, i + 1), period));
+  }
+  return result;
+}
+
 // ── SWING ENGINE ───────────────────────────────────────────────────
 async function analyzeSwing(sym) {
   const [kd,k4,k1h,obiData] = await Promise.all([
@@ -800,6 +973,11 @@ async function analyzeSwing(sym) {
   const rsi4h = rsi(h4.c,14), macd4h=macd(h4.c);
   const rsi1h = rsi(h1.c,14), macd1h=macd(h1.c);
   const confirm1h = (rsi1h<50 && macd1h.hist>0) || rsi1h<40;
+  // Dywergencja RSI — oblicz na ostatnich 40 świecach Daily i 4H
+  const rsiArrD  = rsiArray(d.c.slice(-40), 14);
+  const rsiArr4h = rsiArray(h4.c.slice(-30), 14);
+  const divD  = rsiDivergence(d.c.slice(-40),  rsiArrD,  38);
+  const div4h = rsiDivergence(h4.c.slice(-30), rsiArr4h, 28);
   const trendD = price>ema200 ? (price>ema50?2:1) : (price>ema50?0:-1);
   const volR   = d.v.length>=20  ? d.v.at(-1)/(d.v.slice(-20).reduce((a,b)=>a+b,0)/20) : 1;
   const vol4R  = h4.v.length>=20 ? h4.v.at(-1)/(h4.v.slice(-20).reduce((a,b)=>a+b,0)/20) : 1;
@@ -836,6 +1014,16 @@ async function analyzeSwing(sym) {
   if (macd4h.hist>0 && macdD.hist>0) { score+=5; why.push('MACD 4H+D zgodnosc'); }
   if (confirm1h)  { score+=5; why.push('1H potwierdza'); }
   else            { score-=3; }
+  // Dywergencja RSI — jeden z najsilniejszych sygnałów odwrócenia
+  if (divD.bull && div4h.bull) {
+    score += 20; why.push('RSI dywergencja bycza D+4H');
+  } else if (divD.bull) {
+    score += 14; why.push('RSI dywergencja bycza Daily');
+  } else if (div4h.bull) {
+    score += 8;  why.push('RSI dywergencja bycza 4H');
+  }
+  if (divD.bear)  { score -= 12; why.push('RSI dywergencja niedzwiedzia Daily'); }
+  if (div4h.bear) { score -= 7;  why.push('RSI dywergencja niedzwiedzia 4H'); }
   if (trendD===-1 && rsiD>50) { score=Math.min(score,15); why.push('BESSA: brak long'); }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
@@ -921,7 +1109,10 @@ async function analyzeSwing(sym) {
     slPrice:price*(1-ppSL+FEE), tpPrice:price*(1+ppTP+FEE),
     pairParams:pairP,
     volR:+volR.toFixed(2), vol4R:+vol4R.toFixed(2),
-    mom5:+mom5.toFixed(2), mom10:+mom10.toFixed(2)
+    mom5:+mom5.toFixed(2), mom10:+mom10.toFixed(2),
+    divBull: divD.bull || div4h.bull,
+    divBear: divD.bear || div4h.bear,
+    divLabel: divD.bull&&div4h.bull ? 'D+4H' : divD.bull ? 'Daily' : div4h.bull ? '4H' : ''
   };
 }
 
@@ -1537,7 +1728,9 @@ async function updateHeader() {
     gi('mode-badge').className   = CFG.mode==='paper' ? 'badge bwarn' : 'badge bon';
     gi('st-mode').textContent = CFG.mode.toUpperCase();
     const rw = gi('rb-worker');
-    if (rw) { rw.textContent=CFG.mode==='paper'?'(PAPER)':workerReady()?'OK':'brak'; rw.className=CFG.mode==='paper'?'val neu':workerReady()?'val up':'val dn'; }
+    if (rw) { rw.textContent=CFG.mode==='paper'?'(PAPER)':workerReady()||bybWorkerReady()?'OK':'brak'; rw.className=CFG.mode==='paper'?'val neu':workerReady()||bybWorkerReady()?'val up':'val dn'; }
+    const re = gi('rb-exchange');
+    if (re) { re.textContent=CFG.exchange==='bybit'?'Bybit EU':'Binance'; re.className='val acc'; }
   } catch(e) {}
 }
 
@@ -1569,6 +1762,8 @@ function renderSigList(sigs) {
       +(s.patterns&&s.patterns.length?'<span class="ind-chip" style="color:var(--purple)">📊 '+s.patterns.length+'x</span>':'')
       +(s.obiRatio!==undefined?'<span class="ind-chip" style="color:'+(s.obiRatio>=0.58?'var(--green)':s.obiRatio<=0.42?'var(--red)':'var(--text2)')+'">OBI '+(s.obiRatio*100).toFixed(0)+'%</span>':'')
       +(QL.trained&&s.qlSugg?'<span class="ind-chip" style="color:'+(s.qlSugg.action==='BUY'?'var(--green)':'var(--red)')+'">QL:'+(s.qlSugg.action==='BUY'?'↑':'↓')+'</span>':'')
+      +(s.divBull?'<span class="ind-chip" style="color:var(--green);border:1px solid rgba(63,185,80,.4)">DIV '+s.divLabel+'</span>':'')
+      +(s.divBear?'<span class="ind-chip" style="color:var(--red)">DIV bear</span>':'')
       +'</div>'
       +'<div style="font-size:7.5pt;color:var(--text3);margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+s.why.slice(0,2).join(' • ')+'</div>'
       +'</div>';
@@ -1741,15 +1936,21 @@ function switchTab(v, btn) {
 
 // ── SETTINGS ───────────────────────────────────────────────────────
 function onModeChange(val) {
-  const show=val==='live';
-  gi('row-worker').style.display   = show?'':'none';
-  gi('worker-guide').style.display = show?'':'none';
+  const isBinanceLive = val==='live';
+  const isBybit       = val==='bybit';
+  gi('section-binance').style.display = isBybit ? 'none' : '';
+  gi('section-bybit').style.display   = isBybit ? '' : 'none';
+  gi('row-worker').style.display      = isBinanceLive ? '' : 'none';
+  gi('worker-guide').style.display    = isBinanceLive ? '' : 'none';
 }
 function openSettings() {
   gi('cfg-key').value      = CFG.apiKey||'';
   gi('cfg-secret').value   = CFG.secret||'';
   gi('cfg-worker').value   = CFG.workerUrl||'';
   gi('cfg-mode').value     = CFG.mode;
+  gi('cfg-byb-key').value    = CFG.bybApiKey||'';
+  gi('cfg-byb-secret').value = CFG.bybSecret||'';
+  gi('cfg-byb-worker').value = CFG.bybWorker||'';
   gi('cfg-tp').value       = (CFG.tp*100).toFixed(1);
   gi('cfg-sl').value       = (CFG.sl*100).toFixed(1);
   gi('cfg-trail').value    = (CFG.trail*100).toFixed(1);
@@ -1770,6 +1971,10 @@ function saveSettings() {
   CFG.secret     = gi('cfg-secret').value.trim();
   CFG.workerUrl  = gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode       = gi('cfg-mode').value;
+  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : 'binance';
+  CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
+  CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
+  CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
   CFG.tp         = parseFloat(gi('cfg-tp').value)/100;
   CFG.sl         = parseFloat(gi('cfg-sl').value)/100;
   CFG.trail      = parseFloat(gi('cfg-trail').value)/100;
@@ -1797,7 +2002,14 @@ function saveSettings() {
 async function testConn() {
   const s=gi('cfg-status'); s.textContent='Testuje...'; s.style.color='var(--gold)'; saveSettings();
   const lines=[];
-  try { const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'}); lines.push('Binance OK | BTC: $'+(+t.price).toFixed(0)); } catch(e){ lines.push('Binance ERR: '+e.message); }
+  if (CFG.exchange === 'bybit') {
+    try { const t=await bybGetTicker('BTCUSDC'); lines.push('Bybit EU OK | BTC: $'+(+t.lastPrice).toFixed(0)); } catch(e){ lines.push('Bybit ERR: '+e.message); }
+    if (CFG.bybApiKey && bybWorkerReady()) {
+      try { const u=await bybGetUSDC(); lines.push('Bybit konto OK | USDC: $'+u.toFixed(2)); } catch(e){ lines.push('Bybit konto ERR: '+e.message); }
+    }
+  } else {
+    try { const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'}); lines.push('Binance OK | BTC: $'+(+t.price).toFixed(0)); } catch(e){ lines.push('Binance ERR: '+e.message); }
+  }
   if (CFG.workerUrl) {
     try { const r=await fetch(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); lines.push('Worker OK | ETH: $'+(+d.price).toFixed(2)); } catch(e){ lines.push('Worker ERR: '+e.message); }
   } else if (CFG.mode==='live') { lines.push('Brak Worker URL — wymagany do LIVE'); }
@@ -2986,6 +3198,7 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
 
 
 
