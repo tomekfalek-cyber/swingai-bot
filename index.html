@@ -620,7 +620,9 @@ function loadModels() {
       GBM.accuracy = p.gbm.accuracy || 0;
     }
     if (p.adaptive) {
-      ADAPTIVE.minScoreAdjusted = p.adaptive.minScoreAdjusted;
+      // Jeśli zapisana wartość pochodzi ze starego defaultu (62) — resetuj do nowego CFG
+      const savedScore = p.adaptive.minScoreAdjusted;
+      ADAPTIVE.minScoreAdjusted = (savedScore === null || savedScore === 62) ? null : savedScore;
       ADAPTIVE.lastTrainSize    = p.adaptive.lastTrainSize || 0;
     }
     if (p.ql)         QL.load(p.ql);
