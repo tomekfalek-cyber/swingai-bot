@@ -593,6 +593,8 @@ let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null
 function loadAll() {
   try { const s=localStorage.getItem('swingai_v3'); if(s) ST={...ST,...JSON.parse(s)}; } catch(e){}
   try { const c=localStorage.getItem('swingai_cfg_v3'); if(c) CFG={...CFG,...JSON.parse(c)}; } catch(e){}
+  // Migracja: stary domyslny interwal 30min → nowy 2min
+  if (!CFG.intervalMin || CFG.intervalMin >= 15) CFG.intervalMin = 2;
   const today = new Date().toDateString();
   if (ST.dailyDate !== today) { ST.dailyPnl=0; ST.dailyDate=today; }
 }
