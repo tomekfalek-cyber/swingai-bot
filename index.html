@@ -691,7 +691,8 @@ function kellySize(total) {
   const avgL = losses.length ? Math.abs(losses.reduce((a,t)=>a+t.pnlPct,0)/losses.length)/100 : CFG.sl;
   const b = avgW / avgL;
   let kelly = (b*p - (1-p)) / b;
-  kelly = Math.max(0.01, Math.min(0.05, kelly * 0.5));
+  if (kelly <= 0) return 0; // ujemna Kelly = system nieopłacalny, nie handluj
+  kelly = Math.min(0.05, kelly * 0.5);
   const kellySz = Math.max(10, Math.round(total * kelly * 100) / 100);
   // Nie przekraczaj limitu CFG.posSize — Kelly może skalować w górę ale respektujemy limit użytkownika
   return Math.min(fixedSize, kellySz);
@@ -806,7 +807,7 @@ async function bybFetchFill(sym, orderId, fallbackPrice, fallbackQuote) {
     const h = await bybSignedReq('GET', '/v5/order/history', {category:'spot', symbol:sym, orderId:orderId, limit:1});
     const o = (h.list||[])[0] || {};
     const price = +o.avgPrice || fallbackPrice;
-    const qty   = +o.cumExecQty || (fallbackQuote / price);
+    const qty   = +o.cumExecQty || (price > 0 ? fallbackQuote / price : 0);
     return {price:price, qty:qty};
   } catch(e) {
     // Fallback: oszacuj z ceny rynkowej
@@ -1360,6 +1361,15 @@ var WS = {
 // Kolejka wyjsc z WS (aby nie wywolywac async z onmessage)
 var wsExitQueue = [];
 setInterval(async function() {
+  // Ogranicz kolejkę do 50 wpisów — usuń stare duplikaty dla tej samej pozycji
+  if (wsExitQueue.length > 50) {
+    var seen = new Set();
+    wsExitQueue = wsExitQueue.filter(function(item) {
+      var key = item.pos.sym + item.reason;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+  }
   if (!wsExitQueue.length) return;
   var item = wsExitQueue.shift();
   // Sprawdz duplikaty
@@ -1427,7 +1437,7 @@ function corrBlocked(sym) {
   if (totalOpen >= 2) {
     var altGroups = ST.positions.map(function(p){ return corrGroupOf(p.sym); });
     var nonBtc = altGroups.filter(function(g){ return g > 0; }).length;
-    if (nonBtc >= 2 && group > 1) {
+    if (nonBtc >= 2 && group >= 1) {
       log('CORR: zbyt wiele skorelowanych altcoinow ('+nonBtc+') — blokuje '+sym,'warn');
       return true;
     }
@@ -1450,7 +1460,7 @@ function calcDynamicLevels(price, atrVal, fee) {
   if (tpDist / slDist < 1.5) tpDist = slDist * 1.8;
   return {
     tp:     price * (1 + tpDist/price + fee),
-    sl:     price * (1 - slDist/price + fee),
+    sl:     price * (1 - slDist/price - fee),
     trail:  Math.max(CFG.trail, 1.2 * atr14 / price),
     rr:     +(tpDist / slDist).toFixed(2),
     atrPct: +(atr14/price*100).toFixed(2)
@@ -1560,7 +1570,7 @@ async function openTrade(sig, fg, btcDrop) {
   try {
     const res = await execBuy(sig.sym, posSize);
     // Guard: odrzuć zlecenie jeśli qty=0 lub NaN (np. Bybit nie zwrócił fill)
-    if (!res || !res.qty || res.qty <= 0 || isNaN(res.qty)) {
+    if (!res || !res.qty || res.qty <= 0 || isNaN(res.qty) || !isFinite(res.qty)) {
       log('BUY '+sig.sym+' — qty=0 lub blad fill, pozycja NIE otwarta','err'); return;
     }
     const execP = res.price || sig.price;
@@ -2546,7 +2556,7 @@ var ADAPTIVE = {
     if (wr < 0.4 && this.minScoreAdjusted !== null) {
       this.minScoreAdjusted = Math.min(85, (this.minScoreAdjusted||CFG.minScore) + 3);
       log('Adaptive: win rate '+Math.round(wr*100)+'% — zaostrzam min score do '+this.minScoreAdjusted,'warn');
-    } else if (wr > 0.65 && recent.length >= 10) {
+    } else if (wr > 0.65 && recent.length >= 10 && this.minScoreAdjusted !== null) {
       this.minScoreAdjusted = Math.max(63, (this.minScoreAdjusted||CFG.minScore) - 2);
       log('Adaptive: win rate '+Math.round(wr*100)+'% — luzuje min score do '+this.minScoreAdjusted,'ok');
     } else if (this.minScoreAdjusted === null) {
@@ -2979,7 +2989,7 @@ async function trainAllAI() {
       var futureRet = (closes[i+10]/closes[i])-1;
       var label = futureRet >= targetPct ? 1 : 0;
       var nbF  = NB.discretize({ rsiD:ind.rsiD, macdHist:ind.macdHist, bbPos:ind.bbPos, trendD:ind.trendD, mom5:ind.mom5, confirm1h:ind.macdHist>0 });
-      var gbmF = [ ind.rsiD/100, ind.macdHist>0?1:0, ind.bbPos, (ind.trendD+1)/3, ind.mom5/20, ind.mom10/20, ind.macdHist>0?1:0, 1 ];
+      var gbmF = [ ind.rsiD/100, ind.macdHist>0?1:0, ind.bbPos, (ind.trendD+1)/3, ind.mom5/20, ind.mom10/20, ind.macdHist>0?1:0, 1, 0.5 ];
       synTrades.push({ nbFeatures:nbF, gbmFeatures:gbmF, pnl:label>0?1:-1 });
       X_gbm.push(gbmF); y_gbm.push(label);
     }
