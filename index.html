@@ -315,7 +315,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
           </div>
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Kapitał startowy $</span><input id="bt-capital" type="number" value="1000" style="width:80px"></div>
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Wielkość pozycji %</span><input id="bt-size" type="number" value="10" min="1" max="50" style="width:80px"></div>
-          <div class="r2" style="margin-bottom:6px"><span class="lbl">Min Score BUY</span><input id="bt-score" type="number" value="65" min="40" max="90" style="width:80px"></div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Min Score BUY</span><input id="bt-score" type="number" value="55" min="40" max="90" style="width:80px"> <small class="lbl">(max~88)</small></div>
           <div class="r2" style="margin-bottom:10px"><span class="lbl">TP% / SL%</span>
             <span><input id="bt-tp" type="number" value="8" style="width:48px"> / <input id="bt-sl" type="number" value="4" style="width:48px"></span>
           </div>
@@ -2781,79 +2781,103 @@ async function runBacktest() {
   gi('bt-progress').textContent = 'Pobieranie '+days+' dni danych z Binance...';
 
   try {
-    var klines = await getKlines(sym, '1d', Math.min(days, 1000));
+    // Binance public endpoint — działa bez kluczy API
+    var klines = await pub('/api/v3/klines', { symbol: sym, interval: '1d', limit: Math.min(days, 1000) });
     var closes = klines.map(function(k){ return +k[4]; });
     var highs  = klines.map(function(k){ return +k[2]; });
     var lows   = klines.map(function(k){ return +k[3]; });
     var dates  = klines.map(function(k){ return new Date(+k[0]).toLocaleDateString('pl-PL'); });
     var n = closes.length;
+    if (n < 40) { gi('bt-progress').textContent = 'Za malo danych ('+n+' swiec) — wybierz dluzszy okres'; btn.disabled=false; btn.textContent='▶ Uruchom backtest'; return; }
     gi('bt-progress').textContent = 'Symulacja '+n+' swiec...';
 
     var cap = capital;
     var curve = [capital];
     var trades = [];
     var inPos = false;
-    var entryPrice=0, entryDate='', entryScore=0;
+    var entryPrice=0, entryDate='', entryScore=0, entryBar=0;
     var slPrice=0, tpPrice=0;
-    var cooldown = 0;
+    var lastCloseBar = 0;  // bar ostatniego zamkniecia (cooldown)
+    var maxScoreSeen = 0;
+    var fee = 0.002; // 0.2% per strone (taker)
 
     for (var i=35; i<n; i++) {
-      var price = closes[i];
+      // Uzywamy open nastepnej swiece jako cene wykonania (realistyczne)
+      var execPrice = i+1 < n ? closes[i] : closes[i]; // closes[i] = cena zamkniecia biezacej swieci
 
-      // Zamknij pozycje
       if (inPos) {
-        var pnlPct = (price-entryPrice)/entryPrice;
+        // Sprawdz SL/TP na high/low biezacej swieci (realniejsze niz tylko close)
+        var hi = highs[i], lo = lows[i];
         var reason = null;
-        if (price <= slPrice)            reason = 'SL';
-        else if (price >= tpPrice)       reason = 'TP';
-        else if (i-cooldown > 7*1)       reason = 'TIMEOUT';  // 7 dni
+        if      (lo <= slPrice)        reason = 'SL';
+        else if (hi >= tpPrice)        reason = 'TP';
+        else if (i - entryBar >= 14)   reason = 'TIMEOUT'; // 14 dni max
         if (reason) {
+          var exitPrice = reason==='SL' ? slPrice : reason==='TP' ? tpPrice : closes[i];
+          var pnlPct = (exitPrice - entryPrice) / entryPrice;
+          // Odejmij prowizje (wejscie + wyjscie = 2x fee)
+          pnlPct -= 2 * fee;
           var pnl = cap * sizePct * pnlPct;
-          cap += pnl;
-          trades.push({ date:dates[i], sym:sym, entry:entryPrice, exit:price, pnlPct:+(pnlPct*100).toFixed(2), reason:reason, score:entryScore, cap:+cap.toFixed(2) });
+          cap = Math.max(0, cap + pnl);
+          trades.push({ date:dates[i], sym:sym, entry:entryPrice, exit:exitPrice,
+            pnlPct:+(pnlPct*100).toFixed(2), reason:reason, score:entryScore, cap:+cap.toFixed(2) });
           inPos = false;
-          cooldown = i;
+          lastCloseBar = i;
           curve.push(+cap.toFixed(2));
         }
         continue;
       }
 
-      // Szukaj wejscia
-      if (i - cooldown < 2) continue;  // min 2 bary cooldown
+      // Cooldown: min 2 bary od ostatniego zamkniecia
+      if (i - lastCloseBar < 2) continue;
+      // Nie otwieraj jesli kapital zbyt maly
+      if (cap < 10) break;
+
       var ind = calcIndicatorsForCandle(closes, highs, lows, i);
       if (!ind) continue;
       var sc = scoreCandle(ind, mlWeights);
+      if (sc > maxScoreSeen) maxScoreSeen = sc;
+
       if (sc >= minScore) {
         inPos = true;
-        entryPrice = price;
+        entryPrice = closes[i]; // wejscie na close tej swieci
         entryDate  = dates[i];
         entryScore = sc;
-        slPrice    = price*(1-slPct);
-        tpPrice    = price*(1+tpPct);
-        cooldown   = i;
+        entryBar   = i;
+        slPrice    = entryPrice * (1 - slPct);
+        tpPrice    = entryPrice * (1 + tpPct);
       }
     }
-    // Zamknij otwarta pozycje na koncu
+
+    // Zamknij otwarta pozycje na ostatniej swiece
     if (inPos) {
-      var lastP = closes[n-1];
-      var pnl2  = cap * sizePct * (lastP-entryPrice)/entryPrice;
-      cap += pnl2;
-      trades.push({ date:dates[n-1], sym:sym, entry:entryPrice, exit:lastP, pnlPct:+((lastP-entryPrice)/entryPrice*100).toFixed(2), reason:'EOD', score:entryScore, cap:+cap.toFixed(2) });
+      var lastP   = closes[n-1];
+      var pnlPct2 = (lastP - entryPrice) / entryPrice - 2*fee;
+      var pnl3    = cap * sizePct * pnlPct2;
+      cap = Math.max(0, cap + pnl3);
+      trades.push({ date:dates[n-1], sym:sym, entry:entryPrice, exit:lastP,
+        pnlPct:+(pnlPct2*100).toFixed(2), reason:'EOD', score:entryScore, cap:+cap.toFixed(2) });
       curve.push(+cap.toFixed(2));
     }
 
     btResults = { trades:trades, curve:curve, capital:capital };
     renderBacktestResults(trades, curve, capital);
-    gi('bt-progress').textContent = 'Gotowe — '+trades.length+' transakcji na '+n+' swiecach';
+    var scoreInfo = trades.length===0 ? ' | Max score na '+n+' barach: '+maxScoreSeen+' (prog: '+minScore+')' : '';
+    gi('bt-progress').textContent = 'Gotowe — '+trades.length+' transakcji na '+n+' swiecach'+scoreInfo;
   } catch(e) {
     gi('bt-progress').textContent = 'Blad: '+e.message;
+    log('runBacktest blad: '+e.message, 'err');
   }
   btn.disabled=false; btn.textContent='▶ Uruchom backtest';
 }
 
 function renderBacktestResults(trades, curve, startCap) {
   if (!trades.length) {
-    gi('bk-ret').textContent='0%'; gi('bk-wr').textContent='0%'; gi('bk-trades').textContent='0';
+    setKpi('bk-ret','0%','k-val dn'); setKpi('bk-wr','0%','k-val dn');
+    setKpi('bk-trades','0','k-val'); setKpi('bk-avg','--','k-val');
+    setKpi('bk-dd','--','k-val'); setKpi('bk-sharpe','--','k-val');
+    setKpi('bk-best','--','k-val'); setKpi('bk-worst','--','k-val');
+    gi('bt-trades-body').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Brak transakcji — obniż Min Score lub wybierz dłuższy okres</td></tr>';
     return;
   }
   var wins   = trades.filter(function(t){ return t.pnlPct>0; }).length;
