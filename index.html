@@ -517,7 +517,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
   <div class="form-row"><label>Trailing Stop %</label><input id="cfg-trail" type="number" value="4.5" step="0.5" min="1" max="10"></div>
   <div class="form-row"><label>Max pozycje</label><input id="cfg-maxpos" type="number" value="3" min="1" max="5"></div>
   <div class="form-row"><label>Rozmiar pozycji $</label><input id="cfg-size" type="number" value="15" min="10" max="10000"></div>
-  <div class="form-row"><label>Skan co (minuty)</label><input id="cfg-interval" type="number" value="15" min="5" max="120"></div>
+  <div class="form-row"><label>Skan co (minuty)</label><input id="cfg-interval" type="number" value="2" min="1" max="120"></div>
   <div class="form-row"><label>Paper saldo startowe $</label><input id="cfg-paper-bal" type="number" value="1000" min="100"></div>
   <div class="form-row"><label>Min Score BUY (0-100)</label><input id="cfg-minscore" type="number" value="62" min="40" max="90"></div>
   <div class="form-row"><label>Kelly — ryzyko max %</label><input id="cfg-risk" type="number" value="2" min="0.5" max="5" step="0.5"> <small class="lbl">% kapitału per trade (Kelly kalibruje automatycznie)</small></div>
@@ -574,7 +574,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
 let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.08, sl:0.04, trail:0.045, maxPos:3, riskPct:2,
-  intervalMin:30, paperBal:1000, minScore:65, fgMin:25,
+  intervalMin:2, paperBal:1000, minScore:65, fgMin:25,
   exchange:'binance', bybApiKey:'', bybSecret:'', bybWorker:''
 };
 const PAIRS = ['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
