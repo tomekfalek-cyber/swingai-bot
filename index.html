@@ -1335,7 +1335,8 @@ var WS = {
   // Sprawdz trailing stop na zywej cenie (wywolywane z onmessage)
   checkTrail: function(pos, cp) {
     var pnlPct = (cp - pos.entry) / pos.entry * 100;
-    var trail  = pos.highP * (1 - CFG.trail);
+    var trailDist = pos.trailDist || CFG.trail;
+    var trail  = pos.highP * (1 - trailDist);
     if (cp <= pos.sl) {
       wsExitQueue.push({pos:pos, cp:cp, reason:'STOP LOSS (live)'});
     } else if (cp >= pos.tp) {
