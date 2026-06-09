@@ -1536,7 +1536,7 @@ async function closeTrade(pos, price, reason) {
     // nextSig = stan rynku w chwili zamkniecia (s') dla poprawnego Bellmana
     if (pos.qlSig) {
       var qlReward = Math.max(-1, Math.min(1, pnlPct/10));
-      var qlAction = pnl > 0 ? 'BUY' : 'HOLD';
+      var qlAction = 'BUY'; // akcja przy wejsciu zawsze BUY; nagroda/kara uczy czy wejsc warto bylo
       // Buduj nextSig z ceny zamkniecia (aproksymacja s') — pelny stan niedostepny, uzyj ceny jako proxy
       var nextSig = pos.qlSigClose || null; // zapisane w WS.checkTrail / checkPositions przy zamykaniu
       QL.update(pos.qlSig, qlAction, qlReward, nextSig);
@@ -1544,7 +1544,7 @@ async function closeTrade(pos, price, reason) {
     // Dynamic ensemble: zaktualizuj history predykcji modeli
     ENSEMBLE_W.record(pos, pnl > 0);
     // Adaptive learning — retrenuj co 5 zamknietych transakcji
-    if (ST.trades.length % 5 === 0) {
+    if (ST.trades.length > 0 && ST.trades.length % 5 === 0) {
       setTimeout(function(){ ADAPTIVE.retrain(); PAIR_PARAMS.optimizeAll(); }, 500);
     }
     if (ST.trades.length > 300) ST.trades = ST.trades.slice(0,300);
@@ -1860,7 +1860,7 @@ function renderPositions() {
   empty.style.display = 'none';
   cards.innerHTML = ST.positions.map(function(pos) {
     const cp=pos.cp||pos.entry, pnlPct=(cp-pos.entry)/pos.entry*100, pnl=(cp-pos.entry)*pos.qty;
-    const trail=(pos.highP*(1-CFG.trail)), ageH=((Date.now()-pos.entryTs)/3600000).toFixed(1);
+    const trail=(pos.highP*(1-(pos.trailDist||CFG.trail))), ageH=((Date.now()-pos.entryTs)/3600000).toFixed(1);
     const ageD=+ageH>24?Math.floor(+ageH/24)+'d '+Math.round(+ageH%24)+'h':ageH+'h';
     const distTP=((pos.tp-cp)/cp*100).toFixed(1), distSL=((cp-pos.sl)/cp*100).toFixed(1);
     const sc=pos.score||0, sc_c=sc>=70?'var(--green)':sc>=50?'var(--gold)':'var(--red)';
@@ -2462,7 +2462,7 @@ var NB = {
       var label = t.pnl > 0 ? 1 : 0;
       classCounts[label]++;
       t.nbFeatures.forEach(function(bin, f) {
-        counts[label][f+'_'+bin] = (counts[label][f+'_'+bin]||1) + 1;
+        counts[label][f+'_'+bin] = (counts[label][f+'_'+bin]||0) + 1;
       });
     });
     var total = classCounts[0] + classCounts[1];
@@ -2670,9 +2670,12 @@ var ADAPTIVE = {
     // Trenuj Naïve Bayes
     var nbOk = NB.train(trades);
 
-    // Przygotuj dataset dla GBM
-    var X = trades.map(function(t){ return t.gbmFeatures || t.nbFeatures || []; }).filter(function(x){ return x.length>0; });
-    var y = trades.map(function(t){ return t.pnl>0?1:0; });
+    // Przygotuj dataset dla GBM — X i y muszą mieć tę samą długość po filtrowaniu
+    var gbmPairs = trades
+      .map(function(t){ return { x: t.gbmFeatures || t.nbFeatures || [], y: t.pnl>0?1:0 }; })
+      .filter(function(p){ return p.x.length > 0; });
+    var X = gbmPairs.map(function(p){ return p.x; });
+    var y = gbmPairs.map(function(p){ return p.y; });
     if (X.length >= 20) GBM.train(X, y);
 
     // Dostosuj minScore na podstawie win rate ostatnich 20 transakcji
@@ -3026,7 +3029,9 @@ function trainDecisionWeights(X, y) {
   var Xtest = X.slice(splitIdx), ytest = y.slice(splitIdx);
   var correct = 0;
   Xtest.forEach(function(x,i) {
-    var ind2 = { rsiD:x[0], macdHist:x[1]>0?0.001:-0.001, macdLine:0, bbPos:x[2], trendD:Math.round(x[3]), mom5:x[4], mom10:x[5], atrVal:1 };
+    // atrVal ustawiony na 100 — przy typowych cenach krypto macdHist jest rzedu 0.001-0.01,
+    // wiec -atrVal*0.005 = -0.5 jest zawsze ponizej macdHist, co odpowiada linii "lekko ujemny macd"
+    var ind2 = { rsiD:x[0]*100, macdHist:x[1]>0?0.01:-0.01, macdLine:0, bbPos:x[2], trendD:Math.round(x[3]*3)-1, mom5:x[4]*20, mom10:x[5]*20, atrVal:0.001 };
     var sc2 = scoreCandle(ind2, weights);
     var pred = sc2 >= 62 ? 1 : 0;
     if (pred===ytest[i]) correct++;
@@ -3327,7 +3332,7 @@ var CHART = {
 
     // ── Legenda ──────────────────────────────────────────────────────
     var last = klines[n-1];
-    var chg  = ((last.c - klines[0].o)/klines[0].o*100).toFixed(2);
+    var chg  = klines[0].o > 0 ? ((last.c - klines[0].o)/klines[0].o*100).toFixed(2) : '0.00';
     var legend = gi('chart-legend');
     if (legend) {
       legend.innerHTML =
