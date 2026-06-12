@@ -598,7 +598,16 @@ function loadAll() {
   const today = new Date().toDateString();
   if (ST.dailyDate !== today) { ST.dailyPnl=0; ST.dailyDate=today; }
 }
-function saveAll() { try { localStorage.setItem('swingai_v3', JSON.stringify(ST)); } catch(e){} }
+function saveAll() {
+  try {
+    var serialized = JSON.stringify(ST);
+    if (serialized.length > 4500000) {
+      ST.trades = ST.trades.slice(0, Math.max(50, Math.floor(ST.trades.length / 2)));
+      serialized = JSON.stringify(ST);
+    }
+    localStorage.setItem('swingai_v3', serialized);
+  } catch(e) {}
+}
 function saveCfg() { try { localStorage.setItem('swingai_cfg_v3', JSON.stringify(CFG)); } catch(e){} }
 
 // ── PERSISTENCJA MODELI AI ─────────────────────────────────────────
@@ -606,7 +615,7 @@ function saveModels() {
   try {
     var payload = {
       nb: { model:NB.model, trained:NB.trained, trainCount:NB.trainCount },
-      gbm: { trees:GBM.trees, trained:GBM.trained, accuracy:GBM.accuracy, accuracyOOS:GBM.accuracyOOS },
+      gbm: { trees:GBM.trees.map(function(t){ return {fi:t.fi,thresh:t.thresh,lVal:t.lVal,rVal:t.rVal}; }), trained:GBM.trained, accuracy:GBM.accuracy, accuracyOOS:GBM.accuracyOOS },
       adaptive: { minScoreAdjusted:ADAPTIVE.minScoreAdjusted, lastTrainSize:ADAPTIVE.lastTrainSize },
       ql: QL.save(),
       ensembleW: ENSEMBLE_W.save(),
@@ -660,7 +669,8 @@ function loadModels() {
 
 // ── TELEGRAM ───────────────────────────────────────────────────────
 async function tgSend(msg) {
-  if (!CFG.tgToken || !CFG.tgChat) return;
+  if (!CFG.tgToken || !CFG.tgChat || !msg) return;
+  msg = msg.substring(0, 4000);
   try {
     await fetch('https://api.telegram.org/bot'+CFG.tgToken+'/sendMessage', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -676,7 +686,10 @@ async function getFearGreed() {
   try {
     const r = await fetch('https://api.alternative.me/fng/?limit=1');
     const d = await r.json();
-    fgCache = {val:+d.data[0].value, label:d.data[0].value_classification, ts:Date.now()};
+    if (!d.data || !d.data[0]) return fgCache;
+    const val = +d.data[0].value;
+    if (!isFinite(val)) return fgCache;
+    fgCache = {val:val, label:d.data[0].value_classification||'Neutral', ts:Date.now()};
   } catch(e) {}
   return fgCache;
 }
@@ -736,6 +749,7 @@ function bybWorkerReady() { return !!(CFG.bybWorker && CFG.bybWorker.startsWith(
 
 async function bybSignedReq(method, path, params={}) {
   if (!bybWorkerReady()) throw new Error('Brak Bybit Worker URL');
+  if (!CFG.bybApiKey) throw new Error('Brak Bybit API Key');
   const ts = Date.now().toString();
   const recv = '5000';
   const qs = new URLSearchParams(params).toString();
@@ -793,8 +807,8 @@ async function bybGetTicker(sym) {
 async function bybGetOrderbook(sym) {
   try {
     const d = await bybPub('/v5/market/orderbook', {category:'spot', symbol:sym, limit:20});
-    var bidVol = (d.b||[]).reduce(function(s,b){ return s + (parseFloat(b[0])||0)*(parseFloat(b[1])||0); }, 0);
-    var askVol = (d.a||[]).reduce(function(s,a){ return s + (parseFloat(a[0])||0)*(parseFloat(a[1])||0); }, 0);
+    var bidVol = (d.b||[]).reduce(function(s,b){ var v=(parseFloat(b[0])||0)*(parseFloat(b[1])||0); return s+(isFinite(v)?v:0); }, 0);
+    var askVol = (d.a||[]).reduce(function(s,a){ var v=(parseFloat(a[0])||0)*(parseFloat(a[1])||0); return s+(isFinite(v)?v:0); }, 0);
     var total  = bidVol + askVol;
     return { ratio: total > 0 ? +(bidVol/total).toFixed(3) : 0.5, bidVol:bidVol, askVol:askVol, spread:0, ts:Date.now() };
   } catch(e) { return { ratio:0.5, bidVol:0, askVol:0, spread:0, ts:Date.now() }; }
@@ -1923,10 +1937,14 @@ function renderPositions() {
   if (!ST.positions.length) { empty.style.display=''; cards.innerHTML=''; return; }
   empty.style.display = 'none';
   cards.innerHTML = ST.positions.map(function(pos) {
-    const cp=pos.cp||pos.entry, pnlPct=(cp-pos.entry)/pos.entry*100, pnl=(cp-pos.entry)*pos.qty;
+    const cp=pos.cp||pos.entry||0;
+    const safeEntry = pos.entry||1;
+    const pnlPct = isFinite(cp) && safeEntry > 0 ? (cp-safeEntry)/safeEntry*100 : 0;
+    const pnl = isFinite(cp) ? (cp-safeEntry)*(pos.qty||0) : 0;
     const trail=(pos.highP*(1-(pos.trailDist||CFG.trail))), ageH=((Date.now()-pos.entryTs)/3600000).toFixed(1);
     const ageD=+ageH>24?Math.floor(+ageH/24)+'d '+Math.round(+ageH%24)+'h':ageH+'h';
-    const distTP=((pos.tp-cp)/cp*100).toFixed(1), distSL=((cp-pos.sl)/cp*100).toFixed(1);
+    const distTP = (isFinite(cp) && cp > 0) ? ((pos.tp-cp)/cp*100).toFixed(1) : '--';
+    const distSL = (isFinite(cp) && cp > 0) ? ((cp-pos.sl)/cp*100).toFixed(1) : '--';
     const sc=pos.score||0, sc_c=sc>=70?'var(--green)':sc>=50?'var(--gold)':'var(--red)';
     return '<div class="pos-card '+(pnlPct>=0?'profit':'loss')+'">'
       +'<div class="pos-hdr">'
@@ -2038,6 +2056,7 @@ function drawEquity() {
 }
 
 function renderMarketTab(sigs) {
+  if (!sigs || !sigs.length) return;
   const btc=sigs.find(function(s){ return s.sym==='BTCUSDC'; }); if(!btc) return;
   gi('mkt-btc-trend').innerHTML = btc.trendD===2?'<span class="up">Bull mocny</span>':btc.trendD===1?'<span class="up">Bull</span>':btc.trendD===0?'<span class="gold">Boczny</span>':'<span class="dn">Bear</span>';
   gi('mkt-btc-rsi').innerHTML = btc.rsiD<=32?'<span class="up">'+btc.rsiD+' (oversold)</span>':btc.rsiD>=68?'<span class="dn">'+btc.rsiD+' (overbought)</span>':'<span class="neu">'+btc.rsiD+'</span>';
@@ -2214,8 +2233,8 @@ var OBI = {
       } else {
         // Binance orderbook
         var d = await pub('/api/v3/depth', {symbol:sym, limit:20});
-        var bidVol = d.bids.reduce(function(s,b){ return s + parseFloat(b[1])*parseFloat(b[0]); }, 0);
-        var askVol = d.asks.reduce(function(s,a){ return s + parseFloat(a[1])*parseFloat(a[0]); }, 0);
+        var bidVol = (d.bids||[]).reduce(function(s,b){ var v=(parseFloat(b[0])||0)*(parseFloat(b[1])||0); return s+(isFinite(v)?v:0); }, 0);
+        var askVol = (d.asks||[]).reduce(function(s,a){ var v=(parseFloat(a[0])||0)*(parseFloat(a[1])||0); return s+(isFinite(v)?v:0); }, 0);
         var total  = bidVol + askVol;
         var ratio  = total > 0 ? bidVol / total : 0.5;
         var spread = d.asks[0] && d.bids[0]
@@ -2751,10 +2770,10 @@ var ADAPTIVE = {
     var recent = ST.trades.slice(0,20);
     var wr = recent.filter(function(t){ return t.pnl>0; }).length / Math.max(recent.length,1);
     if (wr < 0.4 && this.minScoreAdjusted !== null) {
-      this.minScoreAdjusted = Math.min(85, (this.minScoreAdjusted||CFG.minScore) + 3);
+      this.minScoreAdjusted = Math.min(88, (this.minScoreAdjusted||CFG.minScore) + 3);
       log('Adaptive: win rate '+Math.round(wr*100)+'% — zaostrzam min score do '+this.minScoreAdjusted,'warn');
     } else if (wr > 0.65 && recent.length >= 10 && this.minScoreAdjusted !== null) {
-      this.minScoreAdjusted = Math.max(63, (this.minScoreAdjusted||CFG.minScore) - 2);
+      this.minScoreAdjusted = Math.max(50, (this.minScoreAdjusted||CFG.minScore) - 2);
       log('Adaptive: win rate '+Math.round(wr*100)+'% — luzuje min score do '+this.minScoreAdjusted,'ok');
     } else if (this.minScoreAdjusted === null) {
       this.minScoreAdjusted = CFG.minScore;
@@ -2892,8 +2911,10 @@ async function runBacktest() {
         else if (i - entryBar >= 7)          reason = 'TIMEOUT'; // 7 dni — zgodnie z live botem
         if (reason) {
           var exitPrice = reason==='SL' ? slPrice : reason==='TP' ? tpPrice : closes[checkBar];
-          var pnlPct = (exitPrice - entryPrice) / entryPrice;
-          pnlPct -= 2 * fee;
+          if (!entryPrice || entryPrice <= 0) { inPos=false; continue; }
+          var entryWithFee = entryPrice * (1 + fee);
+          var exitWithFee  = exitPrice  * (1 - fee);
+          var pnlPct = (exitWithFee - entryWithFee) / entryWithFee;
           var pnl = cap * sizePct * pnlPct;
           cap = Math.max(0, cap + pnl);
           trades.push({ date:dates[checkBar], sym:sym, entry:entryPrice, exit:exitPrice,
@@ -2930,7 +2951,7 @@ async function runBacktest() {
     // Zamknij otwarta pozycje na ostatniej swiece
     if (inPos) {
       var lastP   = closes[n-1];
-      var pnlPct2 = (lastP - entryPrice) / entryPrice - 2*fee;
+      var pnlPct2 = entryPrice > 0 ? (lastP*(1-fee) - entryPrice*(1+fee)) / (entryPrice*(1+fee)) : 0;
       var pnl3    = cap * sizePct * pnlPct2;
       cap = Math.max(0, cap + pnl3);
       trades.push({ date:dates[n-1], sym:sym, entry:entryPrice, exit:lastP,
