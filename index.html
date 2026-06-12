@@ -588,7 +588,7 @@ let ST = {
   positions:[], trades:[], dailyPnl:0, dailyDate:'',
   cooldown:{}, globalBlockUntil:0, consLoss:0, paperBal:1000, iter:0
 };
-let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null, cycleRunning=false, countdownTimer=null, cycleTimeoutTimer=null;
+let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null, cycleRunning=false, countdownTimer=null, cycleTimeoutTimer=null, wsExitQueueTimer=null;
 
 function loadAll() {
   try { const s=localStorage.getItem('swingai_v3'); if(s) ST={...ST,...JSON.parse(s)}; } catch(e){}
@@ -684,21 +684,24 @@ async function getFearGreed() {
 // ── KELLY CRITERION ────────────────────────────────────────────────
 function kellySize(total) {
   const fixedSize = CFG.posSize || 15; // rozmiar z konfiguracji (pole "Rozmiar pozycji $")
+  const safeTotal = (isFinite(total) && total > 0) ? total : 100;
   const trades = ST.trades.slice(-30);
   if (trades.length < 5) {
     // Brak historii — zwróć mniejszy z: rozmiar z cfg lub % kapitału
-    return Math.min(fixedSize, Math.max(10, total * (CFG.riskPct/100)));
+    return Math.min(fixedSize, Math.max(10, safeTotal * (CFG.riskPct/100)));
   }
   const wins   = trades.filter(t => t.pnl > 0);
   const losses = trades.filter(t => t.pnl <= 0);
   const p    = wins.length / trades.length;
   const avgW = wins.length   ? wins.reduce((a,t)=>a+t.pnlPct,0)/wins.length/100   : CFG.tp;
   const avgL = losses.length ? Math.abs(losses.reduce((a,t)=>a+t.pnlPct,0)/losses.length)/100 : CFG.sl;
-  const b = avgW / avgL;
+  const safeAvgL = avgL > 0 ? avgL : (CFG.sl || 0.04);
+  const b = avgW / safeAvgL;
+  if (!isFinite(b) || b <= 0) return Math.min(fixedSize, Math.max(10, total * (CFG.riskPct/100)));
   let kelly = (b*p - (1-p)) / b;
   if (kelly <= 0) return 0; // ujemna Kelly = system nieopłacalny, nie handluj
   kelly = Math.min(0.05, kelly * 0.5);
-  const kellySz = Math.max(10, Math.round(total * kelly * 100) / 100);
+  const kellySz = Math.max(10, Math.round(safeTotal * kelly * 100) / 100);
   // Nie przekraczaj limitu CFG.posSize — Kelly może skalować w górę ale respektujemy limit użytkownika
   return Math.min(fixedSize, kellySz);
 }
@@ -824,6 +827,7 @@ async function bybFetchFill(sym, orderId, fallbackPrice, fallbackQuote) {
 async function bybExecBuy(sym, quoteQty) {
   if (CFG.mode === 'paper') {
     const t = await bybGetTicker(sym); const p = +t.lastPrice;
+    if (!p || p <= 0) throw new Error('bybExecBuy: niepoprawna cena '+sym);
     ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
   }
   // Pobierz aktualną cenę jako fallback przed zleceniem
@@ -887,6 +891,7 @@ async function getUSDC() {
 async function execBuy(sym, quoteQty) {
   if (CFG.mode === 'paper') {
     const t = await getTicker(sym); const p = +t.lastPrice;
+    if (!p || p <= 0) throw new Error('execBuy: niepoprawna cena '+sym);
     ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
   }
   if (CFG.exchange === 'bybit') return bybExecBuy(sym, quoteQty);
@@ -914,11 +919,12 @@ async function getTotal() {
 
 // ── INDICATORS ─────────────────────────────────────────────────────
 function emaArr(a,p) {
+  if (!a || !a.length) return [0];
   const k=2/(p+1), o=[a[0]];
   for (let i=1; i<a.length; i++) o.push(a[i]*k+o[i-1]*(1-k));
   return o;
 }
-function ema(a,p) { return emaArr(a,p).at(-1); }
+function ema(a,p) { const arr=emaArr(a,p); return arr.length ? arr.at(-1) : 0; }
 function rsi(c, p) {
   p = p || 14;
   if (c.length < p + 1) return 50;
@@ -934,7 +940,10 @@ function rsi(c, p) {
     if (d > 0) { avgG = (avgG * (p-1) + d) / p; avgL = avgL * (p-1) / p; }
     else        { avgG = avgG * (p-1) / p;       avgL = (avgL * (p-1) - d) / p; }
   }
-  return avgL === 0 ? (avgG > 0 ? 100 : 50) : 100 - 100 / (1 + avgG / avgL);
+  if (avgL === 0) return avgG > 0 ? 100 : 50;
+  const ratio = avgG / avgL;
+  if (!isFinite(ratio)) return 50;
+  return 100 - 100 / (1 + ratio);
 }
 function macd(c) {
   if (c.length < 35) return {line:0, signal:0, hist:0};
@@ -942,7 +951,8 @@ function macd(c) {
   return {line:ml[n], signal:sl[n], hist:ml[n]-sl[n]};
 }
 function bband(c,p=20) {
-  if (c.length < p) { const v=c.at(-1); return {upper:v*1.02, mid:v, lower:v*.98, pos:.5}; }
+  if (!c || !c.length) return {upper:0, mid:0, lower:0, pos:.5};
+  if (c.length < p) { const v=c.at(-1)||0; return {upper:v*1.02, mid:v, lower:v*.98, pos:.5}; }
   const sl=c.slice(-p), m=sl.reduce((a,b)=>a+b,0)/p;
   const std=Math.sqrt(sl.reduce((a,b)=>a+(b-m)**2,0)/p);
   const up=m+2*std, lo=m-2*std;
@@ -967,7 +977,7 @@ function rsiDivergence(closes, rsiArr, lookback) {
   // Znajdź dwa ostatnie lokalne minima ceny (dołki)
   var priceLows = [];
   var priceHighs = [];
-  for (var i = n - lookback; i < n - 1; i++) {
+  for (var i = Math.max(1, n - lookback); i < n - 1; i++) {
     if (closes[i] < closes[i-1] && closes[i] < closes[i+1]) {
       priceLows.push({ i: i, v: closes[i], r: rsiArr[i] });
     }
@@ -1124,11 +1134,11 @@ async function analyzeSwing(sym) {
   if (NB.trained && GBM.trained) {
     var wSum = ENSEMBLE_W.score + ENSEMBLE_W.nb + ENSEMBLE_W.gbm + ENSEMBLE_W.obi + ENSEMBLE_W.ql;
     if (wSum <= 0) wSum = 1; // zabezpieczenie przed dzieleniem przez 0
-    finalProb = (score/100 * ENSEMBLE_W.score
+    finalProb = Math.max(0, Math.min(1, (score/100 * ENSEMBLE_W.score
               + nbPred.prob * ENSEMBLE_W.nb
               + gbmProb     * ENSEMBLE_W.gbm
               + Math.max(0,Math.min(1,obiNorm)) * ENSEMBLE_W.obi
-              + (qlSugg&&qlSugg.action==='BUY'?1:0) * ENSEMBLE_W.ql) / wSum;
+              + (qlSugg&&qlSugg.action==='BUY'?1:0) * ENSEMBLE_W.ql) / wSum));
     aiMethod = 'Ensemble(Score+NB+GBM+OBI+QL)';
     if (nbPred.label==='SKIP' && gbmProb<0.4) why.push('AI odradza wejscie');
   } else if (NB.trained) {
@@ -1368,6 +1378,7 @@ var WS = {
 
   // Sprawdz trailing stop na zywej cenie (wywolywane z onmessage)
   checkTrail: function(pos, cp) {
+    if (!pos.entry || pos.entry <= 0) return;
     var pnlPct = (cp - pos.entry) / pos.entry * 100;
     var trailDist = pos.trailDist || CFG.trail;
     var trail  = pos.highP * (1 - trailDist);
@@ -1393,7 +1404,7 @@ var WS = {
 
 // Kolejka wyjsc z WS (aby nie wywolywac async z onmessage)
 var wsExitQueue = [];
-setInterval(async function() {
+wsExitQueueTimer = setInterval(async function() {
   // Ogranicz kolejkę do 50 wpisów — usuń stare duplikaty dla tej samej pozycji
   if (wsExitQueue.length > 50) {
     var seen = new Set();
@@ -1491,6 +1502,7 @@ function calcDynamicLevels(price, atrVal, fee) {
   if (!atr14 || atr14 <= 0) atr14 = price * CFG.sl;
   var tpDist = Math.max(price * CFG.tp,  2.5 * atr14);
   var slDist = Math.max(price * CFG.sl,  1.5 * atr14);
+  slDist = Math.max(slDist, price * 0.001); // min 0.1% aby uniknąć dzielenia przez 0
   // Upewnij sie ze R:R >= 1.5:1
   if (tpDist / slDist < 1.5) tpDist = slDist * 1.8;
   return {
@@ -1711,7 +1723,7 @@ async function botCycle() {
   var obiEl = gi('obi-panel');
   if (obiEl && sigs.length) {
     obiEl.innerHTML = sigs.map(function(s){
-      if (s.obiRatio===undefined) return '';
+      if (s.obiRatio===undefined || !isFinite(s.obiRatio)) return '';
       var c = s.obiRatio>=0.58?'up':s.obiRatio<=0.42?'dn':'neu';
       return '<span class="lbl">'+s.sym.replace('USDC','')+'</span> <span class="'+c+'">'+(s.obiRatio*100).toFixed(0)+'%</span> ';
     }).join('');
@@ -1759,20 +1771,24 @@ async function startBot() {
   WS.connect();
   // Retrenuj AI na historii z poprzednich sesji
   setTimeout(function(){ ADAPTIVE.retrain(); updateAIStatusPanel(); }, 800);
-  await botCycle();
-  gi('ai-dot').className = 'ai-dot';
-  if (!running) return;
-  botTimer = setInterval(async function() {
+  const scheduleNext = async function() {
+    if (!running) return;
     gi('ai-dot').className = 'ai-dot scan';
     await botCycle();
     gi('ai-dot').className = 'ai-dot';
-  }, CFG.intervalMin*60000);
+    if (running) botTimer = setTimeout(scheduleNext, CFG.intervalMin*60000);
+  };
+  await botCycle();
+  gi('ai-dot').className = 'ai-dot';
+  if (!running) return;
+  botTimer = setTimeout(scheduleNext, CFG.intervalMin*60000);
 }
 function stopBot() {
   running = false;
-  clearInterval(botTimer); botTimer=null; nextScanAt=0;
+  clearTimeout(botTimer); botTimer=null; nextScanAt=0;
   clearInterval(countdownTimer); countdownTimer=null;
   clearTimeout(cycleTimeoutTimer); cycleTimeoutTimer=null;
+  wsExitQueue = [];
   gi('btn-run').style.display  = '';
   gi('btn-stop').style.display = 'none';
   gi('btn-scan').style.display = 'none';
@@ -1784,10 +1800,17 @@ function stopBot() {
 }
 async function forceScan() {
   if (!running) return;
-  clearInterval(botTimer);
+  clearTimeout(botTimer); botTimer=null;
+  const scheduleNext = async function() {
+    if (!running) return;
+    gi('ai-dot').className = 'ai-dot scan';
+    await botCycle();
+    gi('ai-dot').className = 'ai-dot';
+    if (running) botTimer = setTimeout(scheduleNext, CFG.intervalMin*60000);
+  };
   await botCycle();
   if (!running) return;
-  botTimer = setInterval(async function(){ gi('ai-dot').className='ai-dot scan'; await botCycle(); gi('ai-dot').className='ai-dot'; }, CFG.intervalMin*60000);
+  botTimer = setTimeout(scheduleNext, CFG.intervalMin*60000);
 }
 
 // ── MANUAL CLOSE ───────────────────────────────────────────────────
@@ -1812,7 +1835,8 @@ function openAiSignalModal() {
   if (!lastSignalData) return;
   const sig = lastSignalData;
   gi('ai-modal-title').textContent = 'Ostatni sygnal — '+sig.sym.replace('USDC','')+'/USDC';
-  gi('ai-modal-body').innerHTML = '<div class="ai-explain-block"><div class="ai-section-title">Analiza sygnalu</div><p>'+aiExplainSignal(sig)+'</p><div style="margin-top:10px">'+buildGauge('RSI Daily',sig.rsiD,0,100,sig.rsiD<=35?'var(--green)':sig.rsiD>=65?'var(--red)':'var(--accent)')+buildGauge('RSI 4H',sig.rsi4h,0,100,sig.rsi4h<=35?'var(--green)':sig.rsi4h>=65?'var(--red)':'var(--accent)')+buildGauge('BB pos %',+(sig.bbPos*100).toFixed(0),0,100,sig.bbPos<0.3?'var(--green)':sig.bbPos>0.7?'var(--red)':'var(--accent)')+'</div><div style="margin-top:8px">'+sig.why.map(function(w){ return '<span class="ai-tag '+(w.includes('bessa')?'ai-tag-r':'ai-tag-g')+'">'+w+'</span>'; }).join('')+'</div></div>';
+  const whyTags = (sig.why||[]).map(function(w){ return '<span class="ai-tag '+(w.includes('bessa')?'ai-tag-r':'ai-tag-g')+'">'+w+'</span>'; }).join('');
+  gi('ai-modal-body').innerHTML = '<div class="ai-explain-block"><div class="ai-section-title">Analiza sygnalu</div><p>'+aiExplainSignal(sig)+'</p><div style="margin-top:10px">'+buildGauge('RSI Daily',sig.rsiD||0,0,100,(sig.rsiD||50)<=35?'var(--green)':(sig.rsiD||50)>=65?'var(--red)':'var(--accent)')+buildGauge('RSI 4H',sig.rsi4h||0,0,100,(sig.rsi4h||50)<=35?'var(--green)':(sig.rsi4h||50)>=65?'var(--red)':'var(--accent)')+buildGauge('BB pos %',+((sig.bbPos||0.5)*100).toFixed(0),0,100,(sig.bbPos||0.5)<0.3?'var(--green)':(sig.bbPos||0.5)>0.7?'var(--red)':'var(--accent)')+'</div><div style="margin-top:8px">'+whyTags+'</div></div>';
   gi('modal-ai').className = 'overlay open';
 }
 
@@ -1956,10 +1980,11 @@ function renderHistory() {
 function renderStats() {
   const t=ST.trades, wins=t.filter(function(x){ return x.pnl>0; }).length;
   const wr=t.length?(wins/t.length*100).toFixed(0):0;
-  const avg=t.length?(t.reduce(function(a,x){ return a+x.pnlPct; },0)/t.length).toFixed(2):0;
-  const tot=t.reduce(function(a,x){ return a+x.pnl; },0);
-  const best=t.length?Math.max.apply(null,t.map(function(x){ return x.pnlPct; })):0;
-  const worst=t.length?Math.min.apply(null,t.map(function(x){ return x.pnlPct; })):0;
+  const avg=t.length?(t.reduce(function(a,x){ return a+(x.pnlPct||0); },0)/t.length).toFixed(2):0;
+  const tot=t.reduce(function(a,x){ return a+(x.pnl||0); },0);
+  const pcts=t.map(function(x){ return x.pnlPct||0; });
+  const best=t.length?Math.max.apply(null,pcts):0;
+  const worst=t.length?Math.min.apply(null,pcts):0;
   const dur=t.length?(t.reduce(function(a,x){ return a+(+x.durH||0); },0)/t.length).toFixed(1):0;
   var mxW=0,mxL=0,curW=0,curL=0;
   t.forEach(function(x){ if(x.pnl>0){curW++;curL=0;mxW=Math.max(mxW,curW);}else{curL++;curW=0;mxL=Math.max(mxL,curL);}});
@@ -1967,12 +1992,14 @@ function renderStats() {
   setKpi('sk-wr',wr+'%','val '+(+wr>=50?'up':'dn'));
   setKpi('sk-avg',(+avg>=0?'+':'')+avg+'%','val '+(+avg>=0?'up':'dn'));
   setKpi('sk-pnl',(tot>=0?'+':'')+'$'+tot.toFixed(2),'val '+(tot>=0?'up':'dn'));
-  setKpi('sk-best','+'+best.toFixed(1)+'%','val up');
-  setKpi('sk-worst',worst.toFixed(1)+'%','val dn');
+  const bestSafe = isFinite(best) ? best : 0;
+  const worstSafe = isFinite(worst) ? worst : 0;
+  setKpi('sk-best',(bestSafe>=0?'+':'')+bestSafe.toFixed(1)+'%','val up');
+  setKpi('sk-worst',worstSafe.toFixed(1)+'%','val dn');
   setKpi('sk-streak',mxW+'W / '+mxL+'L','val');
   setKpi('sk-dur',dur+'h','val');
   const pairMap={};
-  t.forEach(function(x){ if(!pairMap[x.sym]) pairMap[x.sym]={t:0,w:0,p:0,pcts:[]}; pairMap[x.sym].t++; if(x.pnl>0) pairMap[x.sym].w++; pairMap[x.sym].p+=x.pnl; pairMap[x.sym].pcts.push(x.pnlPct); });
+  t.forEach(function(x){ if(!pairMap[x.sym]) pairMap[x.sym]={t:0,w:0,p:0,pcts:[]}; pairMap[x.sym].t++; if(x.pnl>0) pairMap[x.sym].w++; pairMap[x.sym].p+=(x.pnl||0); pairMap[x.sym].pcts.push(x.pnlPct||0); });
   gi('pair-body').innerHTML = Object.entries(pairMap).sort(function(a,b){ return b[1].p-a[1].p; }).map(function(e) {
     const sym=e[0],s=e[1], pw=s.t?(s.w/s.t*100).toFixed(0):0;
     const avgP=s.pcts.length?(s.pcts.reduce(function(a,b){ return a+b; },0)/s.pcts.length).toFixed(2):0;
