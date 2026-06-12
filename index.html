@@ -588,7 +588,7 @@ let ST = {
   positions:[], trades:[], dailyPnl:0, dailyDate:'',
   cooldown:{}, globalBlockUntil:0, consLoss:0, paperBal:1000, iter:0
 };
-let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null;
+let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null, cycleRunning=false;
 
 function loadAll() {
   try { const s=localStorage.getItem('swingai_v3'); if(s) ST={...ST,...JSON.parse(s)}; } catch(e){}
@@ -919,12 +919,22 @@ function emaArr(a,p) {
   return o;
 }
 function ema(a,p) { return emaArr(a,p).at(-1); }
-function rsi(c,p=14) {
-  if (c.length < p+1) return 50;
-  let g=0, l=0;
-  for (let i=c.length-p; i<c.length; i++) { const d=c[i]-c[i-1]; d>0?g+=d:l-=d; }
-  const ag=g/p, al=l/p;
-  return al===0 ? (ag>0?100:50) : 100-100/(1+ag/al);
+function rsi(c, p) {
+  p = p || 14;
+  if (c.length < p + 1) return 50;
+  // Wilder's smoothing (zgodny z TradingView / Binance)
+  var avgG = 0, avgL = 0;
+  for (var i = 1; i <= p; i++) {
+    var d = c[i] - c[i-1];
+    if (d > 0) avgG += d; else avgL -= d;
+  }
+  avgG /= p; avgL /= p;
+  for (var i = p + 1; i < c.length; i++) {
+    var d = c[i] - c[i-1];
+    if (d > 0) { avgG = (avgG * (p-1) + d) / p; avgL = avgL * (p-1) / p; }
+    else        { avgG = avgG * (p-1) / p;       avgL = (avgL * (p-1) - d) / p; }
+  }
+  return avgL === 0 ? (avgG > 0 ? 100 : 50) : 100 - 100 / (1 + avgG / avgL);
 }
 function macd(c) {
   if (c.length < 35) return {line:0, signal:0, hist:0};
@@ -1626,6 +1636,9 @@ async function openTrade(sig, fg, btcDrop) {
 // ── MAIN CYCLE ─────────────────────────────────────────────────────
 async function botCycle() {
   if (!running) return;
+  if (cycleRunning) { log('Poprzedni cykl jeszcze trwa — pomijam', 'warn'); return; }
+  cycleRunning = true;
+  try {
   ST.iter++;
   gi('rb-iter').textContent = ST.iter;
   setStatus('Skan #'+ST.iter+'...');
@@ -1691,6 +1704,11 @@ async function botCycle() {
   const buys = sigs.filter(function(s){ return s.buy; }).length;
   setStatus('Skan #'+ST.iter+' — '+buys+' BUY | nastepny za '+CFG.intervalMin+'min');
   log('Skan #'+ST.iter+' — poz: '+ST.positions.length+'/'+CFG.maxPos+' | BUY: '+buys,'ok');
+  } catch(e) {
+    log('botCycle blad: '+e.message, 'err');
+  } finally {
+    cycleRunning = false;
+  }
 }
 
 setInterval(function() {
@@ -2388,7 +2406,8 @@ var QL = {
     this.Q[key][action] = oldVal + this.alpha * (reward + this.gamma * maxNext - oldVal);
     this.updates++;
     this.trained = this.updates >= 10;
-    this.epsilon = Math.max(0.05, 0.10 - this.updates * 0.001);
+    // Wolniejszy decay: minimum 10% eksploracji osiągane dopiero po 200 update'ach
+    this.epsilon = Math.max(0.10, 0.30 - this.updates * 0.001);
   },
 
   // Czy Q sugeruje BUY dla danego sygnalu?
@@ -2719,7 +2738,17 @@ function updateAIStatusPanel() {
 
 // ── BACKTEST ENGINE ────────────────────────────────────────────────
 var btResults = null;
-var mlWeights = null; // przechowuje wagi z ML
+var mlWeights = null; // przechowuje wagi z ML (persist w localStorage)
+
+function saveMLWeights() {
+  try { if (mlWeights) localStorage.setItem('swingai_ml_weights', JSON.stringify(mlWeights)); } catch(e) {}
+}
+function loadMLWeights() {
+  try {
+    var w = localStorage.getItem('swingai_ml_weights');
+    if (w) { mlWeights = JSON.parse(w); log('Wagi ML zaladowane z pamieci: RSI='+mlWeights.rsi+' MACD='+mlWeights.macd, 'ok'); }
+  } catch(e) {}
+}
 
 function calcIndicatorsForCandle(closes, highs, lows, i) {
   // Wymaga min 35 świec wstecz
@@ -2783,8 +2812,8 @@ async function runBacktest() {
   gi('bt-progress').textContent = 'Pobieranie '+days+' dni danych z Binance...';
 
   try {
-    // Binance public endpoint — działa bez kluczy API
-    var klines = await pub('/api/v3/klines', { symbol: sym, interval: '1d', limit: Math.min(days, 1000) });
+    // Używa aktywnej giełdy (Binance lub Bybit) zgodnie z konfiguracją
+    var klines = await getKlines(sym, '1d', Math.min(days, 1000));
     var closes = klines.map(function(k){ return +k[4]; });
     var highs  = klines.map(function(k){ return +k[2]; });
     var lows   = klines.map(function(k){ return +k[3]; });
@@ -2804,24 +2833,22 @@ async function runBacktest() {
     var fee = 0.002; // 0.2% per strone (taker)
 
     for (var i=35; i<n; i++) {
-      // Uzywamy open nastepnej swiece jako cene wykonania (realistyczne)
-      var execPrice = i+1 < n ? closes[i] : closes[i]; // closes[i] = cena zamkniecia biezacej swieci
-
       if (inPos) {
-        // Sprawdz SL/TP na high/low biezacej swieci (realniejsze niz tylko close)
-        var hi = highs[i], lo = lows[i];
+        // Sprawdz SL/TP na high/low NASTEPNEJ swieci (wejscie na open[i], wyjscie na [i+1])
+        // Eliminuje look-ahead bias: sygnał na close[i], egzekucja od open[i+1]
+        var checkBar = Math.min(i, n-1);
+        var hi = highs[checkBar], lo = lows[checkBar];
         var reason = null;
-        if      (lo <= slPrice)        reason = 'SL';
-        else if (hi >= tpPrice)        reason = 'TP';
-        else if (i - entryBar >= 14)   reason = 'TIMEOUT'; // 14 dni max
+        if      (lo <= slPrice)              reason = 'SL';
+        else if (hi >= tpPrice)              reason = 'TP';
+        else if (i - entryBar >= 7)          reason = 'TIMEOUT'; // 7 dni — zgodnie z live botem
         if (reason) {
-          var exitPrice = reason==='SL' ? slPrice : reason==='TP' ? tpPrice : closes[i];
+          var exitPrice = reason==='SL' ? slPrice : reason==='TP' ? tpPrice : closes[checkBar];
           var pnlPct = (exitPrice - entryPrice) / entryPrice;
-          // Odejmij prowizje (wejscie + wyjscie = 2x fee)
           pnlPct -= 2 * fee;
           var pnl = cap * sizePct * pnlPct;
           cap = Math.max(0, cap + pnl);
-          trades.push({ date:dates[i], sym:sym, entry:entryPrice, exit:exitPrice,
+          trades.push({ date:dates[checkBar], sym:sym, entry:entryPrice, exit:exitPrice,
             pnlPct:+(pnlPct*100).toFixed(2), reason:reason, score:entryScore, cap:+cap.toFixed(2) });
           inPos = false;
           lastCloseBar = i;
@@ -2832,8 +2859,9 @@ async function runBacktest() {
 
       // Cooldown: min 2 bary od ostatniego zamkniecia
       if (i - lastCloseBar < 2) continue;
-      // Nie otwieraj jesli kapital zbyt maly
       if (cap < 10) break;
+      // Sygnał obliczamy na close[i], ale wejście dopiero na open[i+1] — brak look-ahead
+      if (i + 1 >= n) continue;
 
       var ind = calcIndicatorsForCandle(closes, highs, lows, i);
       if (!ind) continue;
@@ -2842,10 +2870,10 @@ async function runBacktest() {
 
       if (sc >= minScore) {
         inPos = true;
-        entryPrice = closes[i]; // wejscie na close tej swieci
-        entryDate  = dates[i];
+        entryPrice = closes[i+1] || closes[i]; // wejscie na open nastepnej swieci (aprox. close[i])
+        entryDate  = dates[i+1] || dates[i];
         entryScore = sc;
-        entryBar   = i;
+        entryBar   = i + 1;
         slPrice    = entryPrice * (1 - slPct);
         tpPrice    = entryPrice * (1 + tpPct);
       }
@@ -3051,13 +3079,21 @@ function trainDecisionWeights(X, y) {
   weights.mom   = Math.max(3, Math.round(weights.mom*scale));
 
   // Ocen na zbiorze testowym (ostatnie 20%)
+  // X = [rsiD, macdHist>0?1:0, bbPos, trendD, mom5, mom10] — bez skalowania
   var splitIdx = Math.floor(X.length*0.8);
   var Xtest = X.slice(splitIdx), ytest = y.slice(splitIdx);
   var correct = 0;
   Xtest.forEach(function(x,i) {
-    // atrVal ustawiony na 100 — przy typowych cenach krypto macdHist jest rzedu 0.001-0.01,
-    // wiec -atrVal*0.005 = -0.5 jest zawsze ponizej macdHist, co odpowiada linii "lekko ujemny macd"
-    var ind2 = { rsiD:x[0]*100, macdHist:x[1]>0?0.01:-0.01, macdLine:0, bbPos:x[2], trendD:Math.round(x[3]*3)-1, mom5:x[4]*20, mom10:x[5]*20, atrVal:0.001 };
+    var ind2 = {
+      rsiD:     x[0],                      // RSI już w zakresie 0-100
+      macdHist: x[1] > 0 ? 0.01 : -0.01,  // bin boolowski
+      macdLine: 0,
+      bbPos:    x[2],                      // już 0-1
+      trendD:   x[3],                      // już -1..2
+      mom5:     x[4],                      // już w %
+      mom10:    x[5],                      // już w %
+      atrVal:   0.001
+    };
     var sc2 = scoreCandle(ind2, weights);
     var pred = sc2 >= 62 ? 1 : 0;
     if (pred===ytest[i]) correct++;
@@ -3171,8 +3207,9 @@ async function trainAllAI() {
 function applyMLWeights() {
   if (!mlTrainedWeights) return;
   mlWeights = mlTrainedWeights;
-  log('Zastosowano wagi ML: RSI='+mlWeights.rsi+' MACD='+mlWeights.macd+' BB='+mlWeights.bb+' Trend='+mlWeights.trend, 'ok');
-  gi('ml-apply').textContent = 'Wagi aktywne w bocie';
+  saveMLWeights();
+  log('Zastosowano i zapisano wagi ML: RSI='+mlWeights.rsi+' MACD='+mlWeights.macd+' BB='+mlWeights.bb+' Trend='+mlWeights.trend, 'ok');
+  gi('ml-apply').textContent = 'Wagi aktywne w bocie ✓';
   gi('ml-apply').style.background='rgba(63,185,80,.15)';
   gi('ml-apply').style.color='var(--green)';
   gi('ml-apply').disabled=true;
@@ -3388,6 +3425,7 @@ function refreshChart() { if (CHART.sym) CHART.load(); }
 loadAll();
 // Załaduj modele AI z poprzedniej sesji (brak potrzeby ponownego treningu)
 var _modelsLoaded = loadModels();
+loadMLWeights();
 gi('lim-maxpos').textContent = CFG.maxPos;
 gi('lim-tp').textContent     = (CFG.tp*100)+'%';
 gi('lim-sl').textContent     = (CFG.sl*100)+'%';
@@ -3412,6 +3450,7 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
 
 
 
