@@ -718,7 +718,9 @@ function kellySize(total) {
   const b = avgW / safeAvgL;
   if (!isFinite(b) || b <= 0) return Math.min(fixedSize, Math.max(10, total * (CFG.riskPct/100)));
   let kelly = (b*p - (1-p)) / b;
-  if (kelly <= 0) return 0; // ujemna Kelly = system nieopłacalny, nie handluj
+  // Ujemna Kelly = system nieopłacalny wg historii, ale nie blokuj całkowicie —
+  // zwróć minimalny rozmiar (10$), żeby bot wciąż działał i zbierał dane do nauki
+  if (kelly <= 0) return Math.min(fixedSize, 10);
   kelly = Math.min(0.05, kelly * 0.5);
   const kellySz = Math.max(10, Math.round(safeTotal * kelly * 100) / 100);
   // Nie przekraczaj limitu CFG.posSize — Kelly może skalować w górę ale respektujemy limit użytkownika
@@ -867,10 +869,14 @@ async function bybExecSell(sym, qty) {
   }
   const tickerBefore = await bybGetTicker(sym).catch(function(){ return {lastPrice:'0'}; });
   const fallbackPrice = +tickerBefore.lastPrice;
+  // Bybit wymaga qty jako string z dokładnością do 6 miejsc, ale minimalna wartość notional to $1
+  // Zaokrągl w dół żeby uniknąć odrzucenia przez LOT_SIZE (Bybit używa basePrecision)
+  const safeQty = Math.floor(qty * 1e6) / 1e6;
+  if (safeQty <= 0) throw new Error('bybExecSell: qty=0 po zaokrągleniu ('+sym+')');
   const d = await bybSignedReq('POST', '/v5/order/create', {
-    category:'spot', symbol:sym, side:'Sell', orderType:'Market', qty:qty.toFixed(6)
+    category:'spot', symbol:sym, side:'Sell', orderType:'Market', qty:safeQty.toFixed(6)
   });
-  return bybFetchFill(sym, d.orderId, fallbackPrice, qty * fallbackPrice);
+  return bybFetchFill(sym, d.orderId, fallbackPrice, safeQty * fallbackPrice);
 }
 
 // ── BINANCE API ────────────────────────────────────────────────────
@@ -1037,8 +1043,14 @@ function rsi(c, p) {
 }
 function macd(c) {
   if (c.length < 35) return {line:0, signal:0, hist:0};
-  const e12=emaArr(c,12), e26=emaArr(c,26), ml=e12.map((v,i)=>v-e26[i]), sl=emaArr(ml,9), n=ml.length-1;
-  return {line:ml[n], signal:sl[n], hist:ml[n]-sl[n]};
+  const e12=emaArr(c,12), e26=emaArr(c,26);
+  // MACD-line obliczamy tylko od indeksu 26 (gdzie e26 ma już poprawny seed SMA)
+  // Wcześniejsze wartości (0..25) są niestabilne — pomijamy je w signal line
+  const ml = e12.map(function(v,i){ return i < 26 ? 0 : v - e26[i]; });
+  const sl = emaArr(ml.slice(26), 9); // signal na stabilnej części
+  const n  = ml.length - 1;
+  const sn = sl.length - 1;
+  return {line:ml[n], signal:sn>=0?sl[sn]:0, hist:ml[n]-(sn>=0?sl[sn]:0)};
 }
 function bband(c,p=20) {
   if (!c || !c.length) return {upper:0, mid:0, lower:0, pos:.5};
@@ -1092,13 +1104,26 @@ function rsiDivergence(closes, rsiArr, lookback) {
   return { bull: bull, bear: bear };
 }
 
-// ── RSI ARRAY (pełna tablica wartości RSI) ─────────────────────────
+// ── RSI ARRAY (pełna tablica wartości RSI) — O(n) streaming Wilder ──
 function rsiArray(closes, period) {
   period = period || 14;
-  var result = [];
-  for (var i = 0; i < closes.length; i++) {
-    if (i < period) { result.push(50); continue; }
-    result.push(rsi(closes.slice(0, i + 1), period));
+  var n = closes.length;
+  var result = new Array(n).fill(50);
+  if (n < period + 1) return result;
+  var avgG = 0, avgL = 0;
+  for (var i = 1; i <= period; i++) {
+    var d = closes[i] - closes[i-1];
+    if (d > 0) avgG += d; else avgL -= d;
+  }
+  avgG /= period; avgL /= period;
+  var rsVal = avgL === 0 ? (avgG > 0 ? 100 : 50) : 100 - 100/(1 + (avgG/avgL));
+  result[period] = isFinite(rsVal) ? rsVal : 50;
+  for (var j = period + 1; j < n; j++) {
+    var dj = closes[j] - closes[j-1];
+    if (dj > 0) { avgG = (avgG*(period-1)+dj)/period; avgL = avgL*(period-1)/period; }
+    else        { avgG = avgG*(period-1)/period;       avgL = (avgL*(period-1)-dj)/period; }
+    var rv = avgL === 0 ? (avgG > 0 ? 100 : 50) : 100 - 100/(1 + avgG/avgL);
+    result[j] = isFinite(rv) ? rv : 50;
   }
   return result;
 }
@@ -1469,6 +1494,8 @@ var WS = {
   // Sprawdz trailing stop na zywej cenie (wywolywane z onmessage)
   checkTrail: function(pos, cp) {
     if (!pos.entry || pos.entry <= 0) return;
+    // Dedup: nie dodawaj jeśli ta pozycja już jest w kolejce (tick może przyjść 10x/s)
+    if (wsExitQueue.some(function(item){ return item.pos === pos; })) return;
     var pnlPct = (cp - pos.entry) / pos.entry * 100;
     var trailDist = pos.trailDist || CFG.trail;
     var trail  = pos.highP * (1 - trailDist);
@@ -1595,9 +1622,11 @@ function calcDynamicLevels(price, atrVal, fee) {
   slDist = Math.max(slDist, price * 0.001); // min 0.1% aby uniknąć dzielenia przez 0
   // Upewnij sie ze R:R >= 1.5:1
   if (tpDist / slDist < 1.5) tpDist = slDist * 1.8;
+  // FEE dodajemy do dystansu (nie do ceny końcowej), żeby uniknąć podwójnego naliczenia
+  // tp = price + tpDist + fee*price; sl = price - slDist - fee*price
   return {
-    tp:     price * (1 + tpDist/price + fee),
-    sl:     price * (1 - slDist/price - fee),
+    tp:     price + tpDist + fee * price,
+    sl:     price - slDist - fee * price,
     trail:  Math.max(CFG.trail, 1.2 * atr14 / price),
     rr:     +(tpDist / slDist).toFixed(2),
     atrPct: +(atr14/price*100).toFixed(2)
@@ -1680,8 +1709,12 @@ async function closeTrade(pos, price, reason) {
     log(e2+' '+pos.sym+' P/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%) — '+reason, pnl>=0?'ok':'err');
     tgSend(e2+' <b>'+reason+' '+pos.sym.replace('USDC','/USDC')+'</b>\nP/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%)\nCzas: '+durH+'h');
   } catch(e) {
-    log('Zamkniecie '+pos.sym+': '+e.message, 'err');
-    saveAll(); // pozycja już usunięta z listy na początku closeTrade()
+    // KRYTYCZNE: execSell rzucił wyjątek — przywróć pozycję na listę, żeby nie stracić aktywu
+    // Bot spróbuje zamknąć ponownie przy następnym cyklu checkPositions
+    log('Zamkniecie '+pos.sym+' NIEUDANE ('+e.message+') — pozycja przywrocona, sprobuje ponownie','err');
+    ST.positions.push(pos); // przywróć pozycję
+    saveAll();
+    tgSend('⚠️ BLAD ZAMKNIECIA '+pos.sym+'\n'+e.message+'\nPozycja przywrocona — sprawdz recznie!');
   }
 }
 
@@ -2307,7 +2340,7 @@ async function testConn() {
 }
 function resetAll() {
   if (!confirm('Usunac wszystkie pozycje i historie?')) return;
-  ST.trades=[]; ST.positions=[]; ST.dailyPnl=0; ST.consLoss=0; ST.globalBlockUntil=0; ST.cooldown={}; ST.paperBal=CFG.paperBal;
+  ST.trades=[]; ST.positions=[]; ST.dailyPnl=0; ST.consLoss=0; ST.globalBlockUntil=0; ST.cooldown={}; ST.paperBal=CFG.paperBal; ST.dailyStartBalance=0;
   saveAll(); renderPositions(); renderHistory(); renderStats();
   gi('cfg-status').textContent='Reset'; log('Dane zresetowane','warn');
 }
