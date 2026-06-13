@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -586,6 +586,7 @@ const FEE  = 0.002;
 // ── STATE ──────────────────────────────────────────────────────────
 let ST = {
   positions:[], trades:[], dailyPnl:0, dailyDate:'',
+  dailyStartBalance:0,  // balans na początku dnia — limit strat liczony od tej wartości, nie "pływa" w górę
   cooldown:{}, globalBlockUntil:0, consLoss:0, paperBal:1000, iter:0
 };
 let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null, cycleRunning=false, countdownTimer=null, cycleTimeoutTimer=null, wsExitQueueTimer=null;
@@ -596,7 +597,12 @@ function loadAll() {
   // Migracja: stary domyslny interwal 30min → nowy 2min
   if (!CFG.intervalMin || CFG.intervalMin >= 15) CFG.intervalMin = 2;
   const today = new Date().toDateString();
-  if (ST.dailyDate !== today) { ST.dailyPnl=0; ST.dailyDate=today; }
+  if (ST.dailyDate !== today) {
+    ST.dailyPnl=0; ST.dailyDate=today;
+    // Zamroź balans startowy na początku dnia — limit dzienny liczony od tej wartości
+    // (nie rośnie gdy balans rośnie w ciągu dnia — ochrona przed rozluźnianiem limitu po odbiciu)
+    ST.dailyStartBalance = CFG.mode==='paper' ? ST.paperBal : 0;
+  }
 }
 function saveAll() {
   try {
@@ -879,13 +885,66 @@ function apiBase() { return workerReady() ? CFG.workerUrl.replace(/\/+$/,'')+'/p
 
 async function signedReq(method, path, params={}) {
   if (!workerReady()) throw new Error('Brak Worker URL');
-  params.timestamp = Date.now();
+  params.timestamp  = Date.now();
+  params.recvWindow = 5000;  // chroni przed odrzuceniem zlecenia przy opóźnieniu sieci
   const qs1 = new URLSearchParams(params).toString();
   params.signature = await hmac(qs1);
   const r = await fetch(apiBase()+path+'?'+new URLSearchParams(params).toString(),
     {method, headers:{'X-MBX-APIKEY':CFG.apiKey}});
   if (!r.ok) { const e=await r.json().catch(()=>({msg:r.statusText})); throw new Error(e.msg||r.statusText); }
   return r.json();
+}
+
+// Oblicza średnią ważoną cenę z tablicy fills Binance (obsługa częściowych wypełnień)
+function calcFillPrice(fills) {
+  if (!fills || !fills.length) return 0;
+  let totalQty = 0, totalCost = 0;
+  for (const f of fills) {
+    const p = +(f.price||0), q = +(f.qty||0);
+    if (p > 0 && q > 0) { totalCost += p*q; totalQty += q; }
+  }
+  return totalQty > 0 ? totalCost/totalQty : +(fills[0].price||0);
+}
+
+// ── LOT_SIZE / STEP_SIZE CACHE ─────────────────────────────────────
+// Cache stepSize per para — pobierany raz z /api/v3/exchangeInfo
+var _stepSizeCache = {};
+async function fetchStepSize(sym) {
+  if (_stepSizeCache[sym] !== undefined) return _stepSizeCache[sym];
+  try {
+    const d = await pub('/api/v3/exchangeInfo', {symbol:sym});
+    const info = (d.symbols||[]).find(function(s){ return s.symbol===sym; });
+    if (!info) { _stepSizeCache[sym] = 1e-6; return 1e-6; }
+    const lotFilter = (info.filters||[]).find(function(f){ return f.filterType==='LOT_SIZE'; });
+    const stepSize  = lotFilter ? parseFloat(lotFilter.stepSize) : 1e-6;
+    _stepSizeCache[sym] = stepSize > 0 ? stepSize : 1e-6;
+  } catch(e) {
+    _stepSizeCache[sym] = 1e-6; // fallback — 6 miejsc dziesiętnych
+  }
+  return _stepSizeCache[sym];
+}
+// Zaokrągla qty w dół do stepSize (nie zaokrąglaj w górę — Binance odrzuci nadmiar)
+function roundQty(sym, qty) {
+  const step = _stepSizeCache[sym] || 1e-6;
+  if (step <= 0 || !isFinite(step)) return +qty.toFixed(6);
+  const precision = Math.round(-Math.log10(step));
+  return Math.floor(qty / step) * step;
+}
+// Prefetch stepSize przy starcie bota dla wszystkich par
+async function prefetchStepSizes() {
+  if (CFG.exchange !== 'binance' || CFG.mode === 'paper') return;
+  try {
+    const d = await pub('/api/v3/exchangeInfo');
+    (d.symbols||[]).forEach(function(info) {
+      if (!PAIRS.includes(info.symbol)) return;
+      const lotFilter = (info.filters||[]).find(function(f){ return f.filterType==='LOT_SIZE'; });
+      const stepSize  = lotFilter ? parseFloat(lotFilter.stepSize) : 1e-6;
+      _stepSizeCache[info.symbol] = stepSize > 0 ? stepSize : 1e-6;
+    });
+    log('LOT_SIZE cache: '+Object.keys(_stepSizeCache).length+' par', 'ok');
+  } catch(e) {
+    log('prefetchStepSizes blad: '+e.message, 'warn');
+  }
 }
 async function pub(path, params={}) {
   const r = await fetch(BASE+path+(Object.keys(params).length?'?'+new URLSearchParams(params):''));
@@ -909,9 +968,14 @@ async function execBuy(sym, quoteQty) {
     ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
   }
   if (CFG.exchange === 'bybit') return bybExecBuy(sym, quoteQty);
+  // Zaokrąglij quoteQty do 2 miejsc (wymóg Binance minNotional)
+  const safeQty = Math.floor(quoteQty * 100) / 100;
+  if (safeQty < 1) throw new Error('execBuy: quoteQty za małe: $'+safeQty);
   const d = await signedReq('POST', '/api/v3/order',
-    {symbol:sym, side:'BUY', type:'MARKET', quoteOrderQty:quoteQty.toFixed(2)});
-  return {price:+(d.fills?.[0]?.price||d.price||0), qty:+d.executedQty};
+    {symbol:sym, side:'BUY', type:'MARKET', quoteOrderQty:safeQty.toFixed(2)});
+  // Użyj średniej ważonej z fills (obsługa częściowych wypełnień)
+  const fillPrice = calcFillPrice(d.fills) || +d.price || 0;
+  return {price:fillPrice, qty:+d.executedQty};
 }
 async function execSell(sym, qty) {
   if (CFG.mode === 'paper') {
@@ -919,9 +983,13 @@ async function execSell(sym, qty) {
     ST.paperBal += p * qty; return {price:p, qty};
   }
   if (CFG.exchange === 'bybit') return bybExecSell(sym, qty);
+  // qty musi być zaokrąglone do stepSize pary — pobierz z cache lub użyj bezpiecznego zaokrąglenia
+  const roundedQty = roundQty(sym, qty);
+  if (roundedQty <= 0) throw new Error('execSell: qty=0 po zaokrągleniu ('+sym+')');
   const d = await signedReq('POST', '/api/v3/order',
-    {symbol:sym, side:'SELL', type:'MARKET', quantity:qty.toFixed(6)});
-  return {price:+(d.fills?.[0]?.price||d.price||0), qty:+d.executedQty};
+    {symbol:sym, side:'SELL', type:'MARKET', quantity:roundedQty});
+  const fillPrice = calcFillPrice(d.fills) || +d.price || 0;
+  return {price:fillPrice, qty:+d.executedQty};
 }
 async function getTotal() {
   let t = CFG.mode==='paper' ? ST.paperBal : await getUSDC().catch(()=>0);
@@ -934,8 +1002,16 @@ async function getTotal() {
 // ── INDICATORS ─────────────────────────────────────────────────────
 function emaArr(a,p) {
   if (!a || !a.length) return [0];
-  const k=2/(p+1), o=[a[0]];
-  for (let i=1; i<a.length; i++) o.push(a[i]*k+o[i-1]*(1-k));
+  const k = 2/(p+1);
+  if (a.length < p) {
+    // Za mało danych — zwróć SMA jako aproksymację
+    const sma = a.reduce((s,v)=>s+v,0)/a.length;
+    return a.map(()=>sma);
+  }
+  // Seed = SMA pierwszych p świec (TradingView-compatible, znacznie dokładniejszy dla EMA200)
+  let prev = a.slice(0,p).reduce((s,v)=>s+v,0)/p;
+  const o = new Array(p).fill(prev);
+  for (let i=p; i<a.length; i++) { prev = a[i]*k + prev*(1-k); o.push(prev); }
   return o;
 }
 function ema(a,p) { const arr=emaArr(a,p); return arr.length ? arr.at(-1) : 0; }
@@ -1609,14 +1685,13 @@ async function closeTrade(pos, price, reason) {
   }
 }
 
-async function openTrade(sig, fg, btcDrop) {
+async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
   if (ST.positions.length >= CFG.maxPos || ST.positions.some(p=>p.sym===sig.sym)) return;
   if ((ST.cooldown[sig.sym]||0) > Date.now()) { log('Cooldown '+sig.sym,'warn'); return; }
   if (ST.globalBlockUntil > Date.now())        { log('Globalna blokada','warn'); return; }
   if (isPumpDump(sig)) return;
   if (fg && fg.val < CFG.fgMin) {
     if (fg.val < 15) { log('Fear&Greed='+fg.val+' ('+fg.label+') — ekstremalna panika, blokada','warn'); return; }
-    // Zamiast blokady — kara punktowa -10, dalej pozwala na BUY przy mocnym sygnale
     log('Fear&Greed='+fg.val+' ('+fg.label+') < '+CFG.fgMin+' — kara -10 do score','warn');
     sig = Object.assign({}, sig, { score: Math.max(0, sig.score - 10), finalProb: Math.max(0, sig.finalProb - 0.10) });
     if (sig.finalProb < (PAIR_PARAMS.get(sig.sym) ? PAIR_PARAMS.get(sig.sym).minScore : ADAPTIVE.getMinScore())/100) return;
@@ -1624,10 +1699,17 @@ async function openTrade(sig, fg, btcDrop) {
   if (btcDrop && sig.sym !== 'BTCUSDC') return;
   // Correlation guard
   if (corrBlocked(sig.sym)) return;
-  const total = await getTotal();
-  if (ST.dailyPnl < -0.05*total) { log('Dzienny limit strat','err'); return; }
-  const usdc    = await getUSDC();
-  const posSize = Math.min(kellySize(total), usdc*0.95);
+  // Użyj przekazanego cache balansu (unikamy N wywołań API przy N sygnałach BUY w jednym cyklu)
+  const total = (cachedTotal != null && cachedTotal > 0) ? cachedTotal : await getTotal().catch(()=>0);
+  // Dzienny limit strat: liczony od balansu na początku dnia (zamrożony), nie od aktualnego total
+  // — zapobiega rozluźnianiu limitu gdy balans odbija po stratach w tym samym dniu
+  const dailyBase = ST.dailyStartBalance > 0 ? ST.dailyStartBalance : total;
+  if (ST.dailyPnl < -0.05*dailyBase) { log('Dzienny limit strat (base=$'+dailyBase.toFixed(0)+')','err'); return; }
+  const usdc = (cachedUSDC != null && cachedUSDC >= 0) ? cachedUSDC : await getUSDC().catch(()=>0);
+  // Odejmij już zaangażowany kapitał w otwartych pozycjach
+  const lockedSize = ST.positions.reduce(function(s,p){ return s+(p.size||0); }, 0);
+  const availUSDC  = Math.max(0, usdc - lockedSize);
+  const posSize = Math.min(kellySize(total), availUSDC*0.95);
   if (posSize < 10) { log('Za malo USDC: $'+usdc.toFixed(2),'warn'); return; }
 
   // Dynamic TP/SL based on ATR
@@ -1677,10 +1759,12 @@ async function botCycle() {
   if (!running) return;
   if (cycleRunning) { log('Poprzedni cykl jeszcze trwa — pomijam', 'warn'); return; }
   cycleRunning = true;
-  // Timeout — jesli cykl wisi ponad 2 minuty, odblokowuj automatycznie
+  // Timeout — jeśli cykl wisi dłużej niż max(90s, interwał-10s), odblokuj automatycznie
+  // Dla interwału 5 min timeout wynosi 90s, dla 15 min wynosi 5*60-10=290s
+  const cycleMaxMs = Math.max(90000, CFG.intervalMin*60000 - 10000);
   cycleTimeoutTimer = setTimeout(function() {
-    if (cycleRunning) { cycleRunning = false; log('botCycle timeout — cykl odblokowany','warn'); }
-  }, 120000);
+    if (cycleRunning) { cycleRunning = false; log('botCycle timeout ('+Math.round(cycleMaxMs/1000)+'s) — cykl odblokowany','warn'); }
+  }, cycleMaxMs);
   try {
   ST.iter++;
   gi('rb-iter').textContent = ST.iter;
@@ -1709,10 +1793,13 @@ async function botCycle() {
   gi('rb-fg').className   = 'val '+(fg.val<25?'dn':fg.val<40?'gold':'up');
 
   if (ST.globalBlockUntil <= Date.now()) {
+    // Pobierz balans raz przed pętlą — unikamy N zapytań API przy N sygnałach BUY
+    const cachedTotal = await getTotal().catch(()=>0);
+    const cachedUSDC  = CFG.mode==='paper' ? ST.paperBal : await getUSDC().catch(()=>0);
     for (let i=0; i<sigs.length; i++) {
       if (!sigs[i].buy) continue;
       if (ST.positions.length >= CFG.maxPos) break;
-      await openTrade(sigs[i], fg, btcDrop);
+      await openTrade(sigs[i], fg, btcDrop, cachedTotal, cachedUSDC);
     }
   }
 
@@ -1768,7 +1855,10 @@ setInterval(function() { gi('st-time').textContent = new Date().toLocaleTimeStri
 async function startBot() {
   if (CFG.mode === 'live') {
     if (!CFG.apiKey || !CFG.secret) { alert('Tryb LIVE wymaga kluczy Binance API. Otworz Konfiguracja.'); return; }
-    if (!workerReady()) { alert('Tryb LIVE wymaga Cloudflare Worker URL. Otworz Konfiguracja.'); return; }
+    if (!workerReady()) {
+      alert('UWAGA: Tryb LIVE wymaga Cloudflare Worker URL.\n\nBinance blokuje bezpośrednie wywołania REST z przeglądarki (CORS) dla endpointów signed. Bez Worker URL wszystkie zlecenia BUY/SELL zakończą się błędem CORS.\n\nOtworz Konfiguracja i ustaw Worker URL.');
+      return;
+    }
   }
   if (CFG.mode === 'bybit') {
     if (!CFG.bybApiKey || !CFG.bybSecret) { alert('Tryb Bybit EU wymaga kluczy Bybit API. Otworz Konfiguracja.'); return; }
@@ -1781,6 +1871,12 @@ async function startBot() {
   gi('ai-dot').className = 'ai-dot scan';
   gi('rb-status').textContent = '🟢 Aktywny'; gi('rb-status').className = 'val up';
   log('Bot uruchomiony | '+CFG.mode.toUpperCase()+' | skan co '+CFG.intervalMin+'min','ok');
+  // Zamroź dailyStartBalance przy starcie (jeśli jeszcze nie ustawiony dziś)
+  if (!ST.dailyStartBalance || ST.dailyDate !== new Date().toDateString()) {
+    getTotal().then(function(t){ if (t>0 && !ST.dailyStartBalance) { ST.dailyStartBalance=t; saveAll(); } }).catch(function(){});
+  }
+  // Pobierz LOT_SIZE/stepSize dla wszystkich par (Binance LIVE) — unikamy odrzuceń zleceń
+  prefetchStepSizes();
   // Uruchom WebSocket
   WS.connect();
   // Retrenuj AI na historii z poprzednich sesji
@@ -2133,16 +2229,42 @@ function saveSettings() {
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
-  CFG.tp         = parseFloat(gi('cfg-tp').value)/100;
-  CFG.sl         = parseFloat(gi('cfg-sl').value)/100;
-  CFG.trail      = parseFloat(gi('cfg-trail').value)/100;
-  CFG.maxPos     = parseInt(gi('cfg-maxpos').value);
-  CFG.posSize    = parseFloat(gi('cfg-size').value||15);
-  CFG.intervalMin= parseInt(gi('cfg-interval').value);
+
+  // Walidacja wartości numerycznych — zabezpieczenie przed groteskowymi parametrami w LIVE
+  const rawTP    = parseFloat(gi('cfg-tp').value);
+  const rawSL    = parseFloat(gi('cfg-sl').value);
+  const rawTrail = parseFloat(gi('cfg-trail').value);
+  const rawMax   = parseInt(gi('cfg-maxpos').value);
+  const rawSize  = parseFloat(gi('cfg-size').value);
+  const rawInt   = parseInt(gi('cfg-interval').value);
+  const rawScore = parseInt(gi('cfg-minscore').value);
+  const rawRisk  = parseFloat(gi('cfg-risk').value);
+  const rawFG    = parseInt(gi('cfg-fgmin').value);
+  const errors   = [];
+  if (!isFinite(rawTP)   || rawTP  < 0.5 || rawTP  > 50)  errors.push('TP musi być 0.5%–50%');
+  if (!isFinite(rawSL)   || rawSL  < 0.3 || rawSL  > 30)  errors.push('SL musi być 0.3%–30%');
+  if (!isFinite(rawTrail)|| rawTrail< 0.3|| rawTrail> 20)  errors.push('Trailing musi być 0.3%–20%');
+  if (rawTP <= rawSL)                                       errors.push('TP musi być > SL');
+  if (!isFinite(rawMax)  || rawMax  < 1  || rawMax  > 10)  errors.push('Max pozycji: 1–10');
+  if (!isFinite(rawSize) || rawSize < 5  || rawSize > 100000) errors.push('Rozmiar pozycji: min $5');
+  if (!isFinite(rawInt)  || rawInt  < 1  || rawInt  > 1440)errors.push('Interwał: 1–1440 min');
+  if (!isFinite(rawScore)|| rawScore< 0  || rawScore> 100) errors.push('MinScore: 0–100');
+  if (!isFinite(rawRisk) || rawRisk < 0.1|| rawRisk > 50)  errors.push('RiskPct: 0.1%–50%');
+  if (errors.length > 0) {
+    gi('cfg-status').innerHTML = '<span style="color:var(--red)">Błąd: '+errors.join('; ')+'</span>';
+    return;
+  }
+
+  CFG.tp         = rawTP    / 100;
+  CFG.sl         = rawSL    / 100;
+  CFG.trail      = rawTrail / 100;
+  CFG.maxPos     = rawMax;
+  CFG.posSize    = rawSize;
+  CFG.intervalMin= rawInt;
   CFG.paperBal   = parseFloat(gi('cfg-paper-bal').value);
-  CFG.minScore   = parseInt(gi('cfg-minscore').value);
-  CFG.riskPct    = parseFloat(gi('cfg-risk').value)||2;
-  CFG.fgMin      = parseInt(gi('cfg-fgmin').value)||25;
+  CFG.minScore   = rawScore;
+  CFG.riskPct    = rawRisk;
+  CFG.fgMin      = isFinite(rawFG) ? rawFG : 25;
   CFG.tgToken    = gi('cfg-tg-token').value.trim();
   CFG.tgChat     = gi('cfg-tg-chat').value.trim();
   saveCfg();
@@ -3519,6 +3641,7 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
 
 
 
