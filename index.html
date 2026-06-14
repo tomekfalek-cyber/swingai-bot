@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -1520,7 +1520,7 @@ var WS = {
 };
 
 // Kolejka wyjsc z WS (aby nie wywolywac async z onmessage)
-var wsExitQueue = [];
+var wsExitQueue = wsExitQueue || [];
 wsExitQueueTimer = setInterval(async function() {
   // Ogranicz kolejkę do 50 wpisów — usuń stare duplikaty dla tej samej pozycji
   if (wsExitQueue.length > 50) {
@@ -2310,7 +2310,7 @@ function saveSettings() {
   gi('ai-minscore').textContent= CFG.minScore+'/100';
   const tge=gi('rb-tg'); if(tge){ tge.textContent=CFG.tgToken?'OK':'-'; tge.className=CFG.tgToken?'val up':'val neu'; }
   log('Konfiguracja zapisana','ok');
-  if (running&&botTimer) { clearInterval(botTimer); botTimer=setInterval(async function(){ await botCycle(); }, CFG.intervalMin*60000); }
+  if (running&&botTimer) { clearTimeout(botTimer); botTimer=null; const scheduleNextCfg=async function(){ if(!running)return; gi('ai-dot').className='ai-dot scan'; await botCycle(); gi('ai-dot').className='ai-dot'; if(running)botTimer=setTimeout(scheduleNextCfg,CFG.intervalMin*60000); }; botTimer=setTimeout(scheduleNextCfg,CFG.intervalMin*60000); }
 }
 async function testConn() {
   const s=gi('cfg-status'); s.textContent='Testuje...'; s.style.color='var(--gold)'; saveSettings();
@@ -3674,6 +3674,7 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
 
 
 
