@@ -4008,63 +4008,6 @@ var CHART = {
     drawEMA(20, 'rgba(88,166,255,0.7)');
     drawEMA(50, 'rgba(240,165,0,0.7)');
 
-    // ── Formacje świecowe — etykiety nad/pod świecami ────────────────
-    var detectedPat = PATTERNS.detectAll(klines);
-    // Grupuj po indeksie (jedna świeca może mieć kilka formacji)
-    var patByIdx = {};
-    detectedPat.forEach(function(p) {
-      if (!patByIdx[p.idx]) patByIdx[p.idx] = [];
-      patByIdx[p.idx].push(p);
-    });
-    Object.keys(patByIdx).forEach(function(idxStr) {
-      var idx = +idxStr;
-      var pats = patByIdx[idxStr];
-      var cx = candleX(idx) + candleW / 2;
-      var kl = klines[idx];
-      // Bycze — etykieta pod świecą; niedźwiedzie — nad świecą
-      var bullPats  = pats.filter(function(p){ return p.type==='bullish'; });
-      var bearPats  = pats.filter(function(p){ return p.type==='bearish'; });
-      var neutPats  = pats.filter(function(p){ return p.type==='neutral'; });
-
-      ctx.font = 'bold 8px Segoe UI';
-      ctx.textAlign = 'center';
-
-      // Bycze — trójkąt w górę pod świecą
-      if (bullPats.length) {
-        var yBot = toY(kl.l) + 6;
-        // Trójkąt
-        ctx.fillStyle = '#3fb950';
-        ctx.beginPath();
-        ctx.moveTo(cx, yBot);
-        ctx.lineTo(cx - 4, yBot + 7);
-        ctx.lineTo(cx + 4, yBot + 7);
-        ctx.closePath(); ctx.fill();
-        // Nazwa skrócona
-        ctx.fillStyle = '#3fb950';
-        ctx.fillText(bullPats[0].short, cx, yBot + 17);
-      }
-
-      // Niedźwiedzie — trójkąt w dół nad świecą
-      if (bearPats.length) {
-        var yTop = toY(kl.h) - 6;
-        ctx.fillStyle = '#f85149';
-        ctx.beginPath();
-        ctx.moveTo(cx, yTop);
-        ctx.lineTo(cx - 4, yTop - 7);
-        ctx.lineTo(cx + 4, yTop - 7);
-        ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#f85149';
-        ctx.fillText(bearPats[0].short, cx, yTop - 10);
-      }
-
-      // Doji — szary krzyżyk
-      if (neutPats.length && !bullPats.length && !bearPats.length) {
-        var yMid = toY((kl.h + kl.l) / 2);
-        ctx.fillStyle = 'rgba(180,180,180,0.7)';
-        ctx.fillText('+', cx, yMid - 8);
-      }
-    });
-
     // ── Volume bars (dolne 15% wykresu) ─────────────────────────────
     var vols = klines.map(function(k){ return k.v; });
     var maxVol = Math.max.apply(null, vols) || 1;
@@ -4098,6 +4041,90 @@ var CHART = {
         : (d.getDate()+'.'+(d.getMonth()+1)+' '+('0'+d.getHours()).slice(-2)+':00');
       ctx.fillText(lbl, candleX(i)+candleW/2, H-PAD.b+12);
     });
+
+    // ── Formacje świecowe — RYSOWANE NA WIERZCHU wszystkich warstw ───
+    var detectedPat = PATTERNS.detectAll(klines);
+    var patByIdx = {};
+    detectedPat.forEach(function(p) {
+      if (!patByIdx[p.idx]) patByIdx[p.idx] = [];
+      patByIdx[p.idx].push(p);
+    });
+    ctx.save();
+    Object.keys(patByIdx).forEach(function(idxStr) {
+      var idx    = +idxStr;
+      var pats   = patByIdx[idxStr];
+      var kl     = klines[idx];
+      var cx     = candleX(idx) + candleW / 2;
+      var bullPats = pats.filter(function(p){ return p.type==='bullish'; });
+      var bearPats = pats.filter(function(p){ return p.type==='bearish'; });
+      var neutPats = pats.filter(function(p){ return p.type==='neutral'; });
+
+      // ── Bycze — trójkąt ▲ pod świecą + etykieta z tłem ────────────
+      if (bullPats.length) {
+        var yBot = toY(kl.l) + 4;
+        var label = bullPats[0].name;
+        var ts = 8, th = 9, tw = 6;
+        // Trójkąt (większy: 7px)
+        ctx.fillStyle = '#3fb950';
+        ctx.shadowColor = '#3fb950'; ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(cx,     yBot);
+        ctx.lineTo(cx - tw, yBot + th);
+        ctx.lineTo(cx + tw, yBot + th);
+        ctx.closePath(); ctx.fill();
+        ctx.shadowBlur = 0;
+        // Etykieta z tłem
+        ctx.font = 'bold '+ts+'px Segoe UI';
+        ctx.textAlign = 'center';
+        var lw = ctx.measureText(label).width + 6;
+        var ly = yBot + th + 13;
+        ctx.fillStyle = 'rgba(0,30,15,0.85)';
+        ctx.fillRect(cx - lw/2, ly - ts, lw, ts + 2);
+        ctx.fillStyle = '#3fb950';
+        ctx.fillText(label, cx, ly);
+      }
+
+      // ── Niedźwiedzie — trójkąt ▼ nad świecą + etykieta z tłem ─────
+      if (bearPats.length) {
+        var yTop = toY(kl.h) - 4;
+        var labelB = bearPats[0].name;
+        var tsB = 8, thB = 9, twB = 6;
+        ctx.fillStyle = '#f85149';
+        ctx.shadowColor = '#f85149'; ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(cx,      yTop);
+        ctx.lineTo(cx - twB, yTop - thB);
+        ctx.lineTo(cx + twB, yTop - thB);
+        ctx.closePath(); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold '+tsB+'px Segoe UI';
+        ctx.textAlign = 'center';
+        var lwB = ctx.measureText(labelB).width + 6;
+        var lyB = yTop - thB - 5;
+        ctx.fillStyle = 'rgba(40,0,0,0.85)';
+        ctx.fillRect(cx - lwB/2, lyB - tsB, lwB, tsB + 2);
+        ctx.fillStyle = '#f85149';
+        ctx.fillText(labelB, cx, lyB);
+      }
+
+      // ── Doji — diament szary ────────────────────────────────────────
+      if (neutPats.length && !bullPats.length && !bearPats.length) {
+        var yD = toY((kl.h + kl.l) / 2) - 12;
+        ctx.fillStyle = 'rgba(200,200,200,0.85)';
+        ctx.shadowColor = '#aaa'; ctx.shadowBlur = 4;
+        ctx.beginPath();
+        ctx.moveTo(cx,     yD - 5);
+        ctx.lineTo(cx + 4, yD);
+        ctx.lineTo(cx,     yD + 5);
+        ctx.lineTo(cx - 4, yD);
+        ctx.closePath(); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.font = '7px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#aaa';
+        ctx.fillText('Doji', cx, yD - 8);
+      }
+    });
+    ctx.restore();
 
     // ── Legenda ──────────────────────────────────────────────────────
     var last = klines[n-1];
