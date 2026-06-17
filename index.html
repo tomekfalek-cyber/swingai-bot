@@ -4059,69 +4059,74 @@ var CHART = {
       var bearPats = pats.filter(function(p){ return p.type==='bearish'; });
       var neutPats = pats.filter(function(p){ return p.type==='neutral'; });
 
-      // ── Bycze — trójkąt ▲ pod świecą + etykieta z tłem ────────────
+      // ── Bycze — duży trójkąt ▲ pod świecą + etykieta ──────────────
       if (bullPats.length) {
-        var yBot = toY(kl.l) + 4;
+        var yBot = toY(kl.l) + 6;
         var label = bullPats[0].name;
-        var ts = 8, th = 9, tw = 6;
-        // Trójkąt (większy: 7px)
+        // Trójkąt 16px
         ctx.fillStyle = '#3fb950';
-        ctx.shadowColor = '#3fb950'; ctx.shadowBlur = 6;
+        ctx.shadowColor = '#3fb950'; ctx.shadowBlur = 14;
         ctx.beginPath();
-        ctx.moveTo(cx,     yBot);
-        ctx.lineTo(cx - tw, yBot + th);
-        ctx.lineTo(cx + tw, yBot + th);
+        ctx.moveTo(cx,      yBot);
+        ctx.lineTo(cx - 14, yBot + 20);
+        ctx.lineTo(cx + 14, yBot + 20);
         ctx.closePath(); ctx.fill();
         ctx.shadowBlur = 0;
-        // Etykieta z tłem
-        ctx.font = 'bold '+ts+'px Segoe UI';
+        // Etykieta bold 11px z tłem
+        ctx.font = 'bold 11px Segoe UI';
         ctx.textAlign = 'center';
-        var lw = ctx.measureText(label).width + 6;
-        var ly = yBot + th + 13;
-        ctx.fillStyle = 'rgba(0,30,15,0.85)';
-        ctx.fillRect(cx - lw/2, ly - ts, lw, ts + 2);
+        var lw = ctx.measureText(label).width + 10;
+        var ly = yBot + 36;
+        ctx.fillStyle = 'rgba(0,40,15,0.92)';
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(cx - lw/2, ly - 12, lw, 15, 3) : ctx.rect(cx - lw/2, ly - 12, lw, 15);
+        ctx.fill();
         ctx.fillStyle = '#3fb950';
         ctx.fillText(label, cx, ly);
       }
 
-      // ── Niedźwiedzie — trójkąt ▼ nad świecą + etykieta z tłem ─────
+      // ── Niedźwiedzie — duży trójkąt ▼ nad świecą + etykieta ────────
       if (bearPats.length) {
-        var yTop = toY(kl.h) - 4;
+        var yTop = toY(kl.h) - 6;
         var labelB = bearPats[0].name;
-        var tsB = 8, thB = 9, twB = 6;
+        // Trójkąt 16px
         ctx.fillStyle = '#f85149';
-        ctx.shadowColor = '#f85149'; ctx.shadowBlur = 6;
+        ctx.shadowColor = '#f85149'; ctx.shadowBlur = 14;
         ctx.beginPath();
         ctx.moveTo(cx,      yTop);
-        ctx.lineTo(cx - twB, yTop - thB);
-        ctx.lineTo(cx + twB, yTop - thB);
+        ctx.lineTo(cx - 14, yTop - 20);
+        ctx.lineTo(cx + 14, yTop - 20);
         ctx.closePath(); ctx.fill();
         ctx.shadowBlur = 0;
-        ctx.font = 'bold '+tsB+'px Segoe UI';
+        ctx.font = 'bold 11px Segoe UI';
         ctx.textAlign = 'center';
-        var lwB = ctx.measureText(labelB).width + 6;
-        var lyB = yTop - thB - 5;
-        ctx.fillStyle = 'rgba(40,0,0,0.85)';
-        ctx.fillRect(cx - lwB/2, lyB - tsB, lwB, tsB + 2);
+        var lwB = ctx.measureText(labelB).width + 10;
+        var lyB = yTop - 26;
+        ctx.fillStyle = 'rgba(50,0,0,0.92)';
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(cx - lwB/2, lyB - 12, lwB, 15, 3) : ctx.rect(cx - lwB/2, lyB - 12, lwB, 15);
+        ctx.fill();
         ctx.fillStyle = '#f85149';
         ctx.fillText(labelB, cx, lyB);
       }
 
-      // ── Doji — diament szary ────────────────────────────────────────
+      // ── Doji — duży diament + etykieta ─────────────────────────────
       if (neutPats.length && !bullPats.length && !bearPats.length) {
-        var yD = toY((kl.h + kl.l) / 2) - 12;
-        ctx.fillStyle = 'rgba(200,200,200,0.85)';
-        ctx.shadowColor = '#aaa'; ctx.shadowBlur = 4;
+        var yD = toY((kl.h + kl.l) / 2) - 18;
+        ctx.fillStyle = 'rgba(220,220,220,0.9)';
+        ctx.shadowColor = '#ddd'; ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.moveTo(cx,     yD - 5);
-        ctx.lineTo(cx + 4, yD);
-        ctx.lineTo(cx,     yD + 5);
-        ctx.lineTo(cx - 4, yD);
+        ctx.moveTo(cx,      yD - 10);
+        ctx.lineTo(cx + 8,  yD);
+        ctx.lineTo(cx,      yD + 10);
+        ctx.lineTo(cx - 8,  yD);
         ctx.closePath(); ctx.fill();
         ctx.shadowBlur = 0;
-        ctx.font = '7px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText('Doji', cx, yD - 8);
+        ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(30,30,30,0.9)';
+        ctx.fillRect(cx - 14, yD - 23, 28, 13);
+        ctx.fillStyle = '#ddd';
+        ctx.fillText('Doji', cx, yD - 13);
       }
     });
     ctx.restore();
