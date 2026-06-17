@@ -3834,6 +3834,8 @@ var CHART = {
     gi('chart-status').textContent = 'Pobieranie danych...';
     gi('modal-chart').className = 'overlay open';
     document.querySelectorAll('.chart-tf-btn').forEach(function(b){ b.classList.toggle('on', b.dataset.tf===CHART.tf); });
+    // Poczekaj na render DOM zanim canvas dostanie width != 0
+    await new Promise(function(r){ setTimeout(r, 60); });
     await this.load();
   },
 
@@ -3855,7 +3857,9 @@ var CHART = {
   draw: function() {
     var canvas = gi('candle-canvas');
     if (!canvas || !this.klines.length) return;
-    var W = canvas.offsetWidth || 720;
+    // getBoundingClientRect jest dokładniejszy niż offsetWidth gdy modal właśnie się otworzył
+    var rect = canvas.getBoundingClientRect();
+    var W = (rect.width > 50 ? rect.width : canvas.offsetWidth) || 720;
     var H = 340;
     canvas.width = W; canvas.height = H;
     var ctx = canvas.getContext('2d');
