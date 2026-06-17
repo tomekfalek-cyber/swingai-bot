@@ -256,9 +256,82 @@ tr:hover td{background:rgba(45,143,255,.04);}
 
 /* ── NUMERIC VALUES ── */
 .val,.v,.k-val,.pos-sym{font-family:'JetBrains Mono',monospace;}
+
+/* ── TOAST NOTIFICATIONS ── */
+#toast-container{position:fixed;top:62px;right:18px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+.toast{
+  display:flex;align-items:center;gap:10px;
+  background:linear-gradient(135deg,rgba(13,22,41,0.97),rgba(8,15,30,0.97));
+  border:1px solid var(--border2);border-radius:12px;padding:11px 16px;
+  min-width:260px;max-width:340px;
+  backdrop-filter:blur(20px);
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+  pointer-events:auto;cursor:pointer;
+  animation:toastIn .35s cubic-bezier(.34,1.56,.64,1);
+  transition:opacity .3s,transform .3s;
+}
+.toast.out{opacity:0;transform:translateX(40px);}
+.toast-icon{font-size:18pt;flex-shrink:0;line-height:1;}
+.toast-body{flex:1;}
+.toast-title{font-size:9.5pt;font-weight:700;margin-bottom:2px;}
+.toast-msg{font-size:8.5pt;color:var(--text2);font-family:'JetBrains Mono',monospace;}
+.toast-bar{position:absolute;bottom:0;left:0;height:2px;border-radius:0 0 12px 12px;background:var(--accent);animation:toastBar linear forwards;}
+.toast-buy .toast-bar{background:var(--green);}
+.toast-sell .toast-bar{background:var(--red);}
+.toast-warn .toast-bar{background:var(--gold);}
+.toast-info .toast-bar{background:var(--accent);}
+.toast-buy{border-left:3px solid var(--green);}
+.toast-sell{border-left:3px solid var(--red);}
+.toast-warn{border-left:3px solid var(--gold);}
+.toast-info{border-left:3px solid var(--accent);}
+.toast{position:relative;overflow:hidden;}
+@keyframes toastIn{from{opacity:0;transform:translateX(60px) scale(.9);}to{opacity:1;transform:translateX(0) scale(1);}}
+@keyframes toastBar{from{width:100%;}to{width:0%;}}
+
+/* ── RISK PROGRESS BAR (Kelly) ── */
+.risk-bar-wrap{margin:8px 16px 10px;background:rgba(255,255,255,0.05);border-radius:6px;height:6px;overflow:visible;position:relative;}
+.risk-bar-fill{height:100%;border-radius:6px;transition:width 1s ease,background .5s;position:relative;}
+.risk-bar-fill::after{content:'';position:absolute;right:0;top:-3px;bottom:-3px;width:6px;border-radius:3px;background:inherit;filter:blur(4px);opacity:.9;}
+.risk-bar-label{display:flex;justify-content:space-between;font-size:7.5pt;color:var(--text3);margin-top:4px;}
+.risk-bar-label span{font-family:'JetBrains Mono',monospace;font-weight:700;}
+
+/* ── SOUND TOGGLE ── */
+#sound-toggle{font-size:8.5pt;cursor:pointer;padding:2px 8px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);transition:all .15s;}
+#sound-toggle.on{color:var(--green);border-color:var(--green);background:rgba(0,229,160,.07);}
+
+/* ── SKELETON LOADING ── */
+.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:skeletonPulse 1.6s infinite;border-radius:4px;}
+@keyframes skeletonPulse{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skeleton-line{height:10px;margin-bottom:6px;border-radius:4px;}
+.skeleton-line.wide{width:80%;}.skeleton-line.medium{width:55%;}.skeleton-line.short{width:35%;}
+
+/* ── RESPONSYWNOŚĆ MOBILE ── */
+@media(max-width:900px){
+  #main{grid-template-columns:200px 1fr 0;}
+  #sb-right{display:none;}
+}
+@media(max-width:600px){
+  #main{grid-template-columns:0 1fr 0;grid-template-rows:1fr;}
+  #sb-left{display:none;}
+  #sb-right{display:none;}
+  #hdr{flex-wrap:wrap;height:auto;padding:6px 10px;gap:4px;}
+  #hdr-stats{display:none;}
+  #logo{font-size:12pt;}
+  .pos-body{grid-template-columns:repeat(2,1fr);}
+  .stat-kpi-grid{grid-template-columns:repeat(2,1fr);}
+  #log-area{height:80px;}
+  .modal{padding:14px;border-radius:10px;}
+  .form-row{flex-direction:column;align-items:flex-start;}
+  .form-row label{min-width:unset;}
+  .form-row input,.form-row select{width:100%;}
+  button.go{padding:5px 14px;}
+}
 </style>
 </head>
 <body>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container"></div>
 
 <!-- HEADER -->
 <div id="hdr">
@@ -274,6 +347,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
   <button class="go" id="btn-run" onclick="startBot()">▶ START BOT</button>
   <button class="stop-btn" id="btn-stop" style="display:none" onclick="stopBot()">⏹ STOP</button>
   <button id="btn-scan" style="display:none" onclick="forceScan()">🔍 Skan</button>
+  <button id="sound-toggle" onclick="toggleSound()" title="Dźwięki alertów">🔇 Sound</button>
   <div style="display:flex;align-items:center;gap:5px;font-size:7.5pt;color:var(--text3)">
     <span id="st-time-hdr" style="font-family:'JetBrains Mono',monospace"></span>
   </div>
@@ -1979,6 +2053,7 @@ async function closeTrade(pos, price, reason) {
     saveAll();
     const e2 = pnl>=0 ? '🟢' : '🔴';
     log(e2+' '+pos.sym+' P/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%) — '+reason, pnl>=0?'ok':'err');
+    toast(reason+' '+pos.sym.replace('USDC','/USDC'), (pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%) | '+durH+'h', pnl>=0?'ok':'err', 6000);
     tgSend(e2+' <b>'+reason+' '+pos.sym.replace('USDC','/USDC')+'</b>\nP/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%)\nCzas: '+durH+'h');
   } catch(e) {
     // KRYTYCZNE: execSell rzucił wyjątek — przywróć pozycję na listę, żeby nie stracić aktywu
@@ -2048,6 +2123,7 @@ async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
       rr:execLevels.rr, atrPct:execLevels.atrPct});
     saveAll();
     log('Otwarto '+sig.sym+' '+((res.qty||0).toFixed(6))+' @ '+fp(execP)+' | R:R='+execLevels.rr,'ok');
+    toast('BUY ' + sig.sym.replace('USDC','/USDC'), fp(execP)+' | Kelly $'+posSize.toFixed(2)+' | R:R '+execLevels.rr+':1', 'buy', 5000);
     lastSignalData = sig;
     gi('btn-ai-last').style.display = '';
     gi('last-signal-box').innerHTML = aiExplainSignal(sig);
@@ -2180,6 +2256,7 @@ async function startBot() {
   gi('ai-dot').className = 'ai-dot scan';
   gi('rb-status').textContent = '🟢 Aktywny'; gi('rb-status').className = 'val up';
   log('Bot uruchomiony | '+CFG.mode.toUpperCase()+' | skan co '+CFG.intervalMin+'min','ok');
+  toast('Bot uruchomiony', CFG.mode.toUpperCase()+' | skan co '+CFG.intervalMin+' min', 'ok', 4000);
   // Zamroź dailyStartBalance przy starcie (jeśli jeszcze nie ustawiony dziś)
   if (!ST.dailyStartBalance || ST.dailyDate !== new Date().toDateString()) {
     getTotal().then(function(t){ if (t>0 && !ST.dailyStartBalance) { ST.dailyStartBalance=t; saveAll(); } }).catch(function(){});
@@ -2216,6 +2293,7 @@ function stopBot() {
   gi('rb-next').textContent = '--';
   WS.disconnect();
   log('Bot zatrzymany','warn'); setStatus('Bot zatrzymany');
+  toast('Bot zatrzymany', 'Pozycje otwarte są nadal aktywne', 'warn', 4000);
 }
 async function forceScan() {
   if (!running) return;
@@ -2382,6 +2460,7 @@ function renderPositions() {
       +'<div class="pos-stat"><div class="l">Trail dist</div><div class="v gold" style="font-size:9pt">'+((pos.trailDist||CFG.trail)*100).toFixed(1)+'%</div></div>'
       +'<div class="pos-stat"><div class="l">Src ceny</div><div class="v '+(WS.isAlive()&&WS.getPrice(pos.sym)?'up':'neu')+'" style="font-size:8pt">'+(WS.isAlive()&&WS.getPrice(pos.sym)?'⚡ WS':'📊 Poll')+'</div></div>'
       +'</div>'
+      + riskBarHtml(pos.finalProb, pos.size ? (pos.size / (ST.paperBal + pos.size) * 100) : (CFG.riskPct))
       +'<div class="pos-footer">'
       +'<button class="ai-btn" onclick="openAiExplain(\''+pos.sym+'\')">🧠 Analiza AI</button>'
       +'<button onclick="openChart(\''+pos.sym+'\')" style="background:rgba(59,150,255,.1);color:var(--accent);border-color:var(--accent);font-size:8pt;padding:2px 8px;border-radius:5px;cursor:pointer">📊 Wykres</button>'
@@ -3970,6 +4049,96 @@ if (_modelsLoaded) {
   log('Modele AI gotowe — mozesz od razu kliknac START BOT', 'ok');
 } else {
   log('Brak zapisanych modeli — zalecany trening: zakladka ML Wagi → Trenuj NB+GBM', 'warn');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOAST NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════
+var _soundOn = false;
+var _audioCtx = null;
+
+function toggleSound() {
+  _soundOn = !_soundOn;
+  var btn = gi('sound-toggle');
+  if (_soundOn) {
+    btn.textContent = '🔊 Sound';
+    btn.classList.add('on');
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    toast('Dźwięki alertów włączone', '', 'info', 2000);
+  } else {
+    btn.textContent = '🔇 Sound';
+    btn.classList.remove('on');
+  }
+}
+
+function playSound(type) {
+  if (!_soundOn || !_audioCtx) return;
+  var osc = _audioCtx.createOscillator();
+  var gain = _audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(_audioCtx.destination);
+  if (type === 'buy') {
+    osc.frequency.setValueAtTime(523, _audioCtx.currentTime);
+    osc.frequency.setValueAtTime(659, _audioCtx.currentTime + 0.08);
+    osc.frequency.setValueAtTime(784, _audioCtx.currentTime + 0.16);
+    gain.gain.setValueAtTime(0.15, _audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.4);
+    osc.start(); osc.stop(_audioCtx.currentTime + 0.4);
+  } else if (type === 'sell') {
+    osc.frequency.setValueAtTime(784, _audioCtx.currentTime);
+    osc.frequency.setValueAtTime(659, _audioCtx.currentTime + 0.1);
+    osc.frequency.setValueAtTime(440, _audioCtx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.12, _audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.45);
+    osc.start(); osc.stop(_audioCtx.currentTime + 0.45);
+  } else if (type === 'warn') {
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(330, _audioCtx.currentTime);
+    osc.frequency.setValueAtTime(330, _audioCtx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.07, _audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.3);
+    osc.start(); osc.stop(_audioCtx.currentTime + 0.3);
+  }
+}
+
+function toast(title, msg, type, duration) {
+  type = type || 'info';
+  duration = duration || 4000;
+  var icons = { buy:'📈', sell:'📉', warn:'⚠️', info:'ℹ️', ok:'✅', err:'❌' };
+  var container = gi('toast-container');
+  var t = document.createElement('div');
+  t.className = 'toast toast-' + (type === 'ok' ? 'info' : type === 'err' ? 'sell' : type);
+  t.innerHTML =
+    '<span class="toast-icon">' + (icons[type]||'ℹ️') + '</span>' +
+    '<div class="toast-body"><div class="toast-title">' + title + '</div>' +
+    (msg ? '<div class="toast-msg">' + msg + '</div>' : '') +
+    '</div><div class="toast-bar" style="animation-duration:' + duration + 'ms"></div>';
+  t.onclick = function() { dismissToast(t); };
+  container.appendChild(t);
+  playSound(type);
+  setTimeout(function() { dismissToast(t); }, duration);
+  // max 5 toastów jednocześnie
+  var all = container.querySelectorAll('.toast');
+  if (all.length > 5) dismissToast(all[0]);
+}
+
+function dismissToast(t) {
+  if (!t.parentNode) return;
+  t.classList.add('out');
+  setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 320);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RISK / KELLY PROGRESS BAR — wstrzykiwana w pos-card
+// ═══════════════════════════════════════════════════════════════
+function riskBarHtml(kellySzanse, pct) {
+  var pctVal = Math.min(100, Math.max(0, pct || 0));
+  var color = pctVal < 40 ? 'var(--green)' : pctVal < 70 ? 'var(--gold)' : 'var(--red)';
+  var kellyLabel = (kellySzanse !== undefined) ? (kellySzanse * 100).toFixed(1) + '%' : '–';
+  return '<div class="risk-bar-wrap">' +
+    '<div class="risk-bar-fill" style="width:' + pctVal + '%;background:' + color + '"></div>' +
+    '<div class="risk-bar-label"><span>Kelly: ' + kellyLabel + '</span><span style="color:' + color + '">' + pctVal.toFixed(1) + '% kapitału</span></div>' +
+    '</div>';
 }
 </script>
 </body>
