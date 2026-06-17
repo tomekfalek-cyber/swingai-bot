@@ -713,16 +713,16 @@ tr:hover td{background:rgba(45,143,255,.04);}
   </div>
 
   <hr style="border-color:var(--border);margin:12px 0;">
-  <div class="form-row"><label>Take Profit %</label><input id="cfg-tp" type="number" value="8" step="0.5" min="3" max="30"></div>
-  <div class="form-row"><label>Stop Loss %</label><input id="cfg-sl" type="number" value="4" step="0.5" min="1" max="15"></div>
-  <div class="form-row"><label>Trailing Stop %</label><input id="cfg-trail" type="number" value="4.5" step="0.5" min="1" max="10"></div>
-  <div class="form-row"><label>Max pozycje</label><input id="cfg-maxpos" type="number" value="3" min="1" max="5"></div>
+  <div class="form-row"><label>Take Profit %</label><input id="cfg-tp" type="number" value="12" step="0.5" min="3" max="30"> <small class="lbl">Swing: 10–15%</small></div>
+  <div class="form-row"><label>Stop Loss %</label><input id="cfg-sl" type="number" value="5" step="0.5" min="1" max="15"> <small class="lbl">Swing: 4–6% (szum ATR)</small></div>
+  <div class="form-row"><label>Trailing Stop %</label><input id="cfg-trail" type="number" value="6" step="0.5" min="1" max="10"> <small class="lbl">Swing: 5–7%</small></div>
+  <div class="form-row"><label>Max pozycje</label><input id="cfg-maxpos" type="number" value="4" min="1" max="5"></div>
   <div class="form-row"><label>Rozmiar pozycji $</label><input id="cfg-size" type="number" value="15" min="10" max="10000"></div>
-  <div class="form-row"><label>Skan co (minuty)</label><input id="cfg-interval" type="number" value="2" min="1" max="120"></div>
+  <div class="form-row"><label>Skan co (minuty)</label><input id="cfg-interval" type="number" value="30" min="1" max="120"> <small class="lbl">Swing: 30–60 min</small></div>
   <div class="form-row"><label>Paper saldo startowe $</label><input id="cfg-paper-bal" type="number" value="1000" min="100"></div>
-  <div class="form-row"><label>Min Score BUY (0-100)</label><input id="cfg-minscore" type="number" value="62" min="40" max="90"></div>
+  <div class="form-row"><label>Min Score BUY (0-100)</label><input id="cfg-minscore" type="number" value="58" min="40" max="90"> <small class="lbl">Swing: 55–62</small></div>
   <div class="form-row"><label>Kelly — ryzyko max %</label><input id="cfg-risk" type="number" value="2" min="0.5" max="5" step="0.5"> <small class="lbl">% kapitału per trade (Kelly kalibruje automatycznie)</small></div>
-  <div class="form-row"><label>Fear &amp; Greed min</label><input id="cfg-fgmin" type="number" value="25" min="0" max="40"> <small class="lbl">Poniżej tej wartości bot nie otwiera pozycji</small></div>
+  <div class="form-row"><label>Fear &amp; Greed min</label><input id="cfg-fgmin" type="number" value="20" min="0" max="40"> <small class="lbl">Swing: 20 — fear = okazja kupna</small></div>
   <hr style="border-color:var(--border);margin:12px 0;">
   <div style="font-size:8.5pt;color:var(--text2);margin-bottom:8px">📱 <b>Telegram powiadomienia</b> — opcjonalne. Utwórz bota przez <b>@BotFather</b>, pobierz token i chat_id.</div>
   <div class="form-row"><label>Telegram Bot Token</label><input id="cfg-tg-token" type="password" placeholder="123456:ABC-DEF..."></div>
@@ -774,8 +774,8 @@ tr:hover td{background:rgba(45,143,255,.04);}
 // ── CONFIG ─────────────────────────────────────────────────────────
 let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
-  tp:0.08, sl:0.04, trail:0.045, maxPos:3, riskPct:2, posSize:15,
-  intervalMin:2, paperBal:1000, minScore:65, fgMin:25,
+  tp:0.12, sl:0.05, trail:0.06, maxPos:4, riskPct:2, posSize:15,
+  intervalMin:30, paperBal:1000, minScore:58, fgMin:20,
   exchange:'binance', bybApiKey:'', bybSecret:'', bybWorker:'',
   okxApiKey:'', okxSecret:'', okxPassphrase:'', okxWorker:''
 };
@@ -2026,8 +2026,8 @@ async function closeTrade(pos, price, reason) {
     ST.dailyPnl += pnl;
     if (pnl < 0) {
       ST.consLoss++;
-      ST.cooldown[pos.sym] = Date.now() + 48*3600000;
-      if (ST.consLoss >= 3) { ST.globalBlockUntil=Date.now()+6*3600000; log('3 straty z rzedu — blokada 6h','err'); }
+      ST.cooldown[pos.sym] = Date.now() + 12*3600000;
+      if (ST.consLoss >= 4) { ST.globalBlockUntil=Date.now()+3*3600000; log('4 straty z rzedu — blokada 3h','err'); toast('Blokada 3h — 4 straty z rzędu','Ochłodź się, sprawdź rynek','warn',8000); }
     } else { ST.consLoss=0; }
     ST.trades.unshift({sym:pos.sym, entry:pos.entry, exit:ep, qty:pos.qty,
       pnl:+pnl.toFixed(4), pnlPct:+pnlPct.toFixed(2), durH, reason, score:pos.score,
