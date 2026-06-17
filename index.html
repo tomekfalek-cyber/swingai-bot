@@ -2407,6 +2407,7 @@ function renderSigList(sigs) {
       +(s.divBear?'<span class="ind-chip" style="color:var(--red)" title="Dywergencja niedźwiedzia">DIV <b>bear</b></span>':'')
       +'</div>'
       +'<div style="font-size:7.5pt;color:var(--text3);margin-top:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+s.why.slice(0,2).join(' • ')+'</div>'
+      +'<button onclick="event.stopPropagation();openChart(\''+s.sym+'\')" style="margin-top:5px;width:100%;background:rgba(45,143,255,0.07);color:var(--accent);border:1px solid rgba(45,143,255,0.2);border-radius:5px;font-size:7.5pt;padding:2px 0;cursor:pointer;transition:all .15s" onmouseover="this.style.background=\'rgba(45,143,255,0.15)\'" onmouseout="this.style.background=\'rgba(45,143,255,0.07)\'">📊 Wykres</button>'
       +'</div>';
   }).join('');
 }
