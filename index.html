@@ -3272,6 +3272,47 @@ var PATTERNS = {
     var score   = patterns.reduce(function(sum,p){ return sum+(p.type==='bullish'?p.strength:-p.strength); },0);
 
     return { patterns:patterns, score:score, bullish:bullish, bearish:bearish };
+  },
+
+  // Skanuje wszystkie świece — zwraca tablicę [{idx, name, type, strength}]
+  detectAll: function(klines) {
+    var results = [];
+    var n = klines.length;
+    if (n < 5) return results;
+    var o = klines.map(function(k){ return k.o; });
+    var h = klines.map(function(k){ return k.h; });
+    var l = klines.map(function(k){ return k.l; });
+    var c = klines.map(function(k){ return k.c; });
+    var body   = function(i){ return Math.abs(c[i]-o[i]); };
+    var range  = function(i){ return h[i]-l[i]; };
+    var isUp   = function(i){ return c[i]>o[i]; };
+    var isDown = function(i){ return c[i]<o[i]; };
+
+    for (var i = 2; i < n; i++) {
+      var atrVal = (range(i)+range(i-1)+range(i-2))/3 || 1;
+      var lowerShadow = isUp(i) ? o[i]-l[i] : c[i]-l[i];
+      var upperShadow = isUp(i) ? h[i]-c[i] : h[i]-o[i];
+      var lowerSh2    = isUp(i) ? o[i]-l[i] : c[i]-l[i];
+      var upperSh2    = isUp(i) ? h[i]-c[i] : h[i]-o[i];
+
+      if (body(i)<atrVal*0.3 && lowerShadow>body(i)*2 && upperShadow<body(i)*0.5 && isDown(i-1))
+        results.push({idx:i, name:'Hammer', type:'bullish', short:'🔨'});
+      if (isDown(i-1) && isUp(i) && o[i]<c[i-1] && c[i]>o[i-1] && body(i)>body(i-1)*1.1)
+        results.push({idx:i, name:'Engulfing', type:'bullish', short:'↑E'});
+      if (i>=2 && isDown(i-2) && body(i-1)<atrVal*0.25 && isUp(i) && c[i]>(o[i-2]+c[i-2])/2)
+        results.push({idx:i, name:'Morning★', type:'bullish', short:'☀'});
+      if (body(i)<atrVal*0.1 && range(i)>atrVal*0.3)
+        results.push({idx:i, name:'Doji', type:'neutral', short:'+'});
+      if (isDown(i-1) && isUp(i) && o[i]<l[i-1] && c[i]>(o[i-1]+c[i-1])/2 && c[i]<o[i-1])
+        results.push({idx:i, name:'Piercing', type:'bullish', short:'↑P'});
+      if (i>=2 && isUp(i) && isUp(i-1) && isUp(i-2) && c[i]>c[i-1] && c[i-1]>c[i-2] && body(i)>atrVal*0.4)
+        results.push({idx:i, name:'3 Soldiers', type:'bullish', short:'↑↑↑'});
+      if (body(i)<atrVal*0.3 && upperSh2>body(i)*2 && lowerSh2<body(i)*0.5 && isUp(i-1))
+        results.push({idx:i, name:'Shoot★', type:'bearish', short:'🌠'});
+      if (isUp(i-1) && isDown(i) && o[i]>c[i-1] && c[i]<o[i-1] && body(i)>body(i-1)*1.1)
+        results.push({idx:i, name:'Engulfing', type:'bearish', short:'↓E'});
+    }
+    return results;
   }
 };
 
@@ -3967,6 +4008,63 @@ var CHART = {
     drawEMA(20, 'rgba(88,166,255,0.7)');
     drawEMA(50, 'rgba(240,165,0,0.7)');
 
+    // ── Formacje świecowe — etykiety nad/pod świecami ────────────────
+    var detectedPat = PATTERNS.detectAll(klines);
+    // Grupuj po indeksie (jedna świeca może mieć kilka formacji)
+    var patByIdx = {};
+    detectedPat.forEach(function(p) {
+      if (!patByIdx[p.idx]) patByIdx[p.idx] = [];
+      patByIdx[p.idx].push(p);
+    });
+    Object.keys(patByIdx).forEach(function(idxStr) {
+      var idx = +idxStr;
+      var pats = patByIdx[idxStr];
+      var cx = candleX(idx) + candleW / 2;
+      var kl = klines[idx];
+      // Bycze — etykieta pod świecą; niedźwiedzie — nad świecą
+      var bullPats  = pats.filter(function(p){ return p.type==='bullish'; });
+      var bearPats  = pats.filter(function(p){ return p.type==='bearish'; });
+      var neutPats  = pats.filter(function(p){ return p.type==='neutral'; });
+
+      ctx.font = 'bold 8px Segoe UI';
+      ctx.textAlign = 'center';
+
+      // Bycze — trójkąt w górę pod świecą
+      if (bullPats.length) {
+        var yBot = toY(kl.l) + 6;
+        // Trójkąt
+        ctx.fillStyle = '#3fb950';
+        ctx.beginPath();
+        ctx.moveTo(cx, yBot);
+        ctx.lineTo(cx - 4, yBot + 7);
+        ctx.lineTo(cx + 4, yBot + 7);
+        ctx.closePath(); ctx.fill();
+        // Nazwa skrócona
+        ctx.fillStyle = '#3fb950';
+        ctx.fillText(bullPats[0].short, cx, yBot + 17);
+      }
+
+      // Niedźwiedzie — trójkąt w dół nad świecą
+      if (bearPats.length) {
+        var yTop = toY(kl.h) - 6;
+        ctx.fillStyle = '#f85149';
+        ctx.beginPath();
+        ctx.moveTo(cx, yTop);
+        ctx.lineTo(cx - 4, yTop - 7);
+        ctx.lineTo(cx + 4, yTop - 7);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#f85149';
+        ctx.fillText(bearPats[0].short, cx, yTop - 10);
+      }
+
+      // Doji — szary krzyżyk
+      if (neutPats.length && !bullPats.length && !bearPats.length) {
+        var yMid = toY((kl.h + kl.l) / 2);
+        ctx.fillStyle = 'rgba(180,180,180,0.7)';
+        ctx.fillText('+', cx, yMid - 8);
+      }
+    });
+
     // ── Volume bars (dolne 15% wykresu) ─────────────────────────────
     var vols = klines.map(function(k){ return k.v; });
     var maxVol = Math.max.apply(null, vols) || 1;
@@ -4013,8 +4111,13 @@ var CHART = {
         '<span style="color:var(--text)">C: <b>'+fp(last.c)+'</b></span>'+
         '<span style="color:'+(+chg>=0?'var(--green)':'var(--red)')+'">'+
           (chg>=0?'+':'')+chg+'% ('+CHART.tf+')</span>'+
-        '<span style="color:var(--accent)">EMA20</span>'+
-        '<span style="color:var(--gold)">EMA50</span>';
+        '<span style="color:var(--accent)">── EMA20</span>'+
+        '<span style="color:var(--gold)">── EMA50</span>'+
+        (detectedPat.length ?
+          '<span style="color:var(--green)">▲ bycze: '+detectedPat.filter(function(p){return p.type==='bullish';}).length+'</span>'+
+          (detectedPat.filter(function(p){return p.type==='bearish';}).length ?
+            '<span style="color:var(--red)">▼ niedźwiedzie: '+detectedPat.filter(function(p){return p.type==='bearish';}).length+'</span>' : '')
+        : '<span style="color:var(--text3)">brak formacji</span>');
     }
   }
 };
