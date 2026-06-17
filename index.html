@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -482,6 +482,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
       <option value="paper">📝 PAPER — symulacja (bezpieczny start)</option>
       <option value="live">💰 LIVE — Binance (realne transakcje)</option>
       <option value="bybit">💰 LIVE — Bybit EU (realne transakcje)</option>
+      <option value="okx">💰 LIVE — OKX (realne transakcje)</option>
     </select>
   </div>
 
@@ -511,6 +512,32 @@ tr:hover td{background:rgba(255,255,255,.015);}
     </div>
 
   </div>
+
+  <!-- OKX — osobna sekcja -->
+  <div style="background:rgba(63,185,80,.05);border:1px solid rgba(63,185,80,.3);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+    <div style="font-size:8pt;color:var(--green);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟢 OKX</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div>
+        <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">API Key</div>
+          <input id="cfg-okx-key" type="password" placeholder="OKX API Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+        <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Secret Key</div>
+          <input id="cfg-okx-secret" type="password" placeholder="OKX Secret Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+        <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Passphrase</div>
+          <input id="cfg-okx-pass" type="password" placeholder="OKX Passphrase" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+      </div>
+      <div>
+        <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Worker URL (CORS proxy)</div>
+          <input id="cfg-okx-worker" type="text" placeholder="https://swingai-okx.xxx.workers.dev" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+        <div style="font-size:7.5pt;color:var(--text3);margin-top:8px;line-height:1.6">
+          Klucz: Trade Spot → Read+Trade.<br>
+          Bez Worker: dane rynkowe działają (brak CORS).<br>
+          Worker wymagany do zleceń LIVE.<br>
+          Działa z EU IP — brak blokad Binance.
+        </div>
+      </div>
+    </div>
+  </div>
+
   <hr style="border-color:var(--border);margin:12px 0;">
   <div class="form-row"><label>Take Profit %</label><input id="cfg-tp" type="number" value="8" step="0.5" min="3" max="30"></div>
   <div class="form-row"><label>Stop Loss %</label><input id="cfg-sl" type="number" value="4" step="0.5" min="1" max="15"></div>
@@ -575,7 +602,8 @@ let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.08, sl:0.04, trail:0.045, maxPos:3, riskPct:2, posSize:15,
   intervalMin:2, paperBal:1000, minScore:65, fgMin:25,
-  exchange:'binance', bybApiKey:'', bybSecret:'', bybWorker:''
+  exchange:'binance', bybApiKey:'', bybSecret:'', bybWorker:'',
+  okxApiKey:'', okxSecret:'', okxPassphrase:'', okxWorker:''
 };
 const PAIRS = ['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
                'ADAUSDC','AVAXUSDC','DOTUSDC','LINKUSDC','LTCUSDC','NEARUSDC',
@@ -879,6 +907,147 @@ async function bybExecSell(sym, qty) {
   return bybFetchFill(sym, d.orderId, fallbackPrice, safeQty * fallbackPrice);
 }
 
+// ── OKX API ────────────────────────────────────────────────────────
+const OKX_BASE = 'https://www.okx.com';
+
+async function okxHmac(msg) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(CFG.okxSecret), {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+function okxWorkerReady() { return !!(CFG.okxWorker && CFG.okxWorker.startsWith('https://')); }
+
+async function okxSignedReq(method, path, body) {
+  if (!okxWorkerReady()) throw new Error('Brak OKX Worker URL');
+  if (!CFG.okxApiKey)    throw new Error('Brak OKX API Key');
+  const ts  = new Date().toISOString();
+  const bodyStr = body ? JSON.stringify(body) : '';
+  const toSign  = ts + method.toUpperCase() + path + bodyStr;
+  const signature = await okxHmac(toSign);
+  const headers = {
+    'OK-ACCESS-KEY':        CFG.okxApiKey,
+    'OK-ACCESS-SIGN':       signature,
+    'OK-ACCESS-TIMESTAMP':  ts,
+    'OK-ACCESS-PASSPHRASE': CFG.okxPassphrase,
+    'Content-Type': 'application/json'
+  };
+  const proxyUrl = CFG.okxWorker.replace(/\/+$/,'') + '/proxy' + path;
+  const r = await fetch(proxyUrl, {
+    method,
+    headers,
+    body: bodyStr || undefined
+  });
+  if (!r.ok) throw new Error('OKX HTTP ' + r.status);
+  const d = await r.json();
+  if (d.code !== '0') throw new Error('OKX: ' + (d.msg || d.code));
+  return d.data;
+}
+
+// Publiczne dane OKX — bez proxy (OKX nie blokuje EU CORS dla /market)
+async function okxPub(path, params) {
+  const qs = params ? '?' + new URLSearchParams(params) : '';
+  const r = await fetch(OKX_BASE + path + qs);
+  if (!r.ok) throw new Error('OKX pub ' + r.status);
+  const d = await r.json();
+  if (d.code !== '0') throw new Error('OKX pub: ' + (d.msg || d.code));
+  return d.data;
+}
+
+// Adapter: OKX instId = BTC-USDC (ze slash) zamiast BTCUSDC
+function okxInstId(sym) { return sym.replace('USDC', '-USDC'); }
+
+// Adapter: pobierz świece OKX w formacie [ts,o,h,l,c,v]
+async function okxGetKlines(sym, tf, limit) {
+  const tfMap = {'1d':'1D','4h':'4H','1h':'1H','15m':'15m'};
+  const okxTf = tfMap[tf] || '1D';
+  const d = await okxPub('/api/v5/market/candles', {instId:okxInstId(sym), bar:okxTf, limit:limit||200});
+  // OKX: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+  return (d || []).reverse().map(function(k){
+    return [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5]];
+  });
+}
+
+async function okxGetTicker(sym) {
+  const d = await okxPub('/api/v5/market/ticker', {instId:okxInstId(sym)});
+  const t = (d || [])[0] || {};
+  const last = +t.last || 0;
+  const open24 = +t.open24h || last;
+  const chgPct = open24 > 0 ? ((last - open24) / open24 * 100).toFixed(2) : '0';
+  return { lastPrice: String(last), priceChangePercent: chgPct };
+}
+
+async function okxGetOrderbook(sym) {
+  try {
+    const d = await okxPub('/api/v5/market/books', {instId:okxInstId(sym), sz:'20'});
+    const book = (d || [])[0] || {};
+    var bidVol = (book.bids||[]).reduce(function(s,b){ var v=(parseFloat(b[0])||0)*(parseFloat(b[1])||0); return s+(isFinite(v)?v:0); }, 0);
+    var askVol = (book.asks||[]).reduce(function(s,a){ var v=(parseFloat(a[0])||0)*(parseFloat(a[1])||0); return s+(isFinite(v)?v:0); }, 0);
+    var total  = bidVol + askVol;
+    return { ratio: total > 0 ? +(bidVol/total).toFixed(3) : 0.5, bidVol:bidVol, askVol:askVol, spread:0, ts:Date.now() };
+  } catch(e) { return { ratio:0.5, bidVol:0, askVol:0, spread:0, ts:Date.now() }; }
+}
+
+async function okxGetUSDC() {
+  if (CFG.mode === 'paper') return ST.paperBal;
+  const d = await okxSignedReq('GET', '/api/v5/account/balance?ccy=USDC');
+  const detail = ((d || [])[0]?.details || []).find(function(c){ return c.ccy === 'USDC'; });
+  return detail ? +(detail.availBal || 0) : 0;
+}
+
+async function okxExecBuy(sym, quoteQty) {
+  if (CFG.mode === 'paper') {
+    const t = await okxGetTicker(sym); const p = +t.lastPrice;
+    if (!p || p <= 0) throw new Error('okxExecBuy: niepoprawna cena ' + sym);
+    ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
+  }
+  const tickerBefore = await okxGetTicker(sym).catch(function(){ return {lastPrice:'0'}; });
+  const fallbackPrice = +tickerBefore.lastPrice;
+  const d = await okxSignedReq('POST', '/api/v5/trade/order', {
+    instId: okxInstId(sym), tdMode:'cash', side:'buy',
+    ordType:'market', sz: quoteQty.toFixed(4), tgtCcy:'quote_ccy'
+  });
+  const ordId = (d || [])[0]?.ordId;
+  if (!ordId) throw new Error('OKX buy: brak ordId');
+  // Poll status zlecenia
+  await new Promise(function(r){ setTimeout(r, 700); });
+  try {
+    const od = await okxSignedReq('GET', '/api/v5/trade/order?instId='+okxInstId(sym)+'&ordId='+ordId);
+    const o = (od || [])[0] || {};
+    const price = +o.avgPx || fallbackPrice;
+    const qty   = +o.fillSz || (price > 0 ? quoteQty / price : 0);
+    return {price:price, qty:qty};
+  } catch(e) {
+    return {price:fallbackPrice, qty: fallbackPrice > 0 ? quoteQty / fallbackPrice : 0};
+  }
+}
+
+async function okxExecSell(sym, qty) {
+  if (CFG.mode === 'paper') {
+    const t = await okxGetTicker(sym); const p = +t.lastPrice;
+    ST.paperBal += p * qty; return {price:p, qty};
+  }
+  const tickerBefore = await okxGetTicker(sym).catch(function(){ return {lastPrice:'0'}; });
+  const fallbackPrice = +tickerBefore.lastPrice;
+  const safeQty = Math.floor(qty * 1e6) / 1e6;
+  if (safeQty <= 0) throw new Error('okxExecSell: qty=0 po zaokrągleniu ('+sym+')');
+  const d = await okxSignedReq('POST', '/api/v5/trade/order', {
+    instId: okxInstId(sym), tdMode:'cash', side:'sell',
+    ordType:'market', sz: safeQty.toFixed(6), tgtCcy:'base_ccy'
+  });
+  const ordId = (d || [])[0]?.ordId;
+  if (!ordId) throw new Error('OKX sell: brak ordId');
+  await new Promise(function(r){ setTimeout(r, 700); });
+  try {
+    const od = await okxSignedReq('GET', '/api/v5/trade/order?instId='+okxInstId(sym)+'&ordId='+ordId);
+    const o = (od || [])[0] || {};
+    const price = +o.avgPx || fallbackPrice;
+    return {price:price, qty:+o.fillSz||safeQty};
+  } catch(e) {
+    return {price:fallbackPrice, qty:safeQty};
+  }
+}
+
 // ── BINANCE API ────────────────────────────────────────────────────
 async function hmac(msg) {
   const enc = new TextEncoder();
@@ -938,7 +1107,7 @@ function roundQty(sym, qty) {
 }
 // Prefetch stepSize przy starcie bota dla wszystkich par
 async function prefetchStepSizes() {
-  if (CFG.exchange !== 'binance' || CFG.mode === 'paper') return;
+  if (CFG.mode === 'paper' || CFG.exchange !== 'binance') return;
   try {
     const d = await pub('/api/v3/exchangeInfo');
     (d.symbols||[]).forEach(function(info) {
@@ -957,12 +1126,13 @@ async function pub(path, params={}) {
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
-const getKlines = (s,tf,n=200) => CFG.exchange==='bybit' ? bybGetKlines(s,tf,n) : pub('/api/v3/klines', {symbol:s, interval:tf, limit:n});
-const getTicker = (s) => CFG.exchange==='bybit' ? bybGetTicker(s) : pub('/api/v3/ticker/24hr', {symbol:s});
+const getKlines = (s,tf,n=200) => CFG.exchange==='bybit' ? bybGetKlines(s,tf,n) : CFG.exchange==='okx' ? okxGetKlines(s,tf,n) : pub('/api/v3/klines', {symbol:s, interval:tf, limit:n});
+const getTicker = (s) => CFG.exchange==='bybit' ? bybGetTicker(s) : CFG.exchange==='okx' ? okxGetTicker(s) : pub('/api/v3/ticker/24hr', {symbol:s});
 
 async function getUSDC() {
   if (CFG.mode === 'paper') return ST.paperBal;
   if (CFG.exchange === 'bybit') return bybGetUSDC();
+  if (CFG.exchange === 'okx')   return okxGetUSDC();
   const d = await signedReq('GET', '/api/v3/account');
   const b = (d.balances||[]).find(x => x.asset==='USDC');
   return b ? +b.free : 0;
@@ -974,6 +1144,7 @@ async function execBuy(sym, quoteQty) {
     ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
   }
   if (CFG.exchange === 'bybit') return bybExecBuy(sym, quoteQty);
+  if (CFG.exchange === 'okx')   return okxExecBuy(sym, quoteQty);
   // Zaokrąglij quoteQty do 2 miejsc (wymóg Binance minNotional)
   const safeQty = Math.floor(quoteQty * 100) / 100;
   if (safeQty < 1) throw new Error('execBuy: quoteQty za małe: $'+safeQty);
@@ -989,6 +1160,7 @@ async function execSell(sym, qty) {
     ST.paperBal += p * qty; return {price:p, qty};
   }
   if (CFG.exchange === 'bybit') return bybExecSell(sym, qty);
+  if (CFG.exchange === 'okx')   return okxExecSell(sym, qty);
   // qty musi być zaokrąglone do stepSize pary — pobierz z cache lub użyj bezpiecznego zaokrąglenia
   const roundedQty = roundQty(sym, qty);
   if (roundedQty <= 0) throw new Error('execSell: qty=0 po zaokrągleniu ('+sym+')');
@@ -1414,7 +1586,7 @@ var WS = {
 
   connect: function() {
     if (this.blocked) return;                              // siec blokuje — nie probuj
-    if (CFG.exchange === 'bybit') return;                  // Bybit — polling REST zamiast WS
+    if (CFG.exchange === 'bybit' || CFG.exchange === 'okx') return; // nie-Binance — polling REST
     if (this.socket && this.socket.readyState < 2) return; // juz podlaczony
     try {
       this.socket = new WebSocket(this.buildStreamUrl());
@@ -1897,6 +2069,10 @@ async function startBot() {
     if (!CFG.bybApiKey || !CFG.bybSecret) { alert('Tryb Bybit EU wymaga kluczy Bybit API. Otworz Konfiguracja.'); return; }
     if (!bybWorkerReady()) { alert('Tryb Bybit EU wymaga Cloudflare Worker URL (pole Bybit). Otworz Konfiguracja.'); return; }
   }
+  if (CFG.mode === 'okx') {
+    if (!CFG.okxApiKey || !CFG.okxSecret || !CFG.okxPassphrase) { alert('Tryb OKX wymaga API Key, Secret i Passphrase. Otworz Konfiguracja.'); return; }
+    if (!okxWorkerReady()) { alert('Tryb OKX LIVE wymaga Cloudflare Worker URL (pole OKX). Otworz Konfiguracja.'); return; }
+  }
   running = true;
   gi('btn-run').style.display  = 'none';
   gi('btn-stop').style.display = '';
@@ -2013,7 +2189,7 @@ async function updateHeader() {
     const rw = gi('rb-worker');
     if (rw) { rw.textContent=CFG.mode==='paper'?'(PAPER)':workerReady()||bybWorkerReady()?'OK':'brak'; rw.className=CFG.mode==='paper'?'val neu':workerReady()||bybWorkerReady()?'val up':'val dn'; }
     const re = gi('rb-exchange');
-    if (re) { re.textContent=CFG.exchange==='bybit'?'Bybit EU':'Binance'; re.className='val acc'; }
+    if (re) { re.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='okx'?'OKX':'Binance'; re.className='val acc'; }
   } catch(e) {}
 }
 
@@ -2238,6 +2414,10 @@ function openSettings() {
   gi('cfg-byb-key').value    = CFG.bybApiKey||'';
   gi('cfg-byb-secret').value = CFG.bybSecret||'';
   gi('cfg-byb-worker').value = CFG.bybWorker||'';
+  gi('cfg-okx-key').value      = CFG.okxApiKey||'';
+  gi('cfg-okx-secret').value   = CFG.okxSecret||'';
+  gi('cfg-okx-pass').value     = CFG.okxPassphrase||'';
+  gi('cfg-okx-worker').value   = CFG.okxWorker||'';
   gi('cfg-tp').value       = (CFG.tp*100).toFixed(1);
   gi('cfg-sl').value       = (CFG.sl*100).toFixed(1);
   gi('cfg-trail').value    = (CFG.trail*100).toFixed(1);
@@ -2258,10 +2438,14 @@ function saveSettings() {
   CFG.secret     = gi('cfg-secret').value.trim();
   CFG.workerUrl  = gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode       = gi('cfg-mode').value;
-  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : 'binance';
+  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : CFG.mode==='okx' ? 'okx' : 'binance';
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
+  CFG.okxApiKey    = gi('cfg-okx-key').value.trim();
+  CFG.okxSecret    = gi('cfg-okx-secret').value.trim();
+  CFG.okxPassphrase= gi('cfg-okx-pass').value.trim();
+  CFG.okxWorker    = gi('cfg-okx-worker').value.trim().replace(/\/+$/,'');
 
   // Walidacja wartości numerycznych — zabezpieczenie przed groteskowymi parametrami w LIVE
   const rawTP    = parseFloat(gi('cfg-tp').value);
@@ -2320,20 +2504,25 @@ async function testConn() {
     if (CFG.bybApiKey && bybWorkerReady()) {
       try { const u=await bybGetUSDC(); lines.push('Bybit konto OK | USDC: $'+u.toFixed(2)); } catch(e){ lines.push('Bybit konto ERR: '+e.message); }
     }
+    if (CFG.bybWorker) {
+      try { const r=await fetch(CFG.bybWorker+'/proxy/v5/market/tickers?category=spot&symbol=BTCUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('Bybit Worker OK'); } catch(e){ lines.push('Bybit Worker ERR: '+e.message); }
+    } else if (CFG.mode==='bybit') { lines.push('Brak Bybit Worker URL — wymagany do LIVE'); }
+  } else if (CFG.exchange === 'okx') {
+    try { const t=await okxGetTicker('BTCUSDC'); lines.push('OKX OK | BTC: $'+(+t.lastPrice).toFixed(0)); } catch(e){ lines.push('OKX ERR: '+e.message); }
+    if (CFG.okxApiKey && CFG.okxSecret && CFG.okxPassphrase && okxWorkerReady()) {
+      try { const u=await okxGetUSDC(); lines.push('OKX konto OK | USDC: $'+u.toFixed(2)); } catch(e){ lines.push('OKX konto ERR: '+e.message); }
+    }
+    if (CFG.okxWorker) {
+      try { const r=await fetch(CFG.okxWorker+'/proxy/api/v5/market/ticker?instId=BTC-USDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('OKX Worker OK'); } catch(e){ lines.push('OKX Worker ERR: '+e.message); }
+    } else if (CFG.mode==='okx') { lines.push('Brak OKX Worker URL — wymagany do LIVE'); }
   } else {
     try { const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'}); lines.push('Binance OK | BTC: $'+(+t.price).toFixed(0)); } catch(e){ lines.push('Binance ERR: '+e.message); }
-  }
-  if (CFG.exchange !== 'bybit') {
     if (CFG.workerUrl) {
       try { const r=await fetch(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); lines.push('Binance Worker OK | ETH: $'+(+d.price).toFixed(2)); } catch(e){ lines.push('Binance Worker ERR: '+e.message); }
     } else if (CFG.mode==='live') { lines.push('Brak Binance Worker URL — wymagany do LIVE'); }
     if (CFG.mode==='live'&&CFG.apiKey&&workerReady()) {
       try { const a=await signedReq('GET','/api/v3/account'); const u=(a.balances||[]).find(function(b){ return b.asset==='USDC'; }); lines.push('Binance Konto OK | USDC: $'+(u?parseFloat(u.free).toFixed(2):'0')); } catch(e){ lines.push('Binance Konto ERR: '+e.message); }
     }
-  } else {
-    if (CFG.bybWorker) {
-      try { const r=await fetch(CFG.bybWorker+'/proxy/v5/market/tickers?category=spot&symbol=BTCUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('Bybit Worker OK'); } catch(e){ lines.push('Bybit Worker ERR: '+e.message); }
-    } else if (CFG.mode==='live') { lines.push('Brak Bybit Worker URL — wymagany do LIVE'); }
   }
   s.innerHTML=lines.join('<br>'); s.style.color='var(--green)';
   gi('conn-badge').className='badge bon'; gi('conn-badge').textContent='ONLINE';
@@ -2382,8 +2571,10 @@ var OBI = {
     try {
       var result;
       if (CFG.exchange === 'bybit') {
-        // Bybit orderbook
         result = await bybGetOrderbook(sym);
+        result.ts = now;
+      } else if (CFG.exchange === 'okx') {
+        result = await okxGetOrderbook(sym);
         result.ts = now;
       } else {
         // Binance orderbook
@@ -3674,6 +3865,7 @@ if (_modelsLoaded) {
 </script>
 </body>
 </html>
+
 
 
 
