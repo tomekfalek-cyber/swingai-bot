@@ -2126,7 +2126,7 @@ async function closeTrade(pos, price, reason) {
 }
 
 async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
-  if (ST.positions.length >= CFG.maxPos || ST.positions.some(p=>p.sym===sig.sym)) return;
+  if (ST.positions.some(p=>p.sym===sig.sym)) return;
   if ((ST.cooldown[sig.sym]||0) > Date.now()) { log('Cooldown '+sig.sym,'warn'); return; }
   if (ST.globalBlockUntil > Date.now())        { log('Globalna blokada','warn'); return; }
   if (isPumpDump(sig)) return;
@@ -2141,13 +2141,14 @@ async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
   if (corrBlocked(sig.sym)) return;
   // Użyj przekazanego cache balansu (unikamy N wywołań API przy N sygnałach BUY w jednym cyklu)
   const total = (cachedTotal != null && cachedTotal > 0) ? cachedTotal : await getTotal().catch(()=>0);
-  const total = (cachedTotal != null && cachedTotal > 0) ? cachedTotal : await getTotal().catch(()=>0);
   const _micro = isMicroAccount(total);
 
-  // Micro account: max 1 pozycja naraz
+  // Micro account: max 1 pozycja naraz — musi być PRZED ogólnym sprawdzeniem maxPos
   if (_micro && ST.positions.length >= 1) {
     log('Micro konto — czekam na zamkniecie obecnej pozycji', 'warn'); return;
   }
+  // Normalny check maxPos (dla kont >= 100$)
+  if (ST.positions.length >= CFG.maxPos) return;
 
   // Portfolio Heat check — tylko dla normalnych kont (>= 100$)
   if (!_micro) {
@@ -2160,7 +2161,7 @@ async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
   }
   // Dzienny limit strat
   const dailyBase = ST.dailyStartBalance > 0 ? ST.dailyStartBalance : total;
-  if (ST.dailyPnl < -0.05*dailyBase) { log('Dzienny limit strat (base=$'+dailyBase.toFixed(0)+')'','err'); return; }
+  if (ST.dailyPnl < -0.05*dailyBase) { log('Dzienny limit strat (base=$'+dailyBase.toFixed(0)+')', 'err'); return; }
   const usdc = (cachedUSDC != null && cachedUSDC >= 0) ? cachedUSDC : await getUSDC().catch(()=>0);
   // Odejmij juz zaangazowany kapital
   const lockedSize = ST.positions.reduce(function(s,p){ return s+(p.size||0); }, 0);
