@@ -907,6 +907,11 @@ async function getFearGreed() {
 function kellySize(total) {
   const fixedSize = CFG.posSize || 15; // rozmiar z konfiguracji (pole "Rozmiar pozycji $")
   const safeTotal = (isFinite(total) && total > 0) ? total : 100;
+
+  // Micro account: inwestuj 90% salda, min 1$
+  if (isMicroAccount(safeTotal)) {
+    return Math.max(1, Math.round(safeTotal * 0.90 * 100) / 100);
+  }
   const trades = ST.trades.slice(-30);
   if (trades.length < 5) {
     // Brak historii — zwróć mniejszy z: rozmiar z cfg lub % kapitału
@@ -929,6 +934,9 @@ function kellySize(total) {
   // Nie przekraczaj limitu CFG.posSize — Kelly może skalować w górę ale respektujemy limit użytkownika
   return Math.min(fixedSize, kellySz);
 }
+
+// Micro account mode: balans < 100 — 1 pozycja, 90% kapitalu, brak Kelly cap
+function isMicroAccount(total) { return (isFinite(total) && total > 0 && total < 100); }
 
 // ── PUMP & DUMP FILTER ─────────────────────────────────────────────
 function isPumpDump(sig) {
@@ -2133,23 +2141,33 @@ async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
   if (corrBlocked(sig.sym)) return;
   // Użyj przekazanego cache balansu (unikamy N wywołań API przy N sygnałach BUY w jednym cyklu)
   const total = (cachedTotal != null && cachedTotal > 0) ? cachedTotal : await getTotal().catch(()=>0);
-  // Portfolio Heat check - max 10% portfela w ryzyku
-  const _totalRisk     = ST.positions.reduce(function(s, p){ return s + (p.size||0) * CFG.sl; }, 0);
-  const _portfolioHeat = _totalRisk / (total > 0 ? total : 1);
-  if (_portfolioHeat > 0.10) {
-    log('Portfolio heat >10% - blokada (' + (_portfolioHeat*100).toFixed(1) + '%)', 'warn');
-    return;
+  const total = (cachedTotal != null && cachedTotal > 0) ? cachedTotal : await getTotal().catch(()=>0);
+  const _micro = isMicroAccount(total);
+
+  // Micro account: max 1 pozycja naraz
+  if (_micro && ST.positions.length >= 1) {
+    log('Micro konto — czekam na zamkniecie obecnej pozycji', 'warn'); return;
   }
-  // Dzienny limit strat: liczony od balansu na początku dnia (zamrożony), nie od aktualnego total
-  // — zapobiega rozluźnianiu limitu gdy balans odbija po stratach w tym samym dniu
+
+  // Portfolio Heat check — tylko dla normalnych kont (>= 100$)
+  if (!_micro) {
+    const _totalRisk     = ST.positions.reduce(function(s, p){ return s + (p.size||0) * CFG.sl; }, 0);
+    const _portfolioHeat = _totalRisk / (total > 0 ? total : 1);
+    if (_portfolioHeat > 0.10) {
+      log('Portfolio heat >10% - blokada (' + (_portfolioHeat*100).toFixed(1) + '%)', 'warn');
+      return;
+    }
+  }
+  // Dzienny limit strat
   const dailyBase = ST.dailyStartBalance > 0 ? ST.dailyStartBalance : total;
-  if (ST.dailyPnl < -0.05*dailyBase) { log('Dzienny limit strat (base=$'+dailyBase.toFixed(0)+')','err'); return; }
+  if (ST.dailyPnl < -0.05*dailyBase) { log('Dzienny limit strat (base=$'+dailyBase.toFixed(0)+')'','err'); return; }
   const usdc = (cachedUSDC != null && cachedUSDC >= 0) ? cachedUSDC : await getUSDC().catch(()=>0);
-  // Odejmij już zaangażowany kapitał w otwartych pozycjach
+  // Odejmij juz zaangazowany kapital
   const lockedSize = ST.positions.reduce(function(s,p){ return s+(p.size||0); }, 0);
   const availUSDC  = Math.max(0, usdc - lockedSize);
-  const posSize = Math.min(kellySize(total), availUSDC*0.95);
-  if (posSize < 10) { log('Za malo USDC: $'+usdc.toFixed(2),'warn'); return; }
+  const posSize = _micro ? Math.max(1, Math.round(availUSDC * 0.90 * 100)/100) : Math.min(kellySize(total), availUSDC*0.95);
+  const _minSize = _micro ? 1 : 10;
+  if (posSize < _minSize) { log('Za malo USDC: $'+usdc.toFixed(2),'warn'); return; }
 
   // Dynamic TP/SL based on ATR
   const levels  = calcDynamicLevels(sig.price, sig.atrD, FEE);
