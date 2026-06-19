@@ -2033,12 +2033,19 @@ async function checkPositions() {
       if (!reason) {
         const tpPct = (pos.tp - pos.entry) / pos.entry * 100;
         if (pnlPct >= tpPct * 0.5 && !pos.partialClosed) {
-          pos.qty = pos.qty / 2;
+          const halfQty  = pos.qty / 2;
+          const halfSize = (pos.size || 0) / 2;
+          const halfPnl  = (cp - pos.entry) * halfQty;
+          pos.qty  = halfQty;
+          pos.size = halfSize; // zaktualizuj size do pozostałej połowy
           pos.partialClosed = true;
           pos.sl = pos.entry; // break-even stop
-          const partialPnl = (cp - pos.entry) * pos.qty;
-          log('PARTIAL TP ' + pos.sym + ' +$' + partialPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) - reszta jedzie dalej', 'ok');
-          toast('PARTIAL TP ' + pos.sym.replace('USDC','/USDC'), '+$'+partialPnl.toFixed(2)+' ('+pnlPct.toFixed(1)+'%)', 'ok', 4000);
+          // Zwróć połowę zainwestowanego kapitału + zysk z tej połowy do salda paper
+          if (CFG.mode === 'paper') {
+            ST.paperBal = (ST.paperBal || 0) + halfSize + halfPnl;
+          }
+          log('PARTIAL TP ' + pos.sym + ' +$' + halfPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) - reszta jedzie dalej', 'ok');
+          toast('PARTIAL TP ' + pos.sym.replace('USDC','/USDC'), '+$'+halfPnl.toFixed(2)+' ('+pnlPct.toFixed(1)+'%)', 'ok', 4000);
           saveAll();
         }
       }
@@ -3235,7 +3242,7 @@ function calcSRLevels(highs, lows, price) {
   }
   var above = pivotHighs.filter(function(v){ return v > price; }).sort(function(a,b){ return a-b; }).slice(0,3);
   var below = pivotLows.filter(function(v){ return v < price; }).sort(function(a,b){ return b-a; }).slice(0,2);
-  return { above: above, below: below };
+  return { above: above, below: below, all: above.concat(below) };
 }
 
 // Wykryj rezim rynkowy
@@ -3950,7 +3957,9 @@ async function trainAllAI() {
       var futureRet = (closes[i+10]/closes[i])-1;
       var label = futureRet >= targetPct ? 1 : 0;
       var nbF  = NB.discretize({ rsiD:ind.rsiD, macdHist:ind.macdHist, bbPos:ind.bbPos, trendD:ind.trendD, mom5:ind.mom5, confirm1h:ind.macdHist>0 });
-      var gbmF = [ ind.rsiD/100, ind.macdHist>0?1:0, ind.bbPos, (ind.trendD+1)/3, ind.mom5/20, ind.mom10/20, ind.macdHist>0?1:0, 1, 0.5 ];
+      var _atrPctFeat = ind.atrVal > 0 && ind.price > 0 ? Math.min(1, ind.atrVal / ind.price / 0.1) : 0;
+      var _emaSlopeD  = 0; // e50/e200 niedostępne w calcIndicatorsForCandle — fallback 0
+      var gbmF = [ ind.rsiD/100, ind.macdHist>0?1:0, ind.bbPos, (ind.trendD+1)/3, ind.mom5/20, ind.mom10/20, ind.macdHist>0?1:0, 1, 0.5, 0.5, _atrPctFeat, _emaSlopeD ];
       synTrades.push({ nbFeatures:nbF, gbmFeatures:gbmF, pnl:label>0?1:-1 });
       X_gbm.push(gbmF); y_gbm.push(label);
     }
