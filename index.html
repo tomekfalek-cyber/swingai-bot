@@ -789,7 +789,8 @@ const FEE  = 0.002;
 let ST = {
   positions:[], trades:[], dailyPnl:0, dailyDate:'',
   dailyStartBalance:0,  // balans na początku dnia — limit strat liczony od tej wartości, nie "pływa" w górę
-  cooldown:{}, globalBlockUntil:0, consLoss:0, paperBal:1000, iter:0
+  cooldown:{}, globalBlockUntil:0, consLoss:0, paperBal:1000, iter:0,
+  peakBalance:0, drawdownBlock:0, stats:null
 };
 let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null, cycleRunning=false, countdownTimer=null, cycleTimeoutTimer=null, wsExitQueueTimer=null;
 
@@ -1487,6 +1488,12 @@ async function analyzeSwing(sym) {
   const rsiD  = rsi(d.c,14), macdD=macd(d.c), bbD=bband(d.c);
   const ema50 = ema(d.c,50),  ema200=ema(d.c,200), ema21=ema(d.c,21);
   const atrD  = atr(d.h,d.l,d.c,14);
+  // VWAP 4H
+  const vwap4h = calcVWAP(h4.h, h4.l, h4.c, h4.v);
+  // S/R levels
+  const srLevels = calcSRLevels(d.h, d.l, price);
+  // Market Regime
+  const regime = detectRegime(d.c, atrD, ema50, ema200);
   const rsi4h = rsi(h4.c,14), macd4h=macd(h4.c);
   const rsi1h = rsi(h1.c,14), macd1h=macd(h1.c);
   const confirm1h = (rsi1h<50 && macd1h.hist>0) || rsi1h<40;
@@ -1544,6 +1551,23 @@ async function analyzeSwing(sym) {
   if (trendD===-1 && rsiD>50) { score=Math.min(score,15); why.push('BESSA: brak long'); }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
+  // VWAP scoring
+  if (price > vwap4h) { score += 8;  why.push('Ponad VWAP'); }
+  else                { score -= 5;  why.push('Ponizej VWAP'); }
+
+  // S/R scoring
+  const srSupport    = srLevels.below.find(function(s){ return Math.abs(price/s - 1) <= 0.015; });
+  const srResistance = srLevels.above.find(function(r){ return price > r * 0.985; });
+  if (srSupport)    { score += 12; why.push('S/R support'); }
+  if (srResistance) { score -= 10; why.push('Pod oporem S/R'); }
+
+  // Regime scoring
+  var regimeMinScoreAdj = 0;
+  if (regime === 'sideways')   { regimeMinScoreAdj = 8; }
+  if (regime === 'bull_trend') { score += 5; why.push('Rezim: bull trend'); }
+  if (regime === 'bear_trend') { score -= 15; why.push('Rezim: bear trend'); }
+  if (regime === 'volatile')   { score -= 8;  why.push('Rezim: volatile'); }
+
   // ── Pattern Recognition (Module 3) ─────────────────────────────
   const opens = kd.map(x=>+x[1]);
   const patResult = PATTERNS.detect(d.c, opens, d.h, d.l);
@@ -1571,7 +1595,10 @@ async function analyzeSwing(sym) {
 
   // ── Cechy dla NB/GBM (Module 1 & 2) ─────────────────────────────
   const nbFeatures  = NB.discretize({ rsiD, macdHist:macdD.hist, bbPos:bbD.pos, trendD, mom5, confirm1h });
-  const gbmFeatures = [ rsiD/100, macdD.hist>0?1:0, bbD.pos, (trendD+1)/3, mom5/20, mom10/20, confirm1h?1:0, volR/3, obiData.ratio ];
+  const bodyRatio  = Math.abs(d.c[d.c.length-1] - kd[kd.length-1][1]) / (d.h[d.h.length-1] - d.l[d.l.length-1] + 0.001);
+  const atrPctFeat = Math.min(1, atrD / price / 0.1);
+  const emaSlopeD  = Math.max(-1, Math.min(1, (ema50/ema200 - 1) * 10));
+  const gbmFeatures = [ rsiD/100, macdD.hist>0?1:0, bbD.pos, (trendD+1)/3, mom5/20, mom10/20, confirm1h?1:0, volR/3, obiData.ratio, bodyRatio, atrPctFeat, emaSlopeD ];
 
   // ── NB + GBM predictions ─────────────────────────────────────────
   const nbPred  = NB.predict({ rsiD, macdHist:macdD.hist, bbPos:bbD.pos, trendD, mom5, confirm1h });
@@ -1613,7 +1640,7 @@ async function analyzeSwing(sym) {
 
   // ── Module 6: Per-pair effective minScore ────────────────────────
   const pairP = PAIR_PARAMS.get(sym);
-  const effectiveMinScore = pairP ? pairP.minScore : ADAPTIVE.getMinScore();
+  const effectiveMinScore = (pairP ? pairP.minScore : ADAPTIVE.getMinScore()) + regimeMinScoreAdj;
   const buy = finalProb >= effectiveMinScore/100;
 
   // ── Per-pair dynamic TP/SL override ─────────────────────────────
@@ -1630,6 +1657,7 @@ async function analyzeSwing(sym) {
     nbPred, gbmProb:+gbmProb.toFixed(3), qlSugg, aiMethod,
     obiRatio:obiData.ratio, obiScore, obiLabel:OBI.label(obiData.ratio),
     patterns:patResult.patterns, patScore,
+    srLevels, vwap4h, regime,
     why, nbFeatures, gbmFeatures,
     slPrice:price*(1-ppSL-FEE), tpPrice:price*(1+ppTP-FEE),
     pairParams:pairP,
@@ -2000,6 +2028,21 @@ async function checkPositions() {
       else if (cp <= trail && pnlPct > 1.5)         reason = 'TRAILING STOP';
       else if (pnlPct <= -12)                       reason = 'EMERGENCY STOP';
       else if ((Date.now()-pos.entryTs)/864e5 > 7)  reason = 'TIMEOUT 7d';
+
+      // Partial TP (50% pozycji przy polowie TP)
+      if (!reason) {
+        const tpPct = (pos.tp - pos.entry) / pos.entry * 100;
+        if (pnlPct >= tpPct * 0.5 && !pos.partialClosed) {
+          pos.qty = pos.qty / 2;
+          pos.partialClosed = true;
+          pos.sl = pos.entry; // break-even stop
+          const partialPnl = (cp - pos.entry) * pos.qty;
+          log('PARTIAL TP ' + pos.sym + ' +$' + partialPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) - reszta jedzie dalej', 'ok');
+          toast('PARTIAL TP ' + pos.sym.replace('USDC','/USDC'), '+$'+partialPnl.toFixed(2)+' ('+pnlPct.toFixed(1)+'%)', 'ok', 4000);
+          saveAll();
+        }
+      }
+
       if (reason) {
         // Zapisz aktualny stan rynku jako nextSig (s') dla Q-Learning Bellman
         if (pos.qlSig) pos.qlSigClose = { rsiD:pos.qlSig.rsiD, macdHist:pos.qlSig.macdHist,
@@ -2050,6 +2093,8 @@ async function closeTrade(pos, price, reason) {
       setTimeout(function(){ ADAPTIVE.retrain(); PAIR_PARAMS.optimizeAll(); }, 500);
     }
     if (ST.trades.length > 300) ST.trades = ST.trades.slice(0,300);
+    // Zaktualizuj statystyki
+    ST.stats = calcStats(ST.trades);
     saveAll();
     const e2 = pnl>=0 ? '🟢' : '🔴';
     log(e2+' '+pos.sym+' P/L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' ('+pnlPct.toFixed(2)+'%) — '+reason, pnl>=0?'ok':'err');
@@ -2081,6 +2126,13 @@ async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
   if (corrBlocked(sig.sym)) return;
   // Użyj przekazanego cache balansu (unikamy N wywołań API przy N sygnałach BUY w jednym cyklu)
   const total = (cachedTotal != null && cachedTotal > 0) ? cachedTotal : await getTotal().catch(()=>0);
+  // Portfolio Heat check - max 10% portfela w ryzyku
+  const _totalRisk     = ST.positions.reduce(function(s, p){ return s + (p.size||0) * CFG.sl; }, 0);
+  const _portfolioHeat = _totalRisk / (total > 0 ? total : 1);
+  if (_portfolioHeat > 0.10) {
+    log('Portfolio heat >10% - blokada (' + (_portfolioHeat*100).toFixed(1) + '%)', 'warn');
+    return;
+  }
   // Dzienny limit strat: liczony od balansu na początku dnia (zamrożony), nie od aktualnego total
   // — zapobiega rozluźnianiu limitu gdy balans odbija po stratach w tym samym dniu
   const dailyBase = ST.dailyStartBalance > 0 ? ST.dailyStartBalance : total;
@@ -2155,6 +2207,18 @@ async function botCycle() {
 
   await checkPositions();
 
+  // Drawdown Circuit Breaker
+  var _curBal = ST.paperBal || 0;
+  if (!ST.peakBalance || ST.peakBalance < _curBal) ST.peakBalance = _curBal;
+  if (ST.peakBalance > 0) {
+    var _drawdown = (ST.peakBalance - _curBal) / ST.peakBalance;
+    if (_drawdown > 0.15 && !(ST.drawdownBlock > Date.now())) {
+      ST.drawdownBlock = Date.now() + 24 * 3600000;
+      log('Circuit breaker: -15% drawdown - blokada BUY 24h', 'err');
+      toast('Circuit breaker aktywny', 'Drawdown >15% - blokada BUY przez 24h', 'warn', 8000);
+    }
+  }
+
   const sigs = [];
   for (let i=0; i<PAIRS.length; i++) {
     if (!running) break;
@@ -2173,7 +2237,7 @@ async function botCycle() {
   gi('rb-fg').textContent = fg.val+' — '+fg.label;
   gi('rb-fg').className   = 'val '+(fg.val<25?'dn':fg.val<40?'gold':'up');
 
-  if (ST.globalBlockUntil <= Date.now()) {
+  if (ST.globalBlockUntil <= Date.now() && !(ST.drawdownBlock > Date.now())) {
     // Pobierz balans raz przed pętlą — unikamy N zapytań API przy N sygnałach BUY
     const cachedTotal = await getTotal().catch(()=>0);
     const cachedUSDC  = CFG.mode==='paper' ? ST.paperBal : await getUSDC().catch(()=>0);
@@ -3125,6 +3189,66 @@ var NB = {
 //  AI MODULE 2: GRADIENT BOOSTING (Mini GBM — 20 drzew)
 //  Seria korygujacych klasyfikatorow trenowanych na rezydualach
 // ═══════════════════════════════════════════════════════════════════
+// Sharpe, Sortino, Max Drawdown
+function calcStats(trades) {
+  if (!trades || trades.length < 5) return { sharpe:0, sortino:0, maxDD:0, winRate:0 };
+  var rets = trades.map(function(t){ return t.pnlPct / 100; });
+  var avg = rets.reduce(function(a,b){ return a+b; }, 0) / rets.length;
+  var std = Math.sqrt(rets.reduce(function(a,b){ return a + (b-avg)*(b-avg); }, 0) / rets.length);
+  var sharpe = std > 0 ? +(avg / std * Math.sqrt(252)).toFixed(2) : 0;
+  var downRets = rets.filter(function(r){ return r < 0; });
+  var downStd = downRets.length > 0 ? Math.sqrt(downRets.reduce(function(a,b){ return a + b*b; }, 0) / downRets.length) : 0;
+  var sortino = downStd > 0 ? +(avg / downStd * Math.sqrt(252)).toFixed(2) : 0;
+  var peak = 1, equity = 1, maxDD = 0;
+  for (var ri = 0; ri < rets.length; ri++) {
+    equity *= (1 + rets[ri]);
+    if (equity > peak) peak = equity;
+    var dd = (peak - equity) / peak;
+    if (dd > maxDD) maxDD = dd;
+  }
+  var winRate = +(rets.filter(function(r){ return r > 0; }).length / rets.length * 100).toFixed(1);
+  return { sharpe: sharpe, sortino: sortino, maxDD: +(maxDD * 100).toFixed(1), winRate: winRate };
+}
+
+// VWAP z ostatnich 50 swiec 4H
+function calcVWAP(highs, lows, closes, volumes) {
+  var n = Math.min(50, highs.length);
+  var tpVol = 0, vol = 0;
+  for (var i = highs.length - n; i < highs.length; i++) {
+    var tp = (highs[i] + lows[i] + closes[i]) / 3;
+    tpVol += tp * volumes[i];
+    vol   += volumes[i];
+  }
+  return vol > 0 ? tpVol / vol : closes[closes.length-1];
+}
+
+// Wykryj lokalne pivoty S/R z ostatnich 50 swiec Daily
+function calcSRLevels(highs, lows, price) {
+  var n = Math.min(50, highs.length);
+  var start = highs.length - n;
+  var pivotHighs = [], pivotLows = [];
+  for (var i = start + 2; i < highs.length - 2; i++) {
+    if (highs[i] > highs[i-1] && highs[i] > highs[i-2] && highs[i] > highs[i+1] && highs[i] > highs[i+2])
+      pivotHighs.push(highs[i]);
+    if (lows[i] < lows[i-1] && lows[i] < lows[i-2] && lows[i] < lows[i+1] && lows[i] < lows[i+2])
+      pivotLows.push(lows[i]);
+  }
+  var above = pivotHighs.filter(function(v){ return v > price; }).sort(function(a,b){ return a-b; }).slice(0,3);
+  var below = pivotLows.filter(function(v){ return v < price; }).sort(function(a,b){ return b-a; }).slice(0,2);
+  return { above: above, below: below };
+}
+
+// Wykryj rezim rynkowy
+function detectRegime(closes, atrD, ema50val, ema200val) {
+  var price = closes[closes.length-1];
+  var atrPct = atrD / price;
+  if (atrPct > 0.035) return 'volatile';
+  if (Math.abs(ema50val/ema200val - 1) < 0.005 && atrPct < 0.02) return 'sideways';
+  if (price > ema50val && ema50val > ema200val) return 'bull_trend';
+  if (price < ema50val && ema50val < ema200val) return 'bear_trend';
+  return 'neutral';
+}
+
 var GBM = {
   trees: [],
   learningRate: 0.1,
