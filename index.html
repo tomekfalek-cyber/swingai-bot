@@ -4433,7 +4433,39 @@ function riskBarHtml(kellySzanse, pct) {
     '</div>';
 }
 </script>
+<script>
+(function() {
+  var B = 'https://swingai-bot-24h.tomek-falek.workers.dev';
+  var T = 'swingai-secret-2024';
+  function upd() {
+    fetch(B + '/balance?auth=' + T)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.balance === null || d.balance === undefined) return;
+        var bal = d.balance;
+        var hU = document.getElementById('h-usdc');
+        var rP = document.getElementById('rb-paper');
+        if (hU) hU.textContent = '$' + bal.toFixed(2);
+        if (rP) rP.textContent = '$' + bal.toFixed(2);
+        if (typeof ST !== 'undefined') ST.paperBal = bal;
+        if (d.mode === 'live') {
+          var mb = document.getElementById('mode-badge');
+          var sm = document.getElementById('st-mode');
+          var rm = document.getElementById('rb-mode');
+          if (mb) { mb.textContent = 'LIVE'; mb.className = 'badge bon'; }
+          if (sm) sm.textContent = 'LIVE';
+          if (rm) rm.textContent = 'LIVE';
+        }
+      }).catch(function() {});
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(upd, 2000);
+    setInterval(upd, 30000);
+  });
+})();
+</script>
 </body>
+
 </html>
 
 
