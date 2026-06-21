@@ -542,7 +542,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Cel zysku %</span><input id="ml-target" type="number" value="5" min="2" max="20" style="width:80px"> <small class="lbl">wzrost ceny w ciągu 10 dni</small></div>
           <button class="go" onclick="runMLOptimize()" id="ml-btn" style="width:100%;padding:7px;background:rgba(188,140,255,.15);color:var(--purple);border-color:var(--purple)">🧠 Trenuj model</button>
           <button onclick="applyMLWeights()" id="ml-apply" style="width:100%;padding:5px;margin-top:6px;display:none" class="ok-btn">✅ Zastosuj wagi w bocie</button>
-          <button onclick="trainAllAI()" style="width:100%;padding:5px;margin-top:6px;background:rgba(63,185,80,.1);color:var(--green);border-color:var(--green)">🔄 Trenuj NB + GBM na Binance</button>
+          <button onclick="trainAllAI()" style="width:100%;padding:5px;margin-top:6px;background:rgba(63,185,80,.1);color:var(--green);border-color:var(--green)">🔄 Trenuj NB + GBM na MEXC</button>
           <div id="ml-progress" style="margin-top:8px;font-size:8.5pt;color:var(--gold);min-height:18px"></div>
         </div>
         <div>
@@ -581,7 +581,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
     <div class="r2"><span class="lbl">P/L dzienny</span><span class="val" id="rb-pnl">$0.00</span></div>
     <div class="r2"><span class="lbl">Straty z rzędu</span><span class="val" id="rb-losses">0</span></div>
     <div class="r2"><span class="lbl">Paper saldo</span><span class="val" id="rb-paper">$1000</span></div>
-    <div class="r2"><span class="lbl">Giełda</span><span class="val" id="rb-exchange">Binance</span></div>
+    <div class="r2"><span class="lbl">Giełda</span><span class="val" id="rb-exchange">MEXC</span></div>
     <div class="r2"><span class="lbl">Worker proxy</span><span class="val" id="rb-worker">–</span></div>
     <div class="r2"><span class="lbl">WebSocket</span><span class="val" id="rb-ws">Polling</span></div>
     <div class="r2"><span class="lbl">Fear &amp; Greed</span><span class="val" id="rb-fg">–</span></div>
@@ -648,7 +648,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
 <div class="modal">
   <h2><span style="background:linear-gradient(135deg,var(--accent),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">⚙️ Konfiguracja SwingAI Bot</span></h2>
   <div class="alert-box">
-    🔐 Klucze API przechowywane tylko w <b>localStorage</b> Twojej przeglądarki — nie wychodzą nigdzie poza Binance.<br>
+    🔐 Klucze API przechowywane tylko w <b>localStorage</b> Twojej przeglądarki — nie wychodzą nigdzie poza MEXC.<br>
     Tryb <b>LIVE</b> wymaga Cloudflare Worker (proxy CORS) — instrukcja poniżej.
   </div>
   <div class="form-row"><label>Tryb handlu</label>
@@ -689,19 +689,19 @@ tr:hover td{background:rgba(45,143,255,.04);}
 
   <!-- OKX — osobna sekcja -->
   <div style="background:rgba(63,185,80,.05);border:1px solid rgba(63,185,80,.3);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-    <div style="font-size:8pt;color:var(--green);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟢 OKX</div>
+    <div style="font-size:8pt;color:var(--green);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟢 MEXC</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">API Key</div>
-          <input id="cfg-okx-key" type="password" placeholder="OKX API Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+          <input id="cfg-mexc-key" type="password" placeholder="MEXC API Key" value="mx0vglZL2r7szdqqEa" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
         <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Secret Key</div>
-          <input id="cfg-okx-secret" type="password" placeholder="OKX Secret Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+          <input id="cfg-mexc-secret" type="password" placeholder="MEXC Secret Key" value="fc3b5454365b4bd4a56167e0e31efa69" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
         <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Passphrase</div>
-          <input id="cfg-okx-pass" type="password" placeholder="OKX Passphrase" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+          <input id="cfg-mexc-pass" type="password" placeholder="(nieużywane)" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
       </div>
       <div>
         <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Worker URL (CORS proxy)</div>
-          <input id="cfg-okx-worker" type="text" placeholder="https://swingai-okx.xxx.workers.dev" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
+          <input id="cfg-mexc-worker" type="text" placeholder="(nieużywane)" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
         <div style="font-size:7.5pt;color:var(--text3);margin-top:8px;line-height:1.6">
           Klucz: Trade Spot → Read+Trade.<br>
           Bez Worker: dane rynkowe działają (brak CORS).<br>
@@ -2693,10 +2693,10 @@ function openSettings() {
   gi('cfg-byb-key').value    = CFG.bybApiKey||'';
   gi('cfg-byb-secret').value = CFG.bybSecret||'';
   gi('cfg-byb-worker').value = CFG.bybWorker||'';
-  gi('cfg-okx-key').value      = CFG.okxApiKey||'';
-  gi('cfg-okx-secret').value   = CFG.okxSecret||'';
-  gi('cfg-okx-pass').value     = CFG.okxPassphrase||'';
-  gi('cfg-okx-worker').value   = CFG.okxWorker||'';
+  gi('cfg-mexc-key').value      = CFG.mexcApiKey||'mx0vglZL2r7szdqqEa';
+  gi('cfg-mexc-secret').value   = CFG.mexcSecret||'fc3b5454365b4bd4a56167e0e31efa69';
+  gi('cfg-mexc-pass').value     = '';
+  gi('cfg-mexc-worker').value   = '';
   gi('cfg-tp').value       = (CFG.tp*100).toFixed(1);
   gi('cfg-sl').value       = (CFG.sl*100).toFixed(1);
   gi('cfg-trail').value    = (CFG.trail*100).toFixed(1);
@@ -2721,10 +2721,10 @@ function saveSettings() {
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
-  CFG.okxApiKey    = gi('cfg-okx-key').value.trim();
-  CFG.okxSecret    = gi('cfg-okx-secret').value.trim();
-  CFG.okxPassphrase= gi('cfg-okx-pass').value.trim();
-  CFG.okxWorker    = gi('cfg-okx-worker').value.trim().replace(/\/+$/,'');
+  CFG.mexcApiKey    = gi('cfg-mexc-key').value.trim();
+  CFG.mexcSecret    = gi('cfg-mexc-secret').value.trim();
+  CFG.mexcPassphrase= '';
+  CFG.mexcWorker    = '';
 
   // Walidacja wartości numerycznych — zabezpieczenie przed groteskowymi parametrami w LIVE
   const rawTP    = parseFloat(gi('cfg-tp').value);
