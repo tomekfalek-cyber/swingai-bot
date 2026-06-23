@@ -2774,6 +2774,7 @@ function saveSettings() {
   gi('lim-score').textContent  = CFG.minScore+'/100';
   gi('ai-minscore').textContent= CFG.minScore+'/100';
   const tge=gi('rb-tg'); if(tge){ tge.textContent=CFG.tgToken?'OK':'-'; tge.className=CFG.tgToken?'val up':'val neu'; }
+  const rxe=gi('rb-exchange'); if(rxe){ rxe.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='binance'?'Binance':'MEXC'; rxe.className='val acc'; }
   log('Konfiguracja zapisana','ok');
   if (running&&botTimer) { clearTimeout(botTimer); botTimer=null; const scheduleNextCfg=async function(){ if(!running)return; gi('ai-dot').className='ai-dot scan'; await botCycle(); gi('ai-dot').className='ai-dot'; if(running)botTimer=setTimeout(scheduleNextCfg,CFG.intervalMin*60000); }; botTimer=setTimeout(scheduleNextCfg,CFG.intervalMin*60000); }
 }
