@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -656,7 +656,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
       <option value="paper">📝 PAPER — symulacja (bezpieczny start)</option>
       <option value="live">💰 LIVE — Binance (realne transakcje)</option>
       <option value="bybit">💰 LIVE — Bybit EU (realne transakcje)</option>
-      <option value="okx">💰 LIVE — OKX (realne transakcje)</option>
+      <option value="okx">💰 LIVE — MEXC (realne transakcje)</option>
     </select>
   </div>
 
@@ -776,7 +776,7 @@ let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.12, sl:0.05, trail:0.06, maxPos:4, riskPct:2, posSize:15,
   intervalMin:2, paperBal:1000, minScore:58, fgMin:20,
-  exchange:'binance', bybApiKey:'', bybSecret:'', bybWorker:'',
+  exchange:'mexc', bybApiKey:'', bybSecret:'', bybWorker:'',
   okxApiKey:'', okxSecret:'', okxPassphrase:'', okxWorker:''
 };
 const PAIRS = ['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
@@ -799,6 +799,8 @@ function loadAll() {
   try { const c=localStorage.getItem('swingai_cfg_v3'); if(c) CFG={...CFG,...JSON.parse(c)}; } catch(e){}
   // Migracja: stary domyslny interwal 30min → nowy 2min
   if (!CFG.intervalMin || CFG.intervalMin >= 15) CFG.intervalMin = 2;
+  // Migracja: stara giełda Binance → MEXC
+  if (CFG.exchange === 'binance' && CFG.mode !== 'live') CFG.exchange = 'mexc';
   const today = new Date().toDateString();
   if (ST.dailyDate !== today) {
     ST.dailyPnl=0; ST.dailyDate=today;
@@ -2457,7 +2459,7 @@ async function updateHeader() {
     const rw = gi('rb-worker');
     if (rw) { rw.textContent=CFG.mode==='paper'?'(PAPER)':workerReady()||bybWorkerReady()?'OK':'brak'; rw.className=CFG.mode==='paper'?'val neu':workerReady()||bybWorkerReady()?'val up':'val dn'; }
     const re = gi('rb-exchange');
-    if (re) { re.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='okx'?'OKX':'Binance'; re.className='val acc'; }
+    if (re) { re.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='okx'||CFG.exchange==='mexc'?'MEXC':CFG.exchange==='binance'?'Binance':'MEXC'; re.className='val acc'; }
   } catch(e) {}
 }
 
@@ -2717,7 +2719,7 @@ function saveSettings() {
   CFG.secret     = gi('cfg-secret').value.trim();
   CFG.workerUrl  = gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode       = gi('cfg-mode').value;
-  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : CFG.mode==='okx' ? 'okx' : 'binance';
+  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : CFG.mode==='okx' ? 'mexc' : CFG.mode==='live' ? 'binance' : 'mexc';
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
@@ -4333,6 +4335,7 @@ gi('rb-fg').textContent      = '– (po starcie)';
 var _mb=gi('mode-badge'); _mb.textContent=CFG.mode.toUpperCase(); _mb.className=CFG.mode==='paper'?'badge bwarn':'badge bon';
 gi('st-mode').textContent = CFG.mode.toUpperCase();
 var _tge=gi('rb-tg'); if(_tge){ _tge.textContent=CFG.tgToken?'OK':'-'; _tge.className=CFG.tgToken?'val up':'val neu'; }
+var _rxe=gi('rb-exchange'); if(_rxe){ _rxe.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='binance'?'Binance':'MEXC'; _rxe.className='val acc'; }
 renderPositions(); renderHistory(); renderStats(); renderCooldowns();
 updateAIStatusPanel();
 log('SwingAI Bot v2 | '+PAIRS.length+' par | Kelly | Fear&Greed | PumpDump | 1H confirm');
@@ -4467,6 +4470,7 @@ function riskBarHtml(kellySzanse, pct) {
 </body>
 
 </html>
+
 
 
 
