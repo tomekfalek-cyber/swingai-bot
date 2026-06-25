@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -945,6 +945,17 @@ function isPumpDump(sig) {
   if (sig.vol4R > 4.0) { log('⚠️ PUMP '+sig.sym+' vol4R='+sig.vol4R+'x','warn'); return true; }
   if (sig.mom5  > 15)  { log('⚠️ Szybki wzrost '+sig.sym+' +'+sig.mom5+'% 5d','warn'); return true; }
   return false;
+}
+
+function isVolumeAnomaly(sig) {
+  if (sig.volR < 0.35) return true;
+  if (sig.score >= 62 && sig.vol4R < 0.3) return true;
+  return false;
+}
+
+function isDeadHour() {
+  const h = new Date().getUTCHours();
+  return h >= 1 && h < 5;
 }
 
 // ── BTC GUARD ──────────────────────────────────────────────────────
@@ -2132,6 +2143,8 @@ async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
   if ((ST.cooldown[sig.sym]||0) > Date.now()) { log('Cooldown '+sig.sym,'warn'); return; }
   if (ST.globalBlockUntil > Date.now())        { log('Globalna blokada','warn'); return; }
   if (isPumpDump(sig)) return;
+  if (isVolumeAnomaly(sig)) { log('⚠️ Vol anomaly: '+sig.sym+' vol='+sig.volR.toFixed(2)+'x — pomijam','warn'); return; }
+  if (isDeadHour()) { log('⚠️ Dead hour (01-05 UTC): '+sig.sym+' — pomijam','warn'); return; }
   if (fg && fg.val < CFG.fgMin) {
     if (fg.val < 15) { log('Fear&Greed='+fg.val+' ('+fg.label+') — ekstremalna panika, blokada','warn'); return; }
     log('Fear&Greed='+fg.val+' ('+fg.label+') < '+CFG.fgMin+' — kara -10 do score','warn');
@@ -3508,6 +3521,36 @@ var ADAPTIVE = {
       this.minScoreAdjusted = CFG.minScore;
     }
 
+    // Walk-forward: GBM re-trenuje na oknie krocącym co 50 tradów
+    var lastRefit = ST.lastGbmRefit || 0;
+    var tradesSinceRefit = ST.trades.filter(function(t){ return (t.ts > lastRefit); }).length;
+    if (X.length >= 20 && (tradesSinceRefit >= 50 || !GBM.trained)) {
+      var wfX = X.slice(-200);
+      var wfY = y.slice(-200);
+      GBM.train(wfX, wfY);
+      ST.lastGbmRefit = Date.now();
+      log('GBM walk-forward refit: '+wfX.length+' tradów, OOS='+GBM.accuracyOOS+'%','ok');
+    }
+
+    // Ensemble rebalancing co 20 tradów
+    if (ST.trades.length >= 20 && ST.trades.length % 20 === 0) {
+      var recent20 = ST.trades.slice(0,20);
+      var nbCorrect=0, nbTotal=0;
+      recent20.forEach(function(t){
+        if (!t.nbLabel) return;
+        nbTotal++;
+        if ((t.nbLabel==='BUY'&&t.pnl>0)||(t.nbLabel!=='BUY'&&t.pnl<=0)) nbCorrect++;
+      });
+      if (nbTotal>=5 && ENSEMBLE_W) {
+        var nbAcc = nbCorrect/nbTotal;
+        var gbmAcc = GBM.accuracyOOS>0 ? GBM.accuracyOOS/100 : 0.5;
+        ENSEMBLE_W.nb  = +Math.max(0.3,Math.min(1.5,nbAcc*2)).toFixed(2);
+        ENSEMBLE_W.gbm = +Math.max(0.3,Math.min(1.5,gbmAcc*2)).toFixed(2);
+        log('Ensemble rebalanced: nb='+ENSEMBLE_W.nb+' gbm='+ENSEMBLE_W.gbm,'ok');
+        updateAIStatusPanel();
+      }
+    }
+
     log('AI retrained: NB='+nbOk+' GBM='+GBM.accuracy+'% (OOS: '+(GBM.accuracyOOS||'?')+'%) trades='+trades.length, 'ok');
     saveModels(); // zapisz do localStorage
     updateAIStatusPanel();
@@ -3529,7 +3572,14 @@ function updateAIStatusPanel() {
   var ppN  = Object.keys(PAIR_PARAMS.params).length;
   var ppTxt= ppN>0 ? '<span class="up">Per-pair: '+ppN+' par skalibrowanych</span>' : '<span class="neu">Per-pair: brak historii</span>';
   var adS  = ADAPTIVE.minScoreAdjusted!==null ? '<span class="gold">Adaptive prog: '+ADAPTIVE.getMinScore()+'</span>' : '<span class="neu">Prog: '+CFG.minScore+'</span>';
-  el.innerHTML = nbS+'<br>'+gbmS+'<br>'+qlTxt+'<br>'+ppTxt+'<br>'+adS;
+    var deadH = (typeof isDeadHour === 'function') ? isDeadHour() : false;
+  var deadTxt = deadH ? '<span class="dn">Dead Hour (01-05 UTC) - blokada wejsc</span>' : '<span class="up">Godzina handlowa: aktywna</span>';
+  var lastRefitTs = ST.lastGbmRefit ? new Date(ST.lastGbmRefit).toLocaleTimeString('pl-PL') : 'brak';
+  var gbmRefitTxt = '<span class="neu">Walk-forward refit: '+lastRefitTs+'</span>';
+  var ewNb = ENSEMBLE_W ? ENSEMBLE_W.nb.toFixed(2) : '?';
+  var ewGbm = ENSEMBLE_W ? ENSEMBLE_W.gbm.toFixed(2) : '?';
+  var ewTxt = '<span class="neu">Ensemble wagi: nb='+ewNb+' gbm='+ewGbm+'</span>';
+  el.innerHTML = nbS+'<br>'+gbmS+'<br>'+gbmRefitTxt+'<br>'+qlTxt+'<br>'+ppTxt+'<br>'+adS+'<br>'+deadTxt+'<br>'+ewTxt;
 }
 
 // ── BACKTEST ENGINE ────────────────────────────────────────────────
@@ -4471,6 +4521,7 @@ function riskBarHtml(kellySzanse, pct) {
 </body>
 
 </html>
+
 
 
 
