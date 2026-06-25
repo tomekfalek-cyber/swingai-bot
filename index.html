@@ -1524,8 +1524,10 @@ async function analyzeSwing(sym) {
   const divD  = rsiDivergence(d.c.slice(-40),  rsiArrD,  38);
   const div4h = rsiDivergence(h4.c.slice(-30), rsiArr4h, 28);
   const trendD = price>ema200 ? (price>ema50?2:1) : (price>ema50?0:-1);
-  const volR   = d.v.length>=20  ? d.v.at(-1)/(d.v.slice(-20).reduce((a,b)=>a+b,0)/20) : 1;
-  const vol4R  = h4.v.length>=20 ? h4.v.at(-1)/(h4.v.slice(-20).reduce((a,b)=>a+b,0)/20) : 1;
+  const _vSum20h = d.v.length>=20 ? d.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
+  const volR   = (_vSum20h > 0) ? d.v.at(-1)/(_vSum20h/20) : 1;
+  const _v4Sum20h = h4.v.length>=20 ? h4.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
+  const vol4R  = (_v4Sum20h > 0) ? h4.v.at(-1)/(_v4Sum20h/20) : 1;
   const mom5   = d.c.length>5  ? (price/d.c.at(-6)-1)*100  : 0;
   const mom10  = d.c.length>10 ? (price/d.c.at(-11)-1)*100 : 0;
 
@@ -2104,7 +2106,7 @@ async function closeTrade(pos, price, reason) {
       pnl:+pnl.toFixed(4), pnlPct:+pnlPct.toFixed(2), durH, reason, score:pos.score,
       finalProb:pos.finalProb, aiMethod:pos.aiMethod,
       nbFeatures:pos.nbFeatures, gbmFeatures:pos.gbmFeatures,
-      ts:new Date().toLocaleString('pl-PL')});
+      nbLabel:pos.nbPredLabel||'NEUTRAL', ts:Date.now()});
     // Module 7: Q-Learning update — reward = pnlPct (znormalizowany)
     // nextSig = stan rynku w chwili zamkniecia (s') dla poprawnego Bellmana
     if (pos.qlSig) {
@@ -3506,7 +3508,8 @@ var ADAPTIVE = {
       .filter(function(p){ return p.x.length > 0; });
     var X = gbmPairs.map(function(p){ return p.x; });
     var y = gbmPairs.map(function(p){ return p.y; });
-    if (X.length >= 20) GBM.train(X, y);
+    var _needWfRefit = (tradesSinceRefit >= 50 || !GBM.trained);
+    if (X.length >= 20 && !_needWfRefit) GBM.train(X, y);
 
     // Dostosuj minScore na podstawie win rate ostatnich 20 transakcji
     var recent = ST.trades.slice(0,20);
@@ -3523,7 +3526,7 @@ var ADAPTIVE = {
 
     // Walk-forward: GBM re-trenuje na oknie krocącym co 50 tradów
     var lastRefit = ST.lastGbmRefit || 0;
-    var tradesSinceRefit = ST.trades.filter(function(t){ return (t.ts > lastRefit); }).length;
+    var tradesSinceRefit = ST.trades.filter(function(t){ var tsN = typeof t.ts === 'string' ? new Date(t.ts).getTime() : (t.ts||0); return tsN > lastRefit; }).length;
     if (X.length >= 20 && (tradesSinceRefit >= 50 || !GBM.trained)) {
       var wfX = X.slice(-200);
       var wfY = y.slice(-200);
