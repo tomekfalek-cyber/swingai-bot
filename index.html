@@ -802,6 +802,10 @@ function loadAll() {
   if (!CFG.intervalMin || CFG.intervalMin >= 15) CFG.intervalMin = 2;
   // Migracja: stara giełda Binance → MEXC
   if (CFG.exchange === 'binance' && CFG.mode !== 'live') CFG.exchange = 'mexc';
+  // Migracja: stara giełda OKX → MEXC
+  if (CFG.exchange === 'okx') CFG.exchange = 'mexc';
+  // Migracja: stary tryb OKX → live
+  if (CFG.mode === 'okx') CFG.mode = 'live';
   const today = new Date().toDateString();
   if (ST.dailyDate !== today) {
     ST.dailyPnl=0; ST.dailyDate=today;
