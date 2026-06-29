@@ -242,6 +242,14 @@ async function runBotCycle(env) {
   state.iter  = (state.iter || 0) + 1;
   addLog(state, '--- Skan #' + state.iter + ' ---');
 
+  // Daily reset: zeruj dzienny PnL i startBalance o północy UTC
+  const todayUTC = new Date().toISOString().slice(0, 10);
+  if (state.dailyDate !== todayUTC) {
+    state.dailyDate         = todayUTC;
+    state.dailyPnl          = 0;
+    state.dailyStartBalance = 0;
+  }
+
   // Drawdown Circuit Breaker
   const currentBalance = state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000);
   if (!state.peakBalance || state.peakBalance < currentBalance) state.peakBalance = currentBalance;
@@ -443,7 +451,6 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   const bbD    = bband(d.c, 20);
   const ema50  = emaLast(d.c, 50);
   const ema200 = emaLast(d.c, 200);
-  const ema21  = emaLast(d.c, 21);
   const atrD   = atr(d.h, d.l, d.c, 14);
   // VWAP 4H
   const vwap4h = calcVWAP(h4.h, h4.l, h4.c, h4.v);
@@ -645,9 +652,13 @@ async function checkPositions(cfg, state, env, ql) {
       let reason = null;
 
       // Timeout 7 dni
+      // Uwaga: po partial TP pos.sl jest ustawione na entry (break-even), dlatego liczymy SL przez pos.sl gdy dostępne
+      const slThresholdPct = pos.sl != null
+        ? (pos.sl - pos.entry) / pos.entry * 100   // break-even lub niestandardowy SL z pozycji
+        : -cfg.sl * 100;                            // domyślny SL z configu
       if (Date.now() - pos.entryTs > TIMEOUT_MS) reason = 'TIMEOUT 7d';
       else if (pnlPct >= cfg.tp * 100)             reason = 'TAKE PROFIT';
-      else if (pnlPct <= -cfg.sl * 100)            reason = 'STOP LOSS';
+      else if (pnlPct <= slThresholdPct)           reason = 'STOP LOSS';
       else if (price <= trail && pnlPct > 1.5)     reason = 'TRAILING STOP';
 
       // Partial TP (50% pozycji przy poÅowie TP)
@@ -1585,8 +1596,8 @@ async function dashboardHTML(cfg, state, env) {
     const WORKER_PROXY = 'https://swingai-bot-24h.tomek-falek.workers.dev';
     const BOT_BASE     = 'https://swingai-bot-24h.tomek-falek.workers.dev';
     const BOT_TOKEN    = 'swingai-secret-2024';
-    const BOT_STATE    = ${botState};
-    const SAVED_CREDS  = ${savedCreds};
+    const BOT_STATE    = ${botState.replace(/<\/script>/gi, '<\\/script>')};
+    const SAVED_CREDS  = ${savedCreds.replace(/<\/script>/gi, '<\\/script>')};
 
     document.addEventListener('DOMContentLoaded', function() {
 
