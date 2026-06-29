@@ -1669,7 +1669,7 @@ async function dashboardHTML(cfg, state, env) {
           var tgChatInput  = document.getElementById('cfg-tg-chat');
           if (tgTokenInput && SAVED_CREDS.tgTokenSet) {
             // Nie pokazujemy tokenu (bezpieczeństwo), ale oznaczamy że jest zapisany
-            tgTokenInput.placeholder = 'â Token zapisany w chmurze (wpisz nowy aby zmienić)';
+            tgTokenInput.placeholder = '✓ Token zapisany w chmurze (wpisz nowy aby zmienić)';
             tgTokenInput.style.borderColor = 'var(--green)';
           }
           if (tgChatInput && SAVED_CREDS.tgChat) {
@@ -1731,7 +1731,7 @@ async function dashboardHTML(cfg, state, env) {
             fetch(BOT_BASE + '/save-config?' + params.toString())
               .then(function() {
                 var st = document.getElementById('cfg-status');
-                if (st) { st.textContent = 'Zapisano + synchronizacja z chmurą â'; st.style.color = 'var(--green)'; }
+                if (st) { st.textContent = 'Zapisano + synchronizacja z chmurą ✓'; st.style.color = 'var(--green)'; }
                 // Jeśli zapisano token TG — wyślij wiadomość powitalną
                 if (hasTg) {
                   setTimeout(function() {
@@ -1933,7 +1933,7 @@ async function dashboardHTML(cfg, state, env) {
   // MEXC nie uzywa okxWorker - pominiete
   // TG — analogicznie
   if (sc.tgTokenSet) {
-    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = 'â Token zapisany w chmurze (wpisz nowy aby zmienić)'; gi('cfg-tg-token').style.borderColor='var(--green)';
+    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = '✓ Token zapisany w chmurze (wpisz nowy aby zmienić)'; gi('cfg-tg-token').style.borderColor='var(--green)';
   } else { gi('cfg-tg-token').value = CFG.tgToken||''; gi('cfg-tg-token').style.borderColor=''; }`
   );
 
@@ -1960,7 +1960,7 @@ async function dashboardHTML(cfg, state, env) {
     // okxP/pass - MEXC nie uzywa passphrase - pominiete
     fetch(BOT_BASE + '/save-config?' + params.toString())
       .then(function() {
-        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurą â';
+        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurą ✓';
         gi('cfg-status').style.color = 'var(--green)';
         if (hasTg) {
           setTimeout(function() {
