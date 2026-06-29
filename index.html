@@ -2817,6 +2817,21 @@ async function testConn() {
     if (CFG.okxWorker) {
       try { const r=await fetch(CFG.okxWorker+'/proxy/api/v5/market/ticker?instId=BTC-USDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('OKX Worker OK'); } catch(e){ lines.push('OKX Worker ERR: '+e.message); }
     } else if (CFG.mode==='okx') { lines.push('Brak OKX Worker URL — wymagany do LIVE'); }
+  } else if (CFG.exchange === 'mexc') {
+    const BOT = 'https://swingai-bot-24h.tomek-falek.workers.dev';
+    const AUTH = 'swingai-secret-2024';
+    try {
+      const r = await fetch(BOT + '/balance?auth=' + AUTH);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      lines.push('MEXC Worker OK — połączenie z botem działa');
+      if (d.balance !== null && d.balance !== undefined) {
+        lines.push('MEXC saldo USDC: $' + (+d.balance).toFixed(2));
+      } else {
+        lines.push('MEXC: tryb ' + (d.mode||'paper') + ' (brak kluczy API lub tryb paper)');
+      }
+    } catch(e) { lines.push('MEXC Worker ERR: ' + e.message); }
   } else {
     try { const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'}); lines.push('Binance OK | BTC: $'+(+t.price).toFixed(0)); } catch(e){ lines.push('Binance ERR: '+e.message); }
     if (CFG.workerUrl) {
@@ -4529,6 +4544,7 @@ function riskBarHtml(kellySzanse, pct) {
 </body>
 
 </html>
+
 
 
 
