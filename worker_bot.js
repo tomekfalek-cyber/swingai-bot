@@ -417,7 +417,8 @@ function calcStats(trades) {
   const std = Math.sqrt(rets.reduce((a,b) => a + (b-avg)**2, 0) / rets.length);
   const sharpe = std > 0 ? +(avg / std * Math.sqrt(252)).toFixed(2) : 0;
   const downRets = rets.filter(r => r < 0);
-  const downStd = downRets.length > 0 ? Math.sqrt(downRets.reduce((a,b) => a + b**2, 0) / downRets.length) : 0;
+  const downAvg  = downRets.length > 0 ? downRets.reduce((a,b) => a+b, 0) / downRets.length : 0;
+  const downStd  = downRets.length > 0 ? Math.sqrt(downRets.reduce((a,b) => a + (b-downAvg)**2, 0) / downRets.length) : 0;
   const sortino = downStd > 0 ? +(avg / downStd * Math.sqrt(252)).toFixed(2) : 0;
   let peak = 1, equity = 1, maxDD = 0;
   for (const r of rets) { equity *= (1 + r); if (equity > peak) peak = equity; const dd = (peak - equity)/peak; if (dd > maxDD) maxDD = dd; }
@@ -680,7 +681,7 @@ async function checkPositions(cfg, state, env, ql) {
            pos.qty = halfQty;
            pos.size = halfSize;
            pos.partialClosed = true;
-           pos.sl = pos.entry; // break-even stop
+           pos.sl = pos.entry * (1 + FEE * 2); // break-even po obu prowizjach
            if (cfg.mode === 'paper') {
              state.paperBalance = (state.paperBalance || 0) + halfSize + halfPnl;
            }
@@ -749,7 +750,10 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
 
   // Portfolio Heat check â tylko dla normalnych kont (>= 100$)
   if (!micro) {
-    const totalRisk     = (state.positions || []).reduce((s, p) => s + ((p.size||0) * cfg.sl), 0);
+    const totalRisk     = (state.positions || []).reduce((s, p) => {
+      const slPct = (p.sl != null && p.partialClosed) ? 0 : cfg.sl;
+      return s + (p.size||0) * slPct;
+    }, 0);
     const portfolioHeat = totalRisk / (total > 0 ? total : 1);
     if (portfolioHeat > 0.10) {
       addLog(state, 'Portfolio heat >10% â blokada (' + (portfolioHeat*100).toFixed(1) + '%)', 'warn');
@@ -778,6 +782,15 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
       const execP = res.price || adjSig.price;
       const el    = calcDynamicLevels(execP, adjSig.atrD, cfg);
       state.positions.push(buildPosition(adjSig, execP, res.qty, el, posSize, ql));
+      // Ustaw dailyStartBalance przy pierwszej transakcji live w danym dniu
+      if (!state.dailyStartBalance || state.dailyStartBalance <= 0) {
+        try {
+          const liveBal = await mexcGetBalance(cfg);
+          state.dailyStartBalance = (liveBal && liveBal.USDC) ? parseFloat(liveBal.USDC) : posSize * (cfg.maxPos || 4);
+        } catch(_) {
+          state.dailyStartBalance = posSize * (cfg.maxPos || 4);
+        }
+      }
     } catch(e) {
       addLog(state, 'BUY FAILED ' + adjSig.sym + ': ' + e.message, 'err');
       return;
@@ -966,8 +979,8 @@ function calcDynamicLevels(price, atrD, cfg) {
   const tpOffset = Math.max(cfg.tp,   atrPct * 2.5);
   const slOffset = Math.max(cfg.sl,   atrPct * 1.5);
   const trail    = Math.max(cfg.trail, atrPct * 1.2);
-  const tp    = price * (1 + tpOffset - FEE);
-  const sl    = price * (1 - slOffset - FEE);
+  const tp    = price * (1 + tpOffset);
+  const sl    = price * (1 - slOffset);
   const rr    = ((tp - price) / (price - sl)).toFixed(1);
   return { tp, sl, trail, rr, atrPct: (atrPct*100).toFixed(2) };
 }
