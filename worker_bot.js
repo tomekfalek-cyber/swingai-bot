@@ -1,12 +1,12 @@
-// SwingAI Bot 24/7 Ã¢ÂÂ Cloudflare Worker Ã¢ÂÂ FULL VERSION
-// PeÃÂna logika handlowa identyczna z https://tomekfalek-cyber.github.io/swingai-bot/
+// SwingAI Bot 24/7 — Cloudflare Worker — FULL VERSION
+// Pełna logika handlowa identyczna z https://tomekfalek-cyber.github.io/swingai-bot/
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // KONFIGURACJA
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// Gate.io jako ÅºrÃ³dÅo danych (OKX blokuje Cloudflare Workers na pub. endpointach)
-// Format Gate.io: BTC_USDC â ceny identyczne z OKX USDC (<0.1% rÃ³Å¼nicy)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Gate.io jako źródło danych (OKX blokuje Cloudflare Workers na pub. endpointach)
+// Format Gate.io: BTC_USDC — ceny identyczne z OKX USDC (<0.1% różnicy)
 const PAIRS = ['BTC_USDC','ETH_USDC','SOL_USDC','XRP_USDC','DOGE_USDC','ADA_USDC','AVAX_USDC','LINK_USDC'];
 const FEE   = 0.002;
 const TIMEOUT_MS = 7 * 24 * 3600000; // 7 dni
@@ -31,9 +31,9 @@ const PAIR_PARAMS_DEFAULT = {
   'LINK_USDC': { tp:0.14, sl:0.06, minScore:58 }
 };
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// GÃÂÃÂWNY HANDLER
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GŁÓWNY HANDLER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runBotCycle(env));
@@ -60,7 +60,7 @@ export default {
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       await env.SWINGAI_KV.put('state',  JSON.stringify(defaultState()));
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('Ã¢ÂÂ Bot PAPER uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('✅ Bot PAPER uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/start-live') {
@@ -80,13 +80,13 @@ export default {
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       await env.SWINGAI_KV.put('state',  JSON.stringify(defaultState()));
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('Ã¢ÂÂ Bot LIVE uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('✅ Bot LIVE uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/save-config') {
       const p = url.searchParams;
       const cfg = await getConfig(env);
-      // Klucze API Ã¢ÂÂ zapisz tylko jeÃÂli niepuste
+      // Klucze API — zapisz tylko jeśli niepuste
       if (p.get('key'))  cfg.mexcApiKey = p.get('key');
       if (p.get('sec'))  cfg.mexcSecret = p.get('sec');
       if (p.get('tg'))   cfg.tgToken    = p.get('tg');
@@ -113,7 +113,7 @@ export default {
       }
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       const label = which === 'mexc' ? 'klucze MEXC' : which === 'tg' ? 'Telegram' : 'wszystkie klucze';
-      return new Response(redirectHTML('Ã°ÂÂÂÃ¯Â¸Â UsuniÃÂto: ' + label), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('🗑️ Usunięto: ' + label), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/test-exchange') {
@@ -134,7 +134,7 @@ export default {
       if (cfg.mode !== 'live' || !cfg.mexcApiKey) {
         return jsonResp({ balance: null, mode: cfg.mode });
       }
-      // Pobierz ÅwieÅ¼e saldo z MEXC bezpoÅrednio â MEXC nie blokuje Cloudflare
+      // Pobierz świeże saldo z MEXC bezpośrednio — MEXC nie blokuje Cloudflare
       try {
         const fresh = await mexcGetBalance(cfg);
         return jsonResp({ balance: fresh, mode: 'live' });
@@ -147,21 +147,21 @@ export default {
       const cfg = await getConfig(env);
       cfg.active = false;
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
-      return new Response(redirectHTML('Ã¢ÂÂ¹ Bot zatrzymany'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('⏹ Bot zatrzymany'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/run') {
       const cfg = await getConfig(env);
       if (!cfg.active)
-        return new Response(redirectHTML('Ã¢ÂÂ Ã¯Â¸Â Bot nieaktywny Ã¢ÂÂ uruchom najpierw'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+        return new Response(redirectHTML('⚠️ Bot nieaktywny — uruchom najpierw'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('Ã°ÂÂÂ Skan uruchomiony! WrÃÂ³ÃÂ za 30 sekund...'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('🔄 Skan uruchomiony! Wróć za 30 sekund...'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/status') {
       const cfg   = await getConfig(env);
       const state = await getState(env);
-      // UsuÅ klucze API z odpowiedzi â nigdy nie eksponuj secretÃ³w
+      // Usuń klucze API z odpowiedzi — nigdy nie eksponuj secretów
       const safeCfg = { ...cfg, mexcApiKey: cfg.mexcApiKey ? '***' : '', mexcSecret: cfg.mexcSecret ? '***' : '', tgToken: cfg.tgToken ? '***' : '' };
       return jsonResp({ config: safeCfg, state });
     }
@@ -198,7 +198,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: cfg.tgChat,
-              text: 'ð Witaj! SwingAI Bot 24/7 aktywny.\n\nPoÅÄczenie dziaÅa â\nPary: BTC ETH SOL XRP DOGE ADA AVAX LINK\nSkany co 1h przez Cloudflare Worker.',
+              text: 'ð Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP DOGE ADA AVAX LINK\nSkany co 1h przez Cloudflare Worker.',
               parse_mode: 'HTML'
             })
           }
@@ -232,9 +232,9 @@ export default {
   }
 };
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// GÃÂÃÂWNA LOGIKA CYKLU
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GŁÓWNA LOGIKA CYKLU
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function runBotCycle(env) {
   const cfg   = await getConfig(env);
   if (!cfg.active) return;
@@ -259,10 +259,10 @@ async function runBotCycle(env) {
   const drawdownBlocked = (state.drawdownBlock || 0) > Date.now();
   if (drawdown > 0.15 && !drawdownBlocked) {
     state.drawdownBlock = Date.now() + 24 * 3600000;
-    addLog(state, 'Circuit breaker: -15% drawdown â blokada BUY 24h', 'err');
+    addLog(state, 'Circuit breaker: -15% drawdown — blokada BUY 24h', 'err');
   }
 
-  // ZaÃÂaduj modele AI z KV
+  // Załaduj modele AI z KV
   const nb  = makeNB(state.nb);
   const gbm = makeGBM(state.gbm);
   const ql  = makeQL(state.ql);
@@ -276,9 +276,9 @@ async function runBotCycle(env) {
 
     // 2. BTC Guard
     const btcDrop = await btcDropGuard();
-    if (btcDrop) addLog(state, 'BTC Guard aktywny Ã¢ÂÂ brak nowych long na altcoinach', 'warn');
+    if (btcDrop) addLog(state, 'BTC Guard aktywny — brak nowych long na altcoinach', 'warn');
 
-    // 3. SprawdÃÂº otwarte pozycje
+    // 3. Sprawdź otwarte pozycje
     await checkPositions(cfg, state, env, ql);
 
     // 4. Skanuj pary
@@ -303,16 +303,16 @@ async function runBotCycle(env) {
       aiMethod: s.aiMethod, regime: s.regime || 'neutral'
     }));
 
-    // 5. OtwÃÂ³rz pozycje
+    // 5. Otwórz pozycje
     const dailyBase = state.dailyStartBalance > 0 ? state.dailyStartBalance : (cfg.paperBalance || 1000);
     const dailyLossOk = (state.dailyPnl || 0) > -0.05 * dailyBase;
 
     if (fg.val < 15) {
-      addLog(state, 'F&G=' + fg.val + ' (ekstremalna panika) Ã¢ÂÂ blokada BUY', 'warn');
+      addLog(state, 'F&G=' + fg.val + ' (ekstremalna panika) — blokada BUY', 'warn');
     } else if (!dailyLossOk) {
       addLog(state, 'Dzienny limit strat przekroczony (-5% od $' + dailyBase.toFixed(0) + ')', 'err');
     } else if ((state.drawdownBlock || 0) > Date.now()) {
-      addLog(state, 'Circuit breaker aktywny â brak nowych pozycji', 'warn');
+      addLog(state, 'Circuit breaker aktywny — brak nowych pozycji', 'warn');
     } else {
       for (const sig of sigs) {
         if ((state.positions || []).length >= cfg.maxPos) break;
@@ -322,20 +322,20 @@ async function runBotCycle(env) {
       }
     }
 
-    // 6. Zapisz modele AI â walk-forward retraining
+    // 6. Zapisz modele AI — walk-forward retraining
     const trades = state.trades || [];
     nb.trainFromTrades(trades);
 
-    // Walk-forward: GBM retrenuje co 50 nowych tradÃ³w na oknie 200
+    // Walk-forward: GBM retrenuje co 50 nowych tradów na oknie 200
     const lastRefit = state.lastGbmRefit || 0;
     const tradesSinceRefit = trades.filter(t => { const tsN = typeof t.ts === 'string' ? new Date(t.ts).getTime() : (t.ts||0); return tsN > lastRefit; }).length;
     if ((tradesSinceRefit >= 50 && trades.length >= 20) || (!gbm.trained && trades.length >= 20)) {
       gbm.trainFromTrades(trades.slice(-200));
       state.lastGbmRefit = Date.now();
-      addLog(state, 'GBM walk-forward refit: ' + Math.min(trades.length,200) + ' tradÃ³w, OOS=' + gbm.accuracyOOS + '%', 'ok');
+      addLog(state, 'GBM walk-forward refit: ' + Math.min(trades.length,200) + ' tradów, OOS=' + gbm.accuracyOOS + '%', 'ok');
     }
 
-    // Ensemble rebalancing: co 20 tradÃ³w aktualizuj wagi na bazie accuracy
+    // Ensemble rebalancing: co 20 tradów aktualizuj wagi na bazie accuracy
     if (trades.length >= 20 && trades.length % 20 === 0) {
       const ewUpd = rebalanceEnsemble(ew, nb, gbm, trades.slice(0, 20));
       if (ewUpd) {
@@ -355,23 +355,23 @@ async function runBotCycle(env) {
     if (cfg.mode === 'live' && cfg.mexcApiKey && cfg.mexcSecret) {
       try {
         state.liveBalance = await mexcGetBalance(cfg);
-      } catch(e) { /* MEXC niedostÄpne â zachowaj poprzedniÄ wartoÅÄ */ }
+      } catch(e) { /* MEXC niedostępne — zachowaj poprzednią wartość */ }
     }
 
     state.lastCycle = Date.now();
     addLog(state, 'Skan #' + state.iter + ' OK | poz: ' + (state.positions||[]).length + '/' + cfg.maxPos + ' | F&G:' + fg.val, 'ok');
 
   } catch(e) {
-    addLog(state, 'BÃÂÃÂD CYKLU: ' + e.message, 'err');
+    addLog(state, 'BŁĄD CYKLU: ' + e.message, 'err');
   }
 
   await env.SWINGAI_KV.put('state', JSON.stringify(state));
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// ANALIZA TECHNICZNA Ã¢ÂÂ MULTI-TF
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// VWAP z ostatnich 50 Åwiec 4H
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ANALIZA TECHNICZNA — MULTI-TF
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// VWAP z ostatnich 50 świec 4H
 function calcVWAP(highs, lows, closes, volumes) {
   const n = Math.min(50, highs.length);
   let tpVol = 0, vol = 0;
@@ -383,7 +383,7 @@ function calcVWAP(highs, lows, closes, volumes) {
   return vol > 0 ? tpVol / vol : closes.at(-1);
 }
 
-// Wykryj lokalne pivoty S/R z ostatnich 50 Åwiec Daily
+// Wykryj lokalne pivoty S/R z ostatnich 50 świec Daily
 function calcSRLevels(highs, lows, price) {
   const n = Math.min(50, highs.length);
   const start = highs.length - n;
@@ -394,13 +394,13 @@ function calcSRLevels(highs, lows, price) {
     if (lows[i] < lows[i-1] && lows[i] < lows[i-2] && lows[i] < lows[i+1] && lows[i] < lows[i+2])
       pivotLows.push(lows[i]);
   }
-  // Posortuj i wybierz 3 najbliÅ¼sze powyÅ¼ej i 2 poniÅ¼ej
+  // Posortuj i wybierz 3 najbliższe powyżej i 2 poniżej
   const above = pivotHighs.filter(v => v > price).sort((a,b) => a-b).slice(0,3);
   const below = pivotLows.filter(v => v < price).sort((a,b) => b-a).slice(0,2);
   return { above, below, all: [...above, ...below] };
 }
 
-// Wykryj reÅ¼im rynkowy
+// Wykryj reżim rynkowy
 function detectRegime(closes, atrD, ema50, ema200) {
   const price = closes.at(-1);
   const atrPct = atrD / price;
@@ -429,7 +429,7 @@ function calcStats(trades) {
 }
 
 async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore) {
-  // Pobierz timeframe'y sekwencyjnie â OKX rate limit
+  // Pobierz timeframe'y sekwencyjnie — OKX rate limit
   const kd      = await getKlines(sym, 'D',   200);
   await sleep(200);
   const k4h     = await getKlines(sym, '240', 100);
@@ -448,7 +448,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   const d = pk(kd), h4 = pk(k4h), h1 = pk(k1h);
   const price = d.c.at(-1);
 
-  // Ã¢ÂÂÃ¢ÂÂ WskaÃÂºniki Daily
+  // ━━ Wskaźniki Daily
   const rsiD   = rsi(d.c, 14);
   const macdD  = macdFull(d.c);
   const bbD    = bband(d.c, 20);
@@ -462,35 +462,35 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // Market Regime
   const regime = detectRegime(d.c, atrD, ema50, ema200);
 
-  // Ã¢ÂÂÃ¢ÂÂ WskaÃÂºniki 4H
+  // ━━ Wskaźniki 4H
   const rsi4h  = rsi(h4.c, 14);
   const macd4h = macdFull(h4.c);
 
-  // Ã¢ÂÂÃ¢ÂÂ WskaÃÂºniki 1H
+  // ━━ Wskaźniki 1H
   const rsi1h  = rsi(h1.c, 14);
   const macd1h = macdFull(h1.c);
   const confirm1h = macd1h.hist > 0 && rsi1h < 55;
 
-  // Ã¢ÂÂÃ¢ÂÂ RSI Divergence
+  // ━━ RSI Divergence
   const rsiArrD  = rsiArray(d.c.slice(-40),  14);
   const rsiArr4h = rsiArray(h4.c.slice(-30), 14);
   const divD  = rsiDivergence(d.c.slice(-40),  rsiArrD,  38);
   const div4h = rsiDivergence(h4.c.slice(-30), rsiArr4h, 28);
 
-  // Ã¢ÂÂÃ¢ÂÂ Trend
+  // ━━ Trend
   const trendD = price > ema200 ? (price > ema50 ? 2 : 1) : (price > ema50 ? 0 : -1);
 
-  // Ã¢ÂÂÃ¢ÂÂ Volume
+  // ━━ Volume
   const _vSum20 = d.v.length >= 20 ? d.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
   const volR  = (_vSum20 > 0) ? d.v.at(-1) / (_vSum20/20) : 1;
   const _v4Sum20 = h4.v.length >= 20 ? h4.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
   const vol4R = (_v4Sum20 > 0) ? h4.v.at(-1) / (_v4Sum20/20) : 1;
 
-  // Ã¢ÂÂÃ¢ÂÂ Momentum
+  // ━━ Momentum
   const mom5  = d.c.length > 5  ? (price / d.c.at(-6)  - 1) * 100 : 0;
   const mom10 = d.c.length > 10 ? (price / d.c.at(-11) - 1) * 100 : 0;
 
-  // Ã¢ÂÂÃ¢ÂÂ Scoring
+  // ━━ Scoring
   let score = 0;
   const why = [];
 
@@ -513,21 +513,21 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if      (bbD.pos < 0.08) { score += 18; why.push('Cena przy dolnej BB'); }
   else if (bbD.pos < 0.20) { score += 13; why.push('BB dolna strefa'); }
   else if (bbD.pos < 0.35) { score += 6; }
-  else if (bbD.pos > 0.85) { score -= 10; why.push('BB gÃÂ³rna Ã¢ÂÂ ryzyko'); }
+  else if (bbD.pos > 0.85) { score -= 10; why.push('BB górna — ryzyko'); }
 
-  if      (trendD === 2)  { score += 12; why.push('Ponad EMA50+200 Ã¢ÂÂ bull'); }
+  if      (trendD === 2)  { score += 12; why.push('Ponad EMA50+200 — bull'); }
   else if (trendD === 1)  { score += 8;  why.push('Ponad EMA200'); }
   else if (trendD === 0)  { score += 3; }
-  else                    { score -= 20; why.push('PoniÃÂ¼ej EMA200 Ã¢ÂÂ bessa'); }
+  else                    { score -= 20; why.push('Poniżej EMA200 — bessa'); }
 
-  if      (mom5 > 0 && mom10 < 0)    { score += 8; why.push('Momentum odwrÃÂ³cenie'); }
+  if      (mom5 > 0 && mom10 < 0)    { score += 8; why.push('Momentum odwrócenie'); }
   else if (mom5 < -5 && mom10 < -10) { score += 5; why.push('Oversold momentum'); }
   else if (mom5 > 8)                  { score -= 5; why.push('Zbyt szybki wzrost'); }
 
   if (volR > 1.8 || vol4R > 2.0) { score += 5; why.push('Vol spike x' + Math.max(volR,vol4R).toFixed(1)); }
   else if (volR < 0.4)            { score -= 8; why.push('Niski wolumen'); }
 
-  if (macd4h.hist > 0 && macdD.hist > 0) { score += 5; why.push('MACD 4H+D zgodnoÃÂÃÂ'); }
+  if (macd4h.hist > 0 && macdD.hist > 0) { score += 5; why.push('MACD 4H+D zgodność'); }
   if (confirm1h)  { score += 5; why.push('1H potwierdza'); }
   else            { score -= 3; }
 
@@ -535,15 +535,15 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if      (divD.bull && div4h.bull) { score += 20; why.push('RSI dywergencja bycza D+4H'); }
   else if (divD.bull)               { score += 14; why.push('RSI dywergencja bycza Daily'); }
   else if (div4h.bull)              { score += 8;  why.push('RSI dywergencja bycza 4H'); }
-  if (divD.bear)  { score -= 12; why.push('RSI dywergen. niedÃÂºwiedzia Daily'); }
-  if (div4h.bear) { score -= 7;  why.push('RSI dywergen. niedÃÂºwiedzia 4H'); }
+  if (divD.bear)  { score -= 12; why.push('RSI dywergen. niedźwiedzia Daily'); }
+  if (div4h.bear) { score -= 7;  why.push('RSI dywergen. niedźwiedzia 4H'); }
 
   if (trendD === -1 && rsiD > 50) { score = Math.min(score, 15); why.push('BESSA: brak long'); }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
   // VWAP scoring
   if (price > vwap4h) { score += 8;  why.push('Ponad VWAP'); }
-  else                { score -= 5;  why.push('PoniÅ¼ej VWAP'); }
+  else                { score -= 5;  why.push('Poniżej VWAP'); }
   score = Math.max(0, Math.min(100, score));
 
   // S/R scoring
@@ -556,31 +556,31 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // Regime scoring
   let regimeMinScoreAdj = 0;
   if (regime === 'sideways')   { regimeMinScoreAdj = 8; }
-  if (regime === 'bull_trend') { score += 5; why.push('ReÅ¼im: bull trend'); }
-  if (regime === 'bear_trend') { score -= 15; why.push('ReÅ¼im: bear trend'); }
-  if (regime === 'volatile')   { score -= 8;  why.push('ReÅ¼im: volatile'); }
+  if (regime === 'bull_trend') { score += 5; why.push('Reżim: bull trend'); }
+  if (regime === 'bear_trend') { score -= 15; why.push('Reżim: bear trend'); }
+  if (regime === 'volatile')   { score -= 8;  why.push('Reżim: volatile'); }
   score = Math.max(0, Math.min(100, score));
 
-  // Ã¢ÂÂÃ¢ÂÂ Candlestick Patterns
+  // ━━ Candlestick Patterns
   const patResult = PATTERNS.detect(d.c, d.o, d.h, d.l);
   if (patResult.bullish > 0) {
     const volOk = volR >= 1.3;
     const eff   = volOk ? patResult.bullish : Math.floor(patResult.bullish * 0.5);
     score = Math.min(100, score + Math.min(15, eff * 6));
-    patResult.patterns.filter(p=>p.type==='bullish').forEach(p=>why.push(p.name + (volOk?'':' (sÃÂaby vol)')));
+    patResult.patterns.filter(p=>p.type==='bullish').forEach(p=>why.push(p.name + (volOk?'':' (słaby vol)')));
   }
   if (patResult.bearish > 0) {
     score = Math.max(0, score - Math.min(12, patResult.bearish * 5));
-    patResult.patterns.filter(p=>p.type==='bearish').forEach(p=>why.push('Ã¢ÂÂ  ' + p.name));
+    patResult.patterns.filter(p=>p.type==='bearish').forEach(p=>why.push('⚠ ' + p.name));
   }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // Ã¢ÂÂÃ¢ÂÂ OBI (Order Book Imbalance)
+  // ━━ OBI (Order Book Imbalance)
   const obiScore = calcOBI(obiData);
   if (obiScore > 0) { score = Math.min(100, score + obiScore); why.push('OBI bycze'); }
-  if (obiScore < 0) { score = Math.max(0,   score + obiScore); why.push('OBI niedÃÂºwiedzie'); }
+  if (obiScore < 0) { score = Math.max(0,   score + obiScore); why.push('OBI niedźwiedzie'); }
 
-  // Ã¢ÂÂÃ¢ÂÂ ML Predictions
+  // ━━ ML Predictions
   const nbFeatures  = nb.discretize({ rsiD, macdHist: macdD.hist, bbPos: bbD.pos, trendD, mom5, confirm1h });
   const bodyRatio  = Math.abs(d.c.at(-1) - d.o.at(-1)) / (d.h.at(-1) - d.l.at(-1) + 0.001);
   const atrPctFeat = Math.min(1, atrD / price / 0.1);
@@ -595,11 +595,11 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   let qlBonus = 0;
   if (qlSugg) {
     if (qlSugg.action === 'BUY'  && qlSugg.confidence > 0.05) { qlBonus =  8; why.push('QL: BUY'); }
-    // HOLD jest neutralny â nie karamy za brak sygnaÅu
+    // HOLD jest neutralny — nie karamy za brak sygnału
     score = Math.max(0, Math.min(100, score + qlBonus));
   }
 
-  // Ã¢ÂÂÃ¢ÂÂ Ensemble
+  // ━━ Ensemble
   let finalProb = score / 100;
   let aiMethod  = 'Score';
   const obiNorm = ((obiData.ratio || 0.5) - 0.3) / 0.4;
@@ -611,14 +611,14 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
        Math.max(0, Math.min(1, obiNorm)) * ew.obi +
        (qlSugg && qlSugg.action==='BUY' ? 1 : 0) * ew.ql) / wSum));
     aiMethod = 'Ensemble(Score+NB+GBM+OBI+QL)';
-    if (nbPred.label === 'SKIP' && gbmProb < 0.4) why.push('AI odradza wejÃÂcie');
+    if (nbPred.label === 'SKIP' && gbmProb < 0.4) why.push('AI odradza wejście');
   } else if (nb.trained) {
     const wSum = (ew.score + ew.nb + ew.obi) || 1;
     finalProb = (score/100 * ew.score + nbPred.prob * ew.nb + Math.max(0,Math.min(1,obiNorm)) * ew.obi) / wSum;
     aiMethod  = 'Score+NB+OBI';
   }
 
-  // Ã¢ÂÂÃ¢ÂÂ Per-pair threshold
+  // ━━ Per-pair threshold
   const pp       = pairParams[sym] || PAIR_PARAMS_DEFAULT[sym] || null;
   const minScore = (pp ? pp.minScore : adaptiveMinScore) + regimeMinScoreAdj;
   const buy      = finalProb >= minScore / 100;
@@ -639,9 +639,9 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   };
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// ZARZÃÂDZANIE POZYCJAMI
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ZARZĄDZANIE POZYCJAMI
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function checkPositions(cfg, state, env, ql) {
   const updated = [];
   for (const pos of (state.positions || [])) {
@@ -664,7 +664,7 @@ async function checkPositions(cfg, state, env, ql) {
       else if (pnlPct <= slThresholdPct)           reason = 'STOP LOSS';
       else if (price <= trail && pnlPct > 1.5)     reason = 'TRAILING STOP';
 
-      // Partial TP (50% pozycji przy poÅowie TP)
+      // Partial TP (50% pozycji przy połowie TP)
       const _tpPct6 = pos.tp > 0 ? (pos.tp - pos.entry) / pos.entry * 100 : cfg.tp * 100;
        if (!reason && pnlPct >= _tpPct6 * 0.5 && !pos.partialClosed) {
          const halfQty = pos.qty / 2;
@@ -718,8 +718,8 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     addLog(state, 'Globalna blokada aktywna', 'warn'); return;
   }
   if (isPumpDump(sig)) return;
-  if (isVolumeAnomaly(sig)) { addLog(state, 'Vol anomaly: ' + sig.sym + ' vol=' + sig.volR.toFixed(2) + 'x â pomijam', 'warn'); return; }
-  if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' â pomijam', 'warn'); return; }
+  if (isVolumeAnomaly(sig)) { addLog(state, 'Vol anomaly: ' + sig.sym + ' vol=' + sig.volR.toFixed(2) + 'x — pomijam', 'warn'); return; }
+  if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' — pomijam', 'warn'); return; }
 
   // BTC Guard
   if (btcDrop && sig.sym !== 'BTC_USDC') {
@@ -737,7 +737,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     const pp = (state.pairParams||{})[sig.sym] || PAIR_PARAMS_DEFAULT[sig.sym];
     const minSc = pp ? pp.minScore : (state.adaptiveMinScore || cfg.minScore);
     if (adjSig.finalProb < minSc / 100) {
-      addLog(state, 'F&G=' + fg.val + ' Ã¢ÂÂ po karze za sÃÂaby score pomijam ' + sig.sym, 'warn'); return;
+      addLog(state, 'F&G=' + fg.val + ' — po karze za słaby score pomijam ' + sig.sym, 'warn'); return;
     }
   }
 
@@ -747,10 +747,10 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
 
   // Micro account: max 1 pozycja naraz
   if (micro && (state.positions || []).length >= 1) {
-    addLog(state, 'Micro konto â czekam na zamkniecie obecnej pozycji', 'warn'); return;
+    addLog(state, 'Micro konto — czekam na zamkniecie obecnej pozycji', 'warn'); return;
   }
 
-  // Portfolio Heat check â tylko dla normalnych kont (>= 100$)
+  // Portfolio Heat check — tylko dla normalnych kont (>= 100$)
   if (!micro) {
     const totalRisk     = (state.positions || []).reduce((s, p) => {
       const slPct = p.partialClosed
@@ -760,7 +760,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     }, 0);
     const portfolioHeat = totalRisk / (total > 0 ? total : 1);
     if (portfolioHeat > 0.10) {
-      addLog(state, 'Portfolio heat >10% â blokada (' + (portfolioHeat*100).toFixed(1) + '%)', 'warn');
+      addLog(state, 'Portfolio heat >10% — blokada (' + (portfolioHeat*100).toFixed(1) + '%)', 'warn');
       return;
     }
   }
@@ -768,7 +768,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   const posSize  = kellySize(cfg, state, total);
   const minSize  = micro ? 1 : 10;
   if (posSize < minSize) {
-    addLog(state, 'Za mala pozycja (' + posSize.toFixed(2) + '$) â pomijam ' + sig.sym, 'warn'); return;
+    addLog(state, 'Za mala pozycja (' + posSize.toFixed(2) + '$) — pomijam ' + sig.sym, 'warn'); return;
   }
   const levels = calcDynamicLevels(adjSig.price, adjSig.atrD, cfg);
 
@@ -813,16 +813,16 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   const _pairName = adjSig.sym.replace('_USDC', '').replace('_USDT', '');
   const _modeLabel = cfg.mode === 'live' ? 'LIVE' : 'PAPER (symulacja)';
   await tgSend(cfg,
-    'ð¢ <b>SYGNAÅ KUPNA â ' + _pairName + '</b>\n\n' +
-    'ð° Cena wejÅcia: <b>$' + adjSig.price.toFixed(4) + '</b>\n' +
+    '🟢 <b>SYGNAŁ KUPNA — ' + _pairName + '</b>\n\n' +
+    '💰 Cena wejścia: <b>$' + adjSig.price.toFixed(4) + '</b>\n' +
     'ðµ Rozmiar pozycji: <b>$' + posSize.toFixed(2) + '</b> (Kelly)\n' +
-    'ð¯ Take Profit: <b>$' + levels.tp.toFixed(4) + '</b>\n' +
-    'ð Stop Loss: <b>$' + levels.sl.toFixed(4) + '</b>\n' +
-    'âï¸ Zysk/Ryzyko: <b>' + levels.rr + '</b>\n\n' +
-    'ð Wynik AI: <b>' + adjSig.score + '/100</b> | PewnoÅÄ: <b>' + (adjSig.finalProb*100).toFixed(1) + '%</b>\n' +
-    'ð¤ Metoda: ' + adjSig.aiMethod + '\n' +
+    '🎯 Take Profit: <b>$' + levels.tp.toFixed(4) + '</b>\n' +
+    '🛑 Stop Loss: <b>$' + levels.sl.toFixed(4) + '</b>\n' +
+    '⚖️ Zysk/Ryzyko: <b>' + levels.rr + '</b>\n\n' +
+    '📊 Wynik AI: <b>' + adjSig.score + '/100</b> | Pewność: <b>' + (adjSig.finalProb*100).toFixed(1) + '%</b>\n' +
+    '🤖 Metoda: ' + adjSig.aiMethod + '\n' +
     'ð Powody: ' + adjSig.why.slice(0,4).join(', ') + '\n\n' +
-    'ð§ Tryb: ' + _modeLabel);
+    '🔧 Tryb: ' + _modeLabel);
 }
 
 function buildPosition(sig, price, qty, levels, size, ql) {
@@ -862,13 +862,13 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
     state.cooldown[pos.sym] = Date.now() + 12 * 3600000;
     if (state.consLoss >= 4) {
       state.globalBlockUntil = Date.now() + 3 * 3600000;
-      addLog(state, '4 straty z rzÃÂdu Ã¢ÂÂ blokada 3h', 'err');
+      addLog(state, '4 straty z rzędu — blokada 3h', 'err');
     }
   } else {
     state.consLoss = 0;
   }
 
-  // Q-Learning update â nagroda normalizowana do [-1, +1]
+  // Q-Learning update — nagroda normalizowana do [-1, +1]
   if (pos.qlSig && ql) {
     const reward = Math.max(-1, Math.min(1, pnlPct / 10));
     ql.update(pos.qlSig, 'BUY', reward, null);
@@ -884,11 +884,11 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
   state.trades = [trade, ...(state.trades || [])].slice(0, 300);
   state.stats = calcStats(state.trades);
 
-  const _closeIcon = pnl >= 0 ? 'ð¢' : 'ð´';
+  const _closeIcon = pnl >= 0 ? '🟢' : '🔴';
   const _closeSym = pos.sym.replace('_USDC','').replace('_USDT','');
   const _reasonPL = reason === 'TAKE PROFIT' ? 'REALIZACJA ZYSKU' :
     reason === 'STOP LOSS' ? 'STOP LOSS AKTYWOWANY' :
-    reason === 'TRAILING STOP' ? 'STOP KROCZÄCY' :
+    reason === 'TRAILING STOP' ? 'STOP KROCZĄCY' :
     reason === 'TIMEOUT 7d' ? 'KONIEC CZASU (7 dni)' : reason;
   addLog(state,
     _closeIcon + ' ' + pos.sym + ' ' + reason +
@@ -897,16 +897,16 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
     pnl >= 0 ? 'ok' : 'err');
 
   await tgSend(cfg,
-    _closeIcon + ' <b>' + _reasonPL + ' â ' + _closeSym + '</b>\n\n' +
-    'ð° Wynik: <b>' + (pnl>=0?'+':'') + '$' + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</b>\n' +
-    'â±ï¸ Czas trwania: ' + durH + 'h\n' +
-    'ð Score wejÅcia: ' + pos.score + '/100\n' +
-    'ð§ Tryb: ' + (cfg.mode === 'live' ? 'LIVE' : 'PAPER'));
+    _closeIcon + ' <b>' + _reasonPL + ' — ' + _closeSym + '</b>\n\n' +
+    '💰 Wynik: <b>' + (pnl>=0?'+':'') + '$' + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</b>\n' +
+    '⏱️ Czas trwania: ' + durH + 'h\n' +
+    '📊 Score wejścia: ' + pos.score + '/100\n' +
+    '🔧 Tryb: ' + (cfg.mode === 'live' ? 'LIVE' : 'PAPER'));
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// GUARDS Ã¢ÂÂ FILTRY BEZPIECZEÃÂSTWA
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GUARDS — FILTRY BEZPIECZEŃSTWA
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function isPumpDump(sig) {
   if (sig.vol4R > 4.0) { return true; }
   if (sig.mom5  > 15)  { return true; }
@@ -947,10 +947,10 @@ function corrBlocked(sym, state) {
   return openInGroup >= 1;
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // RISK MANAGEMENT
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// Micro account mode: balance < 100 â 1 pozycja, 90% kapitaÅu, brak Kelly cap
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Micro account mode: balance < 100 → 1 pozycja, 90% kapitału, brak Kelly cap
 function isMicroAccount(total) { return (isFinite(total) && total > 0 && total < 100); }
 
 function kellySize(cfg, state, total) {
@@ -1000,9 +1000,9 @@ function computeAdaptiveMinScore(trades, baseMin) {
   return baseMin;
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// FORMACJE ÃÂWIECOWE
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FORMACJE ŚWIECOWE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const PATTERNS = {
   detect(closes, opens, highs, lows) {
     const n = closes.length;
@@ -1021,15 +1021,15 @@ const PATTERNS = {
     const lowerSh = isUp(i) ? o[i]-l[i] : c[i]-l[i];
     const upperSh = isUp(i) ? h[i]-c[i] : h[i]-o[i];
     if (body(i) < atrVal*0.3 && lowerSh > body(i)*2 && upperSh < body(i)*0.5 && isDown(i-1)) {
-      patterns.push({ name:'Hammer', type:'bullish', strength:75, desc:'Silne odrzucenie w dÃÂ³ÃÂ' });
+      patterns.push({ name:'Hammer', type:'bullish', strength:75, desc:'Silne odrzucenie w dół' });
     }
     // BULLISH ENGULFING
     if (isDown(i-1) && isUp(i) && o[i]<c[i-1] && c[i]>o[i-1] && body(i)>body(i-1)*1.1) {
-      patterns.push({ name:'Bullish Engulfing', type:'bullish', strength:82, desc:'Popyt przytÃÂoczyÃÂ podaÃÂ¼' });
+      patterns.push({ name:'Bullish Engulfing', type:'bullish', strength:82, desc:'Popyt przytłoczył podaż' });
     }
     // MORNING STAR
     if (n>=3 && isDown(i-2) && body(i-1)<atrVal*0.25 && isUp(i) && c[i]>(o[i-2]+c[i-2])/2) {
-      patterns.push({ name:'Morning Star', type:'bullish', strength:85, desc:'OdwrÃÂ³cenie trendu spadkowego' });
+      patterns.push({ name:'Morning Star', type:'bullish', strength:85, desc:'Odwrócenie trendu spadkowego' });
     }
     // DOJI
     if (body(i) < atrVal*0.1 && range(i) > atrVal*0.3) {
@@ -1038,7 +1038,7 @@ const PATTERNS = {
     }
     // PIERCING LINE
     if (isDown(i-1) && isUp(i) && o[i]<l[i-1] && c[i]>(o[i-1]+c[i-1])/2 && c[i]<o[i-1]) {
-      patterns.push({ name:'Piercing Line', type:'bullish', strength:70, desc:'KupujÃÂcy weszli po bessie' });
+      patterns.push({ name:'Piercing Line', type:'bullish', strength:70, desc:'Kupujący weszli po bessie' });
     }
     // THREE WHITE SOLDIERS
     if (n>=3 && isUp(i) && isUp(i-1) && isUp(i-2) && c[i]>c[i-1] && c[i-1]>c[i-2] && body(i)>atrVal*0.4 && body(i-1)>atrVal*0.4) {
@@ -1048,11 +1048,11 @@ const PATTERNS = {
     const upperSh2 = isUp(i) ? h[i]-c[i] : h[i]-o[i];
     const lowerSh2 = isUp(i) ? o[i]-l[i] : c[i]-l[i];
     if (body(i)<atrVal*0.3 && upperSh2>body(i)*2 && lowerSh2<body(i)*0.5 && isUp(i-1)) {
-      patterns.push({ name:'Shooting Star', type:'bearish', strength:72, desc:'OstrzeÃÂ¼enie przed korektÃÂ' });
+      patterns.push({ name:'Shooting Star', type:'bearish', strength:72, desc:'Ostrzeżenie przed korektą' });
     }
     // BEARISH ENGULFING
     if (isUp(i-1) && isDown(i) && o[i]>c[i-1] && c[i]<o[i-1] && body(i)>body(i-1)*1.1) {
-      patterns.push({ name:'Bearish Engulfing', type:'bearish', strength:78, desc:'PodaÃÂ¼ przejÃÂÃÂa kontrolÃÂ' });
+      patterns.push({ name:'Bearish Engulfing', type:'bearish', strength:78, desc:'Podaż przejęła kontrolę' });
     }
 
     const bullish = patterns.filter(p=>p.type==='bullish').length;
@@ -1062,14 +1062,14 @@ const PATTERNS = {
   }
 };
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// MODUÃÂY AI/ML
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MODUŁY AI/ML
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function rebalanceEnsemble(ew, nb, gbm, recentTrades) {
   if (!recentTrades || recentTrades.length < 10) return null;
   const newEw = { score: ew.score, nb: ew.nb, gbm: ew.gbm, obi: ew.obi, ql: ew.ql };
 
-  // NB accuracy: sprawdÅº czy zapisany nbLabel zgadza siÄ z wynikiem
+  // NB accuracy: sprawdź czy zapisany nbLabel zgadza się z wynikiem
   let nbCorrect = 0, nbTotal = 0;
   recentTrades.forEach(t => {
     if (!t.nbLabel) return;
@@ -1272,9 +1272,9 @@ function makeQL(saved) {
   return ql;
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// WSKAÃÂ¹NIKI TECHNICZNE
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// WSKAŹNIKI TECHNICZNE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function emaArr(arr, p) {
   if (!arr||!arr.length) return [0];
   const k=2/(p+1);
@@ -1326,8 +1326,8 @@ function rsiDivergence(prices, rsiArr, lookback=20) {
   const pS = prices.slice(-lookback), rS = rsiArr.slice(-lookback);
   const len = pS.length;
 
-  // ZnajdÅº dwa lokalne minima ceny w oknie (bycza dywergencja)
-  // i dwa lokalne maksima ceny (niedÅºwiedzia dywergencja)
+  // Znajdź dwa lokalne minima ceny w oknie (bycza dywergencja)
+  // i dwa lokalne maksima ceny (niedźwiedzia dywergencja)
   const localMins = [], localMaxs = [];
   for (let i = 1; i < len - 1; i++) {
     if (pS[i] < pS[i-1] && pS[i] < pS[i+1]) localMins.push(i);
@@ -1336,14 +1336,14 @@ function rsiDivergence(prices, rsiArr, lookback=20) {
 
   let bull = false, bear = false;
 
-  // Bycza: drugie minimum ceny NIÅ»SZE niÅ¼ pierwsze, ale RSI przy drugim WYÅ»SZE
+  // Bycza: drugie minimum ceny NIŻSZE niż pierwsze, ale RSI przy drugim WYŻSZE
   if (localMins.length >= 2) {
     const i1 = localMins[localMins.length - 2];
     const i2 = localMins[localMins.length - 1];
     if (pS[i2] < pS[i1] * 0.999 && rS[i2] > rS[i1] + 3) bull = true;
   }
 
-  // NiedÅºwiedzia: drugie maksimum ceny WYÅ»SZE niÅ¼ pierwsze, ale RSI przy drugim NIÅ»SZE
+  // Niedźwiedzia: drugie maksimum ceny WYŻSZE niż pierwsze, ale RSI przy drugim NIŻSZE
   if (localMaxs.length >= 2) {
     const i1 = localMaxs[localMaxs.length - 2];
     const i2 = localMaxs[localMaxs.length - 1];
@@ -1379,9 +1379,9 @@ function atr(h, l, c, p=14) {
   return trs.slice(-p).reduce((a,b)=>a+b,0)/p;
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// MARKET DATA Ã¢ÂÂ BYBIT
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MARKET DATA — BYBIT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function fetchWithTimeout(url, ms, headers) {
   ms = ms || 8000;
   const ctrl = new AbortController();
@@ -1392,7 +1392,7 @@ function fetchWithTimeout(url, ms, headers) {
 }
 
 async function getKlines(sym, interval, limit) {
-  // Gate.io: mapowanie interwaÅÃ³w
+  // Gate.io: mapowanie interwałów
   const ivMap = { 'D':'1d', '240':'4h', '60':'1h', '30':'30m', '15':'15m' };
   const iv = ivMap[interval] || '1d';
   const r = await fetchWithTimeout(
@@ -1451,9 +1451,9 @@ async function getFearGreed(state) {
   } catch(e) { return cache; }
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MEXC TRADING
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function mexcSign(params, cfg) {
   const ts = String(Date.now());
   const qs = params + '&timestamp=' + ts;
@@ -1504,9 +1504,9 @@ async function mexcGetBalance(cfg) {
   return usdc ? +usdc.free : 0;
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TELEGRAM
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function tgSend(cfg, msg) {
   if (!cfg.tgToken || !cfg.tgChat) return;
   try {
@@ -1518,9 +1518,9 @@ async function tgSend(cfg, msg) {
   } catch(e) {}
 }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // KV HELPERS
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function getConfig(env) {
   try { const c=await env.SWINGAI_KV.get('config'); return c?JSON.parse(c):defaultConfig(); }
   catch(e) { return defaultConfig(); }
@@ -1546,11 +1546,11 @@ function addLog(state, msg, type='info') {
 }
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
-// DASHBOARD HTML Ã¢ÂÂ SERVER-SIDE RENDER
-// Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DASHBOARD HTML — SERVER-SIDE RENDER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function dashboardHTML(cfg, state, env) {
-  // Pobierz HTML z GitHub z cache KV (TTL 5 minut) â unikamy fetcha przy kaÅ¼dym odÅwieÅ¼eniu
+  // Pobierz HTML z GitHub z cache KV (TTL 5 minut) — unikamy fetcha przy każdym odświeżeniu
   let html;
   const CACHE_KEY = 'html_cache';
   const CACHE_TS_KEY = 'html_cache_ts';
@@ -1570,12 +1570,12 @@ async function dashboardHTML(cfg, state, env) {
       await env.SWINGAI_KV.put(CACHE_TS_KEY, String(now));
     }
   } catch(e) {
-    // SprÃ³buj uÅ¼yÄ stale cache jeÅli fetch siÄ nie powiÃ³dÅ
+    // Spróbuj użyć stale cache jeśli fetch się nie powiódł
     try { const stale = await env.SWINGAI_KV.get(CACHE_KEY); if (stale) html = stale; } catch(_) {}
-    if (!html) return '<html><body style="background:#020810;color:#ff3d5a;font-family:sans-serif;padding:40px"><h2>BÅÄd pobierania frontendu</h2><p>' + e.message + '</p><p><a href="/" style="color:#2d8fff">OdÅwieÅ¼</a></p></body></html>';
+    if (!html) return '<html><body style="background:#020810;color:#ff3d5a;font-family:sans-serif;padding:40px"><h2>Błąd pobierania frontendu</h2><p>' + e.message + '</p><p><a href="/" style="color:#2d8fff">Odśwież</a></p></body></html>';
   }
 
-  // Dane bota do wstrzykniÄcia
+  // Dane bota do wstrzyknięcia
   const botState = JSON.stringify({
     active:       cfg.active || false,
     mode:         cfg.mode || 'paper',
@@ -1599,7 +1599,7 @@ async function dashboardHTML(cfg, state, env) {
     exchange:     'MEXC'
   });
 
-  // Zapisane dane dostÄpowe (przekazujemy je do frontendu Å¼eby wypeÅniÄ formularz)
+  // Zapisane dane dostępowe (przekazujemy je do frontendu żeby wypełnić formularz)
   const savedCreds = JSON.stringify({
     tgToken:        cfg.tgToken    ? '***SAVED***' : '',
     tgChat:         cfg.tgChat     || '',
@@ -1620,7 +1620,7 @@ async function dashboardHTML(cfg, state, env) {
 
     document.addEventListener('DOMContentLoaded', function() {
 
-      // Ustaw Worker URL jeÅli nie ma w localStorage
+      // Ustaw Worker URL jeśli nie ma w localStorage
       try {
         const stored = localStorage.getItem('swingai_cfg_v3');
         const c = stored ? JSON.parse(stored) : {};
@@ -1630,8 +1630,8 @@ async function dashboardHTML(cfg, state, env) {
         }
       } catch(e) {}
 
-      // Przepisz linki /start-paper, /stop, /run â dodaj ?auth=TOKEN
-      // UÅ¼ytkownik klika normalnie, token dodawany automatycznie
+      // Przepisz linki /start-paper, /stop, /run — dodaj ?auth=TOKEN
+      // Użytkownik klika normalnie, token dodawany automatycznie
       document.querySelectorAll('a[href]').forEach(function(a) {
         const href = a.getAttribute('href');
         if (href && (href.startsWith('/start') || href === '/stop' || href === '/run' || href.startsWith('/delete'))) {
@@ -1649,7 +1649,7 @@ async function dashboardHTML(cfg, state, env) {
         }
       } catch(e) {}
 
-      // Nadpisz updateHeader â Å¼eby conn-badge zawsze pokazywaÅ ONLINE gdy Worker aktywny
+      // Nadpisz updateHeader — żeby conn-badge zawsze pokazywał ONLINE gdy Worker aktywny
       if (BOT_STATE.active) {
         var _origUpdateHeader = window.updateHeader;
         window.updateHeader = async function() {
@@ -1661,15 +1661,15 @@ async function dashboardHTML(cfg, state, env) {
         };
       }
 
-      // ââ WYPEÅNIJ FORMULARZ DANYMI Z KV (dziaÅa na kaÅ¼dym urzÄdzeniu) ââ
+      // ââ WYPEŁNIJ FORMULARZ DANYMI Z KV (działa na każdym urządzeniu) ââ
       setTimeout(function() {
         try {
           // Telegram
           var tgTokenInput = document.getElementById('cfg-tg-token');
           var tgChatInput  = document.getElementById('cfg-tg-chat');
           if (tgTokenInput && SAVED_CREDS.tgTokenSet) {
-            // Nie pokazujemy tokenu (bezpieczeÅstwo), ale oznaczamy Å¼e jest zapisany
-            tgTokenInput.placeholder = 'â Token zapisany w chmurze (wpisz nowy aby zmieniÄ)';
+            // Nie pokazujemy tokenu (bezpieczeństwo), ale oznaczamy że jest zapisany
+            tgTokenInput.placeholder = 'â Token zapisany w chmurze (wpisz nowy aby zmienić)';
             tgTokenInput.style.borderColor = 'var(--green)';
           }
           if (tgChatInput && SAVED_CREDS.tgChat) {
@@ -1686,7 +1686,7 @@ async function dashboardHTML(cfg, state, env) {
             okxSecInput.placeholder = 'MEXC Secret zapisany w chmurze (wpisz nowy aby zmienic)';
             okxSecInput.style.borderColor = 'var(--green)';
           }
-          // Zaktualizuj wyÅwietlany status TG
+          // Zaktualizuj wyświetlany status TG
           var rbTg = document.getElementById('rb-tg');
           if (rbTg && SAVED_CREDS.tgTokenSet) {
             rbTg.textContent = 'OK'; rbTg.className = 'val up';
@@ -1694,10 +1694,10 @@ async function dashboardHTML(cfg, state, env) {
         } catch(e) {}
       }, 400);
 
-      // ââ PRZECHWYCENIE saveSettings â SYNC DO WORKERA ââââââââââââââ
+      // ââ PRZECHWYCENIE saveSettings — SYNC DO WORKERA ââââââââââââââ
       var _origSaveSettings = window.saveSettings;
       window.saveSettings = function() {
-        // Najpierw wywoÅaj oryginalnÄ funkcjÄ (zapis do localStorage)
+        // Najpierw wywołaj oryginalną funkcję (zapis do localStorage)
         if (_origSaveSettings) _origSaveSettings.apply(this, arguments);
 
         // Zbierz dane z formularza
@@ -1731,8 +1731,8 @@ async function dashboardHTML(cfg, state, env) {
             fetch(BOT_BASE + '/save-config?' + params.toString())
               .then(function() {
                 var st = document.getElementById('cfg-status');
-                if (st) { st.textContent = 'Zapisano + synchronizacja z chmurÄ â'; st.style.color = 'var(--green)'; }
-                // JeÅli zapisano token TG â wyÅlij wiadomoÅÄ powitalnÄ
+                if (st) { st.textContent = 'Zapisano + synchronizacja z chmurą â'; st.style.color = 'var(--green)'; }
+                // Jeśli zapisano token TG — wyślij wiadomość powitalną
                 if (hasTg) {
                   setTimeout(function() {
                     fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){});
@@ -1744,8 +1744,8 @@ async function dashboardHTML(cfg, state, env) {
         } catch(e) { console.warn('saveSettings injection error:', e); }
       };
 
-      // Nadpisz startBot/stopBot â klikajÄc START/STOP uÅ¼ytkownik steruje Workerem (24/7)
-      // a nie lokalnym botem przeglÄdarki ktÃ³ry dziaÅa tylko gdy karta jest otwarta
+      // Nadpisz startBot/stopBot — klikając START/STOP użytkownik steruje Workerem (24/7)
+      // a nie lokalnym botem przeglądarki który działa tylko gdy karta jest otwarta
       window._origStartBot = window.startBot;
       window._origStopBot  = window.stopBot;
 
@@ -1760,13 +1760,13 @@ async function dashboardHTML(cfg, state, env) {
             if (btnRun)  btnRun.style.display  = 'none';
             if (btnStop) btnStop.style.display  = '';
             if (btnScan) btnScan.style.display  = '';
-            if (rbStat)  { rbStat.textContent = 'ð¢ Aktywny (24h Worker)'; rbStat.className = 'val up'; }
+            if (rbStat)  { rbStat.textContent = '🟢 Aktywny (24h Worker)'; rbStat.className = 'val up'; }
             if (aiDot)   aiDot.className = 'ai-dot scan';
             var connBadge = document.getElementById('conn-badge');
             if (connBadge) { connBadge.className = 'badge bon'; connBadge.textContent = 'ONLINE'; }
             if (typeof running !== 'undefined') running = true;
           })
-          .catch(function(e) { alert('BÅÄd startu Workera: ' + e.message); });
+          .catch(function(e) { alert('Błąd startu Workera: ' + e.message); });
       };
 
       window.stopBot = function() {
@@ -1784,14 +1784,14 @@ async function dashboardHTML(cfg, state, env) {
             if (aiDot)   aiDot.className = 'ai-dot';
             if (typeof running !== 'undefined') running = false;
           })
-          .catch(function(e) { alert('BÅÄd stopu Workera: ' + e.message); });
+          .catch(function(e) { alert('Błąd stopu Workera: ' + e.message); });
       };
 
-      // JeÅli Worker-bot jest aktywny â zasilij UI danymi z Workera
+      // Jeśli Worker-bot jest aktywny — zasilij UI danymi z Workera
       if (BOT_STATE.active) {
         setTimeout(function() {
           try {
-            // 1. Wstrzyknij dane do localStorage Å¼eby loadAll() je widziaÅ
+            // 1. Wstrzyknij dane do localStorage żeby loadAll() je widział
             var stored = localStorage.getItem('swingai_v3');
             var st = stored ? JSON.parse(stored) : {};
             st.positions  = BOT_STATE.positions  || st.positions  || [];
@@ -1801,7 +1801,7 @@ async function dashboardHTML(cfg, state, env) {
             st.iter       = BOT_STATE.iter        || st.iter       || 0;
             localStorage.setItem('swingai_v3', JSON.stringify(st));
 
-            // 2. OdÅwieÅ¼ stan w pamiÄci (ST to globalny obiekt przeglÄdarki)
+            // 2. Odśwież stan w pamięci (ST to globalny obiekt przeglądarki)
             if (typeof ST !== 'undefined') {
               ST.positions = st.positions;
               ST.trades    = st.trades;
@@ -1813,9 +1813,9 @@ async function dashboardHTML(cfg, state, env) {
             var iterEl = document.getElementById('rb-iter');
             if (iterEl && st.iter) iterEl.textContent = st.iter;
 
-            // 3. WyÅwietl pary z ostatniego skanu Workera
+            // 3. Wyświetl pary z ostatniego skanu Workera
             if (BOT_STATE.lastSigs && BOT_STATE.lastSigs.length > 0 && typeof renderSigList === 'function') {
-              // Dopasuj format â Worker uÅ¼ywa BTC_USDC, frontend oczekuje sym z trendD
+              // Dopasuj format — Worker używa BTC_USDC, frontend oczekuje sym z trendD
               var sigs = BOT_STATE.lastSigs.map(function(s) {
                 return {
                   sym:      s.sym.replace('_', '-'),
@@ -1841,7 +1841,7 @@ async function dashboardHTML(cfg, state, env) {
               if (typeof lastSigs !== 'undefined') lastSigs = sigs;
             }
 
-            // 4. Zaktualizuj UI â status aktywny, ukryj Start
+            // 4. Zaktualizuj UI — status aktywny, ukryj Start
             running = true;
             var btnRun  = document.getElementById('btn-run');
             var btnStop = document.getElementById('btn-stop');
@@ -1851,14 +1851,14 @@ async function dashboardHTML(cfg, state, env) {
             if (btnRun)  btnRun.style.display  = 'none';
             if (btnStop) btnStop.style.display  = '';
             if (btnScan) btnScan.style.display  = '';
-            if (rbStat)  { rbStat.textContent = 'ð¢ Aktywny (24h Worker)'; rbStat.className = 'val up'; }
+            if (rbStat)  { rbStat.textContent = '🟢 Aktywny (24h Worker)'; rbStat.className = 'val up'; }
             if (aiDot)   aiDot.className = 'ai-dot scan';
 
-            // 5. OdÅwieÅ¼ wyÅwietlone pozycje i trades jeÅli istniejÄ funkcje
+            // 5. Odśwież wyświetlone pozycje i trades jeśli istnieją funkcje
             if (typeof renderPositions === 'function') renderPositions();
             if (typeof renderTrades    === 'function') renderTrades();
 
-            // 6. PokaÅ¼ czas ostatniego skanu Workera
+            // 6. Pokaż czas ostatniego skanu Workera
             if (BOT_STATE.lastCycle) {
               var d = new Date(BOT_STATE.lastCycle);
               var pad = function(n){ return n<10?'0'+n:n; };
@@ -1889,14 +1889,14 @@ async function dashboardHTML(cfg, state, env) {
   // ââ END INJECTION ââââââââââââââââââââââââââââââââââââââââââââââââ
 `;
 
-  // Wstrzyknij tuÅ¼ po <script> 'use strict'; bloku (po "let CFG = {")
-  // UÅ¼ywamy funkcji zamiast stringa â unikamy interpretacji $' $` $& przez replace()
+  // Wstrzyknij tuż po <script> 'use strict'; bloku (po "let CFG = {")
+  // Używamy funkcji zamiast stringa â unikamy interpretacji $' $` $& przez replace()
   html = html.replace(
     "let CFG = {",
     function() { return injection + "\nlet CFG = {"; }
   );
 
-  // PodmieÅ conn-badge bezpoÅrednio w HTML â zanim przeglÄdarka wyrenderuje stronÄ
+  // Podmień conn-badge bezpośrednio w HTML — zanim przeglądarka wyrenderuje stronę
   if (cfg.active) {
     html = html.replace(
       '<span id="conn-badge" class="badge boff">OFFLINE</span>',
@@ -1908,7 +1908,7 @@ async function dashboardHTML(cfg, state, env) {
     );
   }
 
-  // PodmieÅ openSettings â pola z kluczami w KV pokazujÄ zielony placeholder
+  // Podmień openSettings — pola z kluczami w KV pokazują zielony placeholder
   html = html.replace(
     "function openSettings() {\n  gi('cfg-key').value      = CFG.apiKey||'';\n  gi('cfg-secret').value   = CFG.secret||'';\n  gi('cfg-worker').value   = CFG.workerUrl||'';\n  gi('cfg-mode').value     = CFG.mode;\n  gi('cfg-byb-key').value    = CFG.bybApiKey||'';\n  gi('cfg-byb-secret').value = CFG.bybSecret||'';\n  gi('cfg-byb-worker').value = CFG.bybWorker||'';\n  gi('cfg-okx-key').value      = CFG.okxApiKey||'';\n  gi('cfg-okx-secret').value   = CFG.okxSecret||'';\n  gi('cfg-okx-pass').value     = CFG.okxPassphrase||'';\n  gi('cfg-okx-worker').value   = CFG.okxWorker||'';",
     `function openSettings() {
@@ -1931,13 +1931,13 @@ async function dashboardHTML(cfg, state, env) {
   // (okxPassSet usuniete)
   // (okxPassphrase usuniete)
   // MEXC nie uzywa okxWorker - pominiete
-  // TG â analogicznie
+  // TG — analogicznie
   if (sc.tgTokenSet) {
-    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = 'â Token zapisany w chmurze (wpisz nowy aby zmieniÄ)'; gi('cfg-tg-token').style.borderColor='var(--green)';
+    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = 'â Token zapisany w chmurze (wpisz nowy aby zmienić)'; gi('cfg-tg-token').style.borderColor='var(--green)';
   } else { gi('cfg-tg-token').value = CFG.tgToken||''; gi('cfg-tg-token').style.borderColor=''; }`
   );
 
-  // PodmieÅ saveCfg() w saveSettings â dodaj sync do Workera i wysyÅkÄ powitania
+  // Podmień saveCfg() w saveSettings — dodaj sync do Workera i wysyłkę powitania
   html = html.replace(
     "saveCfg();\n  gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';",
     `saveCfg();
@@ -1960,7 +1960,7 @@ async function dashboardHTML(cfg, state, env) {
     // okxP/pass - MEXC nie uzywa passphrase - pominiete
     fetch(BOT_BASE + '/save-config?' + params.toString())
       .then(function() {
-        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurÄ â';
+        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurą â';
         gi('cfg-status').style.color = 'var(--green)';
         if (hasTg) {
           setTimeout(function() {
@@ -1973,7 +1973,7 @@ async function dashboardHTML(cfg, state, env) {
   gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';`
   );
 
-  // Dodaj badge bota w nagÅÃ³wku (tuÅ¼ przed </div> zamykajÄcym #hdr-stats)
+  // Dodaj badge bota w nagłówku (tuż przed </div> zamykającym #hdr-stats)
   const botBadgeHtml = `<div id="bot-status-badge" style="font-size:7.5pt;padding:2px 9px;border-radius:6px;background:rgba(0,229,160,.12);color:var(--green);font-weight:700;white-space:nowrap;margin-left:4px">${cfg.active ? '24h BOT: AKTYWNY' : '24h BOT: OFF'}</div>`;
   html = html.replace('</div>\n</div>\n\n<div id="main">', botBadgeHtml + '\n</div>\n</div>\n\n<div id="main">');
 
