@@ -251,7 +251,9 @@ async function runBotCycle(env) {
   }
 
   // Drawdown Circuit Breaker
-  const currentBalance = state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000);
+  const currentBalance = cfg.mode === 'live'
+    ? (state.liveBalance > 0 ? state.liveBalance : (cfg.paperBalance || 1000))
+    : (state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000));
   if (!state.peakBalance || state.peakBalance < currentBalance) state.peakBalance = currentBalance;
   const drawdown = (state.peakBalance - currentBalance) / state.peakBalance;
   const drawdownBlocked = (state.drawdownBlock || 0) > Date.now();
@@ -335,7 +337,7 @@ async function runBotCycle(env) {
 
     // Ensemble rebalancing: co 20 tradÃ³w aktualizuj wagi na bazie accuracy
     if (trades.length >= 20 && trades.length % 20 === 0) {
-      const ewUpd = rebalanceEnsemble(ew, nb, gbm, trades.slice(-20));
+      const ewUpd = rebalanceEnsemble(ew, nb, gbm, trades.slice(0, 20));
       if (ewUpd) {
         Object.assign(ew, ewUpd);
         addLog(state, 'Ensemble rebalanced: nb=' + ew.nb.toFixed(2) + ' gbm=' + ew.gbm.toFixed(2), 'ok');
@@ -467,7 +469,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // Ã¢ÂÂÃ¢ÂÂ WskaÃÂºniki 1H
   const rsi1h  = rsi(h1.c, 14);
   const macd1h = macdFull(h1.c);
-  const confirm1h = (rsi1h < 50 && macd1h.hist > 0) || rsi1h < 40;
+  const confirm1h = macd1h.hist > 0 && rsi1h < 55;
 
   // Ã¢ÂÂÃ¢ÂÂ RSI Divergence
   const rsiArrD  = rsiArray(d.c.slice(-40),  14);
@@ -654,8 +656,8 @@ async function checkPositions(cfg, state, env, ql) {
 
       // Timeout 7 dni
       // Uwaga: po partial TP pos.sl jest ustawione na entry (break-even), dlatego liczymy SL przez pos.sl gdy dostępne
-      const slThresholdPct = pos.sl != null
-        ? (pos.sl - pos.entry) / pos.entry * 100   // break-even lub niestandardowy SL z pozycji
+      const slThresholdPct = pos.partialClosed
+        ? (pos.sl - pos.entry) / pos.entry * 100   // break-even po Partial TP
         : -cfg.sl * 100;                            // domyślny SL z configu
       if (Date.now() - pos.entryTs > TIMEOUT_MS) reason = 'TIMEOUT 7d';
       else if (pnlPct >= cfg.tp * 100)             reason = 'TAKE PROFIT';
@@ -751,7 +753,9 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   // Portfolio Heat check â tylko dla normalnych kont (>= 100$)
   if (!micro) {
     const totalRisk     = (state.positions || []).reduce((s, p) => {
-      const slPct = (p.sl != null && p.partialClosed) ? 0 : cfg.sl;
+      const slPct = p.partialClosed
+        ? 0
+        : (p.entry > 0 ? Math.abs((p.sl || 0) - p.entry) / p.entry : cfg.sl);
       return s + (p.size||0) * slPct;
     }, 0);
     const portfolioHeat = totalRisk / (total > 0 ? total : 1);
@@ -786,7 +790,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
       if (!state.dailyStartBalance || state.dailyStartBalance <= 0) {
         try {
           const liveBal = await mexcGetBalance(cfg);
-          state.dailyStartBalance = (liveBal && liveBal.USDC) ? parseFloat(liveBal.USDC) : posSize * (cfg.maxPos || 4);
+          state.dailyStartBalance = (typeof liveBal === 'number' && liveBal > 0) ? liveBal : posSize * (cfg.maxPos || 4);
         } catch(_) {
           state.dailyStartBalance = posSize * (cfg.maxPos || 4);
         }
@@ -833,8 +837,10 @@ function buildPosition(sig, price, qty, levels, size, ql) {
 }
 
 async function closePosition(pos, price, reason, cfg, state, ql) {
-  const pnl    = (price - pos.entry) * pos.qty;
-  const pnlPct = (price - pos.entry) / pos.entry * 100;
+  const grossPnl = (price - pos.entry) * pos.qty;
+  const feeCost  = pos.size * FEE + (pos.size + grossPnl) * FEE;
+  const pnl      = grossPnl - feeCost;
+  const pnlPct   = pnl / pos.size * 100;
   const durH   = ((Date.now() - pos.entryTs) / 3600000).toFixed(1);
 
   if (cfg.mode === 'live' && cfg.mexcApiKey) {
