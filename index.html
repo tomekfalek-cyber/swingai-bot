@@ -655,9 +655,9 @@ tr:hover td{background:rgba(45,143,255,.04);}
   <div class="form-row"><label>Tryb handlu</label>
     <select id="cfg-mode" onchange="onModeChange(this.value)">
       <option value="paper">📝 PAPER — symulacja (bezpieczny start)</option>
-      <option value="live">💰 LIVE — Binance (realne transakcje)</option>
+      <option value="mexc">💰 LIVE — MEXC (realne transakcje)</option>
       <option value="bybit">💰 LIVE — Bybit EU (realne transakcje)</option>
-      <option value="okx">💰 LIVE — MEXC (realne transakcje)</option>
+      <option value="live">💰 LIVE — Binance (realne transakcje)</option>
     </select>
   </div>
 
@@ -2740,7 +2740,7 @@ function saveSettings() {
   CFG.secret     = gi('cfg-secret').value.trim();
   CFG.workerUrl  = gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode       = gi('cfg-mode').value;
-  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : CFG.mode==='okx' ? 'okx' : 'mexc';
+  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : CFG.mode==='live' ? 'binance' : 'mexc';
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
