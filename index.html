@@ -4427,22 +4427,30 @@ if (_modelsLoaded) {
 // ═══════════════════════════════════════════════════════════════
 // TOAST NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════════
-var _soundOn = false;
+var _soundOn = (localStorage.getItem('swingai_sound') === '1');
 var _audioCtx = null;
 
-function toggleSound() {
-  _soundOn = !_soundOn;
+function _applySoundState() {
   var btn = gi('sound-toggle');
+  if (!btn) return;
   if (_soundOn) {
     btn.textContent = '🔊 Sound';
     btn.classList.add('on');
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    toast('Dźwięki alertów włączone', '', 'info', 2000);
   } else {
     btn.textContent = '🔇 Sound';
     btn.classList.remove('on');
   }
 }
+
+function toggleSound() {
+  _soundOn = !_soundOn;
+  localStorage.setItem('swingai_sound', _soundOn ? '1' : '0');
+  _applySoundState();
+  if (_soundOn) toast('Dźwięki alertów włączone', '', 'info', 2000);
+}
+
+document.addEventListener('DOMContentLoaded', function() { _applySoundState(); });
 
 function playSound(type) {
   if (!_soundOn || !_audioCtx) return;
