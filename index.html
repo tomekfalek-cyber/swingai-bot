@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -831,7 +831,7 @@ function saveModels() {
   try {
     var payload = {
       nb: { model:NB.model, trained:NB.trained, trainCount:NB.trainCount },
-      gbm: { trees:GBM.trees.map(function(t){ return {fi:t.fi,thresh:t.thresh,lVal:t.lVal,rVal:t.rVal}; }), trained:GBM.trained, accuracy:GBM.accuracy, accuracyOOS:GBM.accuracyOOS },
+      gbm: { trees:GBM.trees.map(function(t){ return {fi:t.fi,thresh:t.thresh,lVal:t.lVal,rVal:t.rVal}; }), trained:GBM.trained, accuracy:GBM.accuracy, accuracyOOS:GBM.accuracyOOS||0 },
       adaptive: { minScoreAdjusted:ADAPTIVE.minScoreAdjusted, lastTrainSize:ADAPTIVE.lastTrainSize },
       ql: QL.save(),
       ensembleW: ENSEMBLE_W.save(),
@@ -2396,6 +2396,7 @@ function stopBot() {
   clearTimeout(botTimer); botTimer=null; nextScanAt=0;
   clearInterval(countdownTimer); countdownTimer=null;
   clearTimeout(cycleTimeoutTimer); cycleTimeoutTimer=null;
+  clearInterval(wsExitQueueTimer); wsExitQueueTimer=null;
   wsExitQueue = [];
   gi('btn-run').style.display  = '';
   gi('btn-stop').style.display = 'none';
@@ -2476,7 +2477,7 @@ async function updateHeader() {
     gi('mode-badge').textContent = CFG.mode.toUpperCase();
     gi('mode-badge').className   = CFG.mode==='paper' ? 'badge bwarn' : 'badge bon';
     gi('st-mode').textContent = CFG.mode.toUpperCase();
-    const rw = gi('rb-worker');
+    const rw = gi('rb-proxy');
     if (rw) { rw.textContent=CFG.mode==='paper'?'(PAPER)':workerReady()||bybWorkerReady()?'OK':'brak'; rw.className=CFG.mode==='paper'?'val neu':workerReady()||bybWorkerReady()?'val up':'val dn'; }
     const re = gi('rb-exchange');
     if (re) { re.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='okx'||CFG.exchange==='mexc'?'MEXC':CFG.exchange==='binance'?'Binance':'MEXC'; re.className='val acc'; }
@@ -2597,7 +2598,7 @@ function renderHistory() {
       +'<td style="color:var(--text2)">'+t.durH+'h</td>'
       +'<td><span class="pill '+pc+'">'+t.reason+'</span></td>'
       +'<td style="color:var(--text3)">'+t.score+'</td>'
-      +'<td style="color:var(--text3);font-size:8pt">'+t.ts+'</td></tr>';
+      +'<td style="color:var(--text3);font-size:8pt">'+new Date(t.ts||0).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</td></tr>';
   }).join('');
 }
 
@@ -2739,7 +2740,7 @@ function saveSettings() {
   CFG.secret     = gi('cfg-secret').value.trim();
   CFG.workerUrl  = gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode       = gi('cfg-mode').value;
-  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : 'mexc';
+  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : CFG.mode==='okx' ? 'okx' : 'mexc';
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
@@ -3261,7 +3262,8 @@ function calcStats(trades) {
   var std = Math.sqrt(rets.reduce(function(a,b){ return a + (b-avg)*(b-avg); }, 0) / rets.length);
   var sharpe = std > 0 ? +(avg / std * Math.sqrt(252)).toFixed(2) : 0;
   var downRets = rets.filter(function(r){ return r < 0; });
-  var downStd = downRets.length > 0 ? Math.sqrt(downRets.reduce(function(a,b){ return a + b*b; }, 0) / downRets.length) : 0;
+  var downAvg = downRets.length > 0 ? downRets.reduce(function(a,b){ return a+b; },0)/downRets.length : 0;
+  var downStd = downRets.length > 0 ? Math.sqrt(downRets.reduce(function(a,b){ return a + (b-downAvg)*(b-downAvg); }, 0) / downRets.length) : 0;
   var sortino = downStd > 0 ? +(avg / downStd * Math.sqrt(252)).toFixed(2) : 0;
   var peak = 1, equity = 1, maxDD = 0;
   for (var ri = 0; ri < rets.length; ri++) {
@@ -3528,6 +3530,10 @@ var ADAPTIVE = {
       .filter(function(p){ return p.x.length > 0; });
     var X = gbmPairs.map(function(p){ return p.x; });
     var y = gbmPairs.map(function(p){ return p.y; });
+
+    // Deklaracja PRZED użyciem (walk-forward check potrzebny też niżej)
+    var lastRefit = ST.lastGbmRefit || 0;
+    var tradesSinceRefit = ST.trades.filter(function(t){ var tsN = typeof t.ts === 'string' ? new Date(t.ts).getTime() : (t.ts||0); return tsN > lastRefit; }).length;
     var _needWfRefit = (tradesSinceRefit >= 50 || !GBM.trained);
     if (X.length >= 20 && !_needWfRefit) GBM.train(X, y);
 
@@ -3545,8 +3551,6 @@ var ADAPTIVE = {
     }
 
     // Walk-forward: GBM re-trenuje na oknie krocącym co 50 tradów
-    var lastRefit = ST.lastGbmRefit || 0;
-    var tradesSinceRefit = ST.trades.filter(function(t){ var tsN = typeof t.ts === 'string' ? new Date(t.ts).getTime() : (t.ts||0); return tsN > lastRefit; }).length;
     if (X.length >= 20 && (tradesSinceRefit >= 50 || !GBM.trained)) {
       var wfX = X.slice(-200);
       var wfY = y.slice(-200);
@@ -4524,7 +4528,7 @@ function riskBarHtml(kellySzanse, pct) {
         var rP = document.getElementById('rb-paper');
         if (hU) hU.textContent = '$' + bal.toFixed(2);
         if (rP) rP.textContent = '$' + bal.toFixed(2);
-        if (typeof ST !== 'undefined') ST.paperBal = bal;
+        if (typeof ST !== 'undefined' && d.mode !== 'live') ST.paperBal = bal;
         if (d.mode === 'live') {
           var mb = document.getElementById('mode-badge');
           var sm = document.getElementById('st-mode');
@@ -4544,6 +4548,7 @@ function riskBarHtml(kellySzanse, pct) {
 </body>
 
 </html>
+
 
 
 
