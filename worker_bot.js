@@ -1908,14 +1908,32 @@ async function dashboardHTML(cfg, state, env) {
             if (rbExchange) { rbExchange.textContent = BOT_STATE.exchange || 'MEXC'; rbExchange.className = 'val up'; }
             var rbProxy = document.getElementById('rb-proxy');
             if (rbProxy) { rbProxy.textContent = BOT_BASE; rbProxy.className = 'val up'; }
-            // Popraw tryb - upewnij sie ze pokazuje LIVE gdy mode=live
+            // Popraw tryb - upewnij sie ze pokazuje LIVE MEXC gdy mode=mexc
             var rbMode = document.getElementById('rb-mode');
-            if (rbMode && BOT_STATE.mode) { rbMode.textContent = BOT_STATE.mode.toUpperCase(); rbMode.className = BOT_STATE.mode === 'live' ? 'val up' : 'val'; }
+            if (rbMode && BOT_STATE.mode) { rbMode.textContent = BOT_STATE.mode === 'mexc' ? 'LIVE (MEXC)' : BOT_STATE.mode.toUpperCase(); rbMode.className = BOT_STATE.mode === 'mexc' ? 'val up' : 'val'; }
             // Wyswietl saldo live jesli dostepne
             if (BOT_STATE.liveBalance !== null && BOT_STATE.liveBalance !== undefined) {
               var rbBal = document.getElementById('rb-balance') || document.getElementById('rb-live-bal');
               if (rbBal) { rbBal.textContent = '$' + Number(BOT_STATE.liveBalance).toFixed(2) + ' (MEXC)'; rbBal.className = 'val up'; }
             }
+
+            // 7. Pokaż logi z Workera w log-area
+            try {
+              var logArea = document.getElementById('log-area');
+              if (logArea && BOT_STATE.log && BOT_STATE.log.length > 0) {
+                logArea.innerHTML = '';
+                BOT_STATE.log.slice(0, 30).forEach(function(entry) {
+                  var div = document.createElement('div');
+                  var tp = entry.type || 'info';
+                  div.className = 'log-line ' + (tp==='ok'?'lok':tp==='err'?'lerr':tp==='warn'?'lwarn':'linfo');
+                  var ts = entry.ts ? new Date(entry.ts).toLocaleTimeString('pl-PL') : '';
+                  div.textContent = '[' + ts + '] ' + (entry.msg || '');
+                  logArea.appendChild(div);
+                });
+                var lc = document.getElementById('log-count');
+                if (lc) lc.textContent = BOT_STATE.log.length + ' wpisow (Worker)';
+              }
+            } catch(e2) {}
 
           } catch(e) { console.warn('Worker injection error:', e); }
         }, 600);
