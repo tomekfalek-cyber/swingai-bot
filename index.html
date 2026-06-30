@@ -719,7 +719,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
   <div class="form-row"><label>Trailing Stop %</label><input id="cfg-trail" type="number" value="6" step="0.5" min="1" max="10"> <small class="lbl">Swing: 5–7%</small></div>
   <div class="form-row"><label>Max pozycje</label><input id="cfg-maxpos" type="number" value="4" min="1" max="5"></div>
   <div class="form-row"><label>Rozmiar pozycji $</label><input id="cfg-size" type="number" value="15" min="10" max="10000"></div>
-  <div class="form-row"><label>Skan co (minuty)</label><input id="cfg-interval" type="number" value="2" min="1" max="120"></div>
+  <div class="form-row"><label>Skan co (minuty)</label><input id="cfg-interval" type="number" value="5" min="5" max="120"></div>
   <div class="form-row"><label>Paper saldo startowe $</label><input id="cfg-paper-bal" type="number" value="1000" min="100"></div>
   <div class="form-row"><label>Min Score BUY (0-100)</label><input id="cfg-minscore" type="number" value="58" min="40" max="90"> <small class="lbl">Swing: 55–62</small></div>
   <div class="form-row"><label>Kelly — ryzyko max %</label><input id="cfg-risk" type="number" value="2" min="0.5" max="5" step="0.5"> <small class="lbl">% kapitału per trade (Kelly kalibruje automatycznie)</small></div>
@@ -776,7 +776,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
 let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.12, sl:0.05, trail:0.06, maxPos:4, riskPct:2, posSize:15,
-  intervalMin:2, paperBal:1000, minScore:58, fgMin:20,
+  intervalMin:5, paperBal:1000, minScore:58, fgMin:20,
   exchange:'mexc', bybApiKey:'', bybSecret:'', bybWorker:'',
   okxApiKey:'', okxSecret:'', okxPassphrase:'', okxWorker:''
 };
@@ -799,7 +799,7 @@ function loadAll() {
   try { const s=localStorage.getItem('swingai_v3'); if(s) ST={...ST,...JSON.parse(s)}; } catch(e){}
   try { const c=localStorage.getItem('swingai_cfg_v3'); if(c) CFG={...CFG,...JSON.parse(c)}; } catch(e){}
   // Migracja: stary domyslny interwal 30min → nowy 2min
-  if (!CFG.intervalMin || CFG.intervalMin >= 15) CFG.intervalMin = 2;
+  if (!CFG.intervalMin || CFG.intervalMin < 5) CFG.intervalMin = 5;
   // Migracja: stara giełda Binance → MEXC
   if (CFG.exchange === 'binance' && CFG.mode !== 'live') CFG.exchange = 'mexc';
   // Migracja: stara giełda OKX → MEXC
