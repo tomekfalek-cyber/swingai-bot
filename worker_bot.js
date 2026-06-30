@@ -1,4 +1,4 @@
-﻿// SwingAI Bot 24/7 — Cloudflare Worker — FULL VERSION
+﻿﻿// SwingAI Bot 24/7 — Cloudflare Worker — FULL VERSION
 // Pełna logika handlowa identyczna z https://tomekfalek-cyber.github.io/swingai-bot/
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
@@ -66,7 +66,7 @@ export default {
     if (url.pathname === '/start-live') {
       const p = url.searchParams;
       const cfg = defaultConfig();
-      cfg.active = true; cfg.mode = 'live'; cfg.startedAt = Date.now();
+      cfg.active = true; cfg.mode = 'mexc'; cfg.startedAt = Date.now();
       cfg.mexcApiKey = p.get('key')  || '';
       cfg.mexcSecret = p.get('sec')  || '';
       cfg.tp    = parseFloat(p.get('tp')   || '12') / 100;
@@ -131,7 +131,7 @@ export default {
     if (url.pathname === '/balance') {
       const cfg   = await getConfig(env);
       const state = await getState(env);
-      if (cfg.mode !== 'live' || !cfg.mexcApiKey) {
+      if (cfg.mode !== 'mexc' || !cfg.mexcApiKey) {
         return jsonResp({ balance: null, mode: cfg.mode });
       }
       // Pobierz świeże saldo z MEXC bezpośrednio — MEXC nie blokuje Cloudflare
@@ -198,7 +198,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: cfg.tgChat,
-              text: 'ð Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP DOGE ADA AVAX LINK\nSkany co 1h przez Cloudflare Worker.',
+              text: '👋 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP DOGE ADA AVAX LINK\nSkany co 1h przez Cloudflare Worker.',
               parse_mode: 'HTML'
             })
           }
@@ -251,7 +251,7 @@ async function runBotCycle(env) {
   }
 
   // Drawdown Circuit Breaker
-  const currentBalance = cfg.mode === 'live'
+  const currentBalance = cfg.mode === 'mexc'
     ? (state.liveBalance > 0 ? state.liveBalance : (cfg.paperBalance || 1000))
     : (state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000));
   if (!state.peakBalance || state.peakBalance < currentBalance) state.peakBalance = currentBalance;
@@ -353,7 +353,7 @@ async function runBotCycle(env) {
     state.adaptiveMinScore = computeAdaptiveMinScore(trades, cfg.minScore);
 
     // Pobierz realne saldo z Gate.io i zapisz do cache
-    if (cfg.mode === 'live' && cfg.mexcApiKey && cfg.mexcSecret) {
+    if (cfg.mode === 'mexc' && cfg.mexcApiKey && cfg.mexcSecret) {
       try {
         state.liveBalance = await mexcGetBalance(cfg);
       } catch(e) { /* MEXC niedostępne — zachowaj poprzednią wartość */ }
@@ -670,7 +670,7 @@ async function checkPositions(cfg, state, env, ql) {
          const halfPnl = (price - pos.entry) * halfQty;
          const halfSize = pos.size / 2;
          let partialOk = true;
-         if (cfg.mode === 'live' && cfg.mexcApiKey) {
+         if (cfg.mode === 'mexc' && cfg.mexcApiKey) {
            try {
              await mexcMarketSell(pos.sym, halfQty, cfg);
            } catch(e) {
@@ -741,7 +741,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   }
 
   const paperBal = state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000);
-  const total    = cfg.mode === 'live' ? (state.liveBalance > 0 ? state.liveBalance : paperBal) : paperBal;
+  const total    = cfg.mode === 'mexc' ? (state.liveBalance > 0 ? state.liveBalance : paperBal) : paperBal;
   const micro    = isMicroAccount(total);
 
   // Micro account: max 1 pozycja naraz
@@ -779,7 +779,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     ' | ' + adjSig.aiMethod + ' | ' + cfg.mode.toUpperCase(), 'ok');
   if (!Array.isArray(state.positions)) state.positions = [];
 
-  if (cfg.mode === 'live' && cfg.mexcApiKey) {
+  if (cfg.mode === 'mexc' && cfg.mexcApiKey) {
     try {
       const res = await mexcMarketBuy(adjSig.sym, posSize, cfg);
       const execP = res.price || adjSig.price;
@@ -810,17 +810,17 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   }
 
   const _pairName = adjSig.sym.replace('_USDC', '').replace('_USDT', '');
-  const _modeLabel = cfg.mode === 'live' ? 'LIVE' : 'PAPER (symulacja)';
+  const _modeLabel = cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER (symulacja)';
   await tgSend(cfg,
     '🟢 <b>SYGNAŁ KUPNA — ' + _pairName + '</b>\n\n' +
     '💰 Cena wejścia: <b>$' + adjSig.price.toFixed(4) + '</b>\n' +
-    'ðµ Rozmiar pozycji: <b>$' + posSize.toFixed(2) + '</b> (Kelly)\n' +
+    '💵 Rozmiar pozycji: <b>$' + posSize.toFixed(2) + '</b> (Kelly)\n' +
     '🎯 Take Profit: <b>$' + levels.tp.toFixed(4) + '</b>\n' +
     '🛑 Stop Loss: <b>$' + levels.sl.toFixed(4) + '</b>\n' +
     '⚖️ Zysk/Ryzyko: <b>' + levels.rr + '</b>\n\n' +
     '📊 Wynik AI: <b>' + adjSig.score + '/100</b> | Pewność: <b>' + (adjSig.finalProb*100).toFixed(1) + '%</b>\n' +
     '🤖 Metoda: ' + adjSig.aiMethod + '\n' +
-    'ð Powody: ' + adjSig.why.slice(0,4).join(', ') + '\n\n' +
+    '📝 Powody: ' + adjSig.why.slice(0,4).join(', ') + '\n\n' +
     '🔧 Tryb: ' + _modeLabel);
 }
 
@@ -842,7 +842,7 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
   const pnlPct   = pnl / pos.size * 100;
   const durH   = ((Date.now() - pos.entryTs) / 3600000).toFixed(1);
 
-  if (cfg.mode === 'live' && cfg.mexcApiKey) {
+  if (cfg.mode === 'mexc' && cfg.mexcApiKey) {
     try {
       await mexcMarketSell(pos.sym, pos.qty, cfg);
     } catch(e) {
@@ -900,7 +900,7 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
     '💰 Wynik: <b>' + (pnl>=0?'+':'') + '$' + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</b>\n' +
     '⏱️ Czas trwania: ' + durH + 'h\n' +
     '📊 Score wejścia: ' + pos.score + '/100\n' +
-    '🔧 Tryb: ' + (cfg.mode === 'live' ? 'LIVE' : 'PAPER'));
+    '🔧 Tryb: ' + (cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER'));
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1465,6 +1465,19 @@ async function mexcSign(params, cfg) {
 
 function mexcSymbol(sym) { return sym.replace('_',''); }
 
+// MEXC wymaga różnej precyzji ilości dla każdej pary
+function mexcQtyPrecision(sym) {
+  if (sym.includes('DOGE') || sym.includes('SHIB') || sym.includes('XRP') || sym.includes('ADA')) return 0;
+  if (sym.includes('BTC'))  return 5;
+  if (sym.includes('ETH'))  return 4;
+  if (sym.includes('SOL') || sym.includes('AVAX') || sym.includes('LINK')) return 3;
+  return 4;
+}
+function mexcFmtQty(sym, qty) {
+  const prec = mexcQtyPrecision(sym);
+  return prec === 0 ? Math.floor(qty).toString() : qty.toFixed(prec);
+}
+
 async function mexcMarketBuy(sym, quoteQty, cfg) {
   const msym = mexcSymbol(sym);
   const s = await mexcSign('symbol=' + msym + '&side=BUY&type=MARKET&quoteOrderQty=' + quoteQty.toFixed(2), cfg);
@@ -1481,7 +1494,7 @@ async function mexcMarketBuy(sym, quoteQty, cfg) {
 
 async function mexcMarketSell(sym, qty, cfg) {
   const msym = mexcSymbol(sym);
-  const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + qty.toFixed(6), cfg);
+  const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + mexcFmtQty(sym, qty), cfg);
   const r = await fetch('https://api.mexc.com/api/v3/order?' + s.qs, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
   const d = await r.json();
   if (!d.orderId) throw new Error('MEXC sell: ' + (d.msg || JSON.stringify(d)));
