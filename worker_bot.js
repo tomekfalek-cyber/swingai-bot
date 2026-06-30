@@ -1,4 +1,4 @@
-// SwingAI Bot 24/7 — Cloudflare Worker — FULL VERSION
+﻿// SwingAI Bot 24/7 — Cloudflare Worker — FULL VERSION
 // Pełna logika handlowa identyczna z https://tomekfalek-cyber.github.io/swingai-bot/
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
@@ -99,7 +99,7 @@ export default {
       if (p.get('maxp'))  cfg.maxPos   = parseInt(p.get('maxp'));
       if (p.get('size'))  cfg.posSize  = parseFloat(p.get('size'));
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
-      return new Response(redirectHTML('Ã°ÂÂÂ¾ Konfiguracja zapisana!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('✅ Konfiguracja zapisana!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/delete-keys') {
@@ -309,6 +309,7 @@ async function runBotCycle(env) {
 
     if (fg.val < 15) {
       addLog(state, 'F&G=' + fg.val + ' (ekstremalna panika) — blokada BUY', 'warn');
+      // explicit return — bez tego blokada była tylko kosmetyczna (logowała warning ale nie zatrzymywała pętli)
     } else if (!dailyLossOk) {
       addLog(state, 'Dzienny limit strat przekroczony (-5% od $' + dailyBase.toFixed(0) + ')', 'err');
     } else if ((state.drawdownBlock || 0) > Date.now()) {
@@ -655,13 +656,11 @@ async function checkPositions(cfg, state, env, ql) {
       let reason = null;
 
       // Timeout 7 dni
-      // Uwaga: po partial TP pos.sl jest ustawione na entry (break-even), dlatego liczymy SL przez pos.sl gdy dostępne
-      const slThresholdPct = pos.partialClosed
-        ? (pos.sl - pos.entry) / pos.entry * 100   // break-even po Partial TP
-        : -cfg.sl * 100;                            // domyślny SL z configu
+      // Po partial TP pos.sl = entry*(1+FEE*2) — break-even powyżej entry dla long.
+      // Sprawdzamy bezpośrednio cenę vs pos.sl zamiast liczyć pnlPct threshold (który byłby dodatni i nigdy nie wyzwoliłby SL).
       if (Date.now() - pos.entryTs > TIMEOUT_MS) reason = 'TIMEOUT 7d';
       else if (pnlPct >= cfg.tp * 100)             reason = 'TAKE PROFIT';
-      else if (pnlPct <= slThresholdPct)           reason = 'STOP LOSS';
+      else if (pos.partialClosed ? price <= pos.sl : pnlPct <= -cfg.sl * 100) reason = 'STOP LOSS';
       else if (price <= trail && pnlPct > 1.5)     reason = 'TRAILING STOP';
 
       // Partial TP (50% pozycji przy połowie TP)
@@ -687,7 +686,7 @@ async function checkPositions(cfg, state, env, ql) {
            if (cfg.mode === 'paper') {
              state.paperBalance = (state.paperBalance || 0) + halfSize + halfPnl;
            }
-           addLog(state, 'PARTIAL TP ' + pos.sym + ' +$' + halfPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) â reszta jedzie dalej', 'ok');
+           addLog(state, 'PARTIAL TP ' + pos.sym + ' +$' + halfPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) → reszta jedzie dalej', 'ok');
          }
        }
 
@@ -1475,7 +1474,7 @@ async function mexcMarketBuy(sym, quoteQty, cfg) {
   await sleep(1000);
   const s2 = await mexcSign('symbol=' + msym + '&orderId=' + d.orderId, cfg);
   const det = await (await fetch('https://api.mexc.com/api/v3/order?' + s2.qs, { headers: { 'X-MEXC-APIKEY': s2.apiKey } })).json();
-  const avgPrice = det.price ? +det.price : 0;
+  const avgPrice = det.avgPrice ? +det.avgPrice : (det.price ? +det.price : 0);
   const qty = det.executedQty ? +det.executedQty : (quoteQty / (avgPrice || 1));
   return { price: avgPrice, qty };
 }
@@ -1818,7 +1817,7 @@ async function dashboardHTML(cfg, state, env) {
               // Dopasuj format — Worker używa BTC_USDC, frontend oczekuje sym z trendD
               var sigs = BOT_STATE.lastSigs.map(function(s) {
                 return {
-                  sym:      s.sym.replace('_', '-'),
+                  sym:      s.sym.replace('_USDC', 'USDC'),
                   price:    s.price    || 0,
                   score:    s.score    || 0,
                   finalProb: s.finalProb || 0,
@@ -1890,7 +1889,7 @@ async function dashboardHTML(cfg, state, env) {
 `;
 
   // Wstrzyknij tuż po <script> 'use strict'; bloku (po "let CFG = {")
-  // Używamy funkcji zamiast stringa â unikamy interpretacji $' $` $& przez replace()
+  // Używamy funkcji zamiast stringa — unikamy interpretacji $' $` $& przez replace()
   html = html.replace(
     "let CFG = {",
     function() { return injection + "\nlet CFG = {"; }
@@ -2001,3 +2000,5 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
+
+
