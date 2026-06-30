@@ -1619,14 +1619,17 @@ async function dashboardHTML(cfg, state, env) {
 
     document.addEventListener('DOMContentLoaded', function() {
 
-      // Ustaw Worker URL jeśli nie ma w localStorage
+      // Ustaw Worker URL + migracja starych wartości CFG.mode
       try {
         const stored = localStorage.getItem('swingai_cfg_v3');
         const c = stored ? JSON.parse(stored) : {};
         if (!c.workerUrl || !c.workerUrl.startsWith('https://')) {
           c.workerUrl = WORKER_PROXY;
-          localStorage.setItem('swingai_cfg_v3', JSON.stringify(c));
         }
+        // Migracja: stara wartość 'okx' oznaczała MEXC (błąd w dropdown)
+        if (c.mode === 'okx') { c.mode = 'mexc'; c.exchange = 'mexc'; }
+        // Migracja: wartość 'live' oznaczała Binance — zostaw jak jest
+        localStorage.setItem('swingai_cfg_v3', JSON.stringify(c));
       } catch(e) {}
 
       // Przepisz linki /start-paper, /stop, /run — dodaj ?auth=TOKEN
@@ -1749,17 +1752,38 @@ async function dashboardHTML(cfg, state, env) {
       window._origStopBot  = window.stopBot;
 
       window.startBot = function() {
-        fetch(BOT_BASE + '/start-paper?auth=' + BOT_TOKEN)
+        // Odczytaj tryb z CFG (zapisany w localStorage przez saveSettings)
+        var isLive = typeof CFG !== 'undefined' && CFG.mode === 'mexc' && CFG.mexcApiKey;
+        var startUrl;
+        if (isLive) {
+          var p = new URLSearchParams();
+          p.set('auth', BOT_TOKEN);
+          p.set('key',  CFG.mexcApiKey  || '');
+          p.set('sec',  CFG.mexcSecret  || '');
+          p.set('tp',   ((CFG.tp   || 0.12)*100).toFixed(1));
+          p.set('sl',   ((CFG.sl   || 0.05)*100).toFixed(1));
+          p.set('trail',((CFG.trail|| 0.06)*100).toFixed(1));
+          p.set('score',String(CFG.minScore || 58));
+          p.set('maxp', String(CFG.maxPos   || 4));
+          p.set('size', String(CFG.posSize  || 15));
+          if (CFG.tgToken) { p.set('tg', CFG.tgToken); p.set('tgc', CFG.tgChat||''); }
+          startUrl = BOT_BASE + '/start-live?' + p.toString();
+        } else {
+          startUrl = BOT_BASE + '/start-paper?auth=' + BOT_TOKEN;
+        }
+        fetch(startUrl)
           .then(function() {
             var btnRun  = document.getElementById('btn-run');
             var btnStop = document.getElementById('btn-stop');
             var btnScan = document.getElementById('btn-scan');
             var rbStat  = document.getElementById('rb-status');
             var aiDot   = document.getElementById('ai-dot');
+            var rbMode  = document.getElementById('rb-mode');
             if (btnRun)  btnRun.style.display  = 'none';
             if (btnStop) btnStop.style.display  = '';
             if (btnScan) btnScan.style.display  = '';
             if (rbStat)  { rbStat.textContent = '🟢 Aktywny (24h Worker)'; rbStat.className = 'val up'; }
+            if (rbMode)  { rbMode.textContent = isLive ? 'LIVE' : 'PAPER'; rbMode.className = isLive ? 'val up' : 'val'; }
             if (aiDot)   aiDot.className = 'ai-dot scan';
             var connBadge = document.getElementById('conn-badge');
             if (connBadge) { connBadge.className = 'badge bon'; connBadge.textContent = 'ONLINE'; }
