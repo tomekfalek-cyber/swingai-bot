@@ -252,14 +252,26 @@ async function runBotCycle(env) {
 
   // Drawdown Circuit Breaker
   const currentBalance = cfg.mode === 'mexc'
-    ? (state.liveBalance > 0 ? state.liveBalance : (cfg.paperBalance || 1000))
+    ? (state.liveBalance > 0 ? state.liveBalance : 0)
     : (state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000));
-  if (!state.peakBalance || state.peakBalance < currentBalance) state.peakBalance = currentBalance;
-  const drawdown = (state.peakBalance - currentBalance) / state.peakBalance;
-  const drawdownBlocked = (state.drawdownBlock || 0) > Date.now();
-  if (drawdown > 0.15 && !drawdownBlocked) {
-    state.drawdownBlock = Date.now() + 24 * 3600000;
-    addLog(state, 'Circuit breaker: -15% drawdown — blokada BUY 24h', 'err');
+  // Reset peakBalance gdy przełączono z paper na live — nie porównuj $19 live do $1000 paper
+  if (cfg.mode === 'mexc' && (!state.peakBalanceMode || state.peakBalanceMode !== 'live')) {
+    state.peakBalance = currentBalance > 0 ? currentBalance : 0;
+    state.peakBalanceMode = 'live';
+    state.drawdownBlock = 0; // skasuj blokadę paper przy starcie live
+    addLog(state, 'Circuit breaker reset — nowy peak live: $' + currentBalance.toFixed(2), 'ok');
+  } else if (cfg.mode !== 'mexc' && state.peakBalanceMode === 'live') {
+    state.peakBalanceMode = 'paper';
+    state.peakBalance = currentBalance;
+  }
+  if (currentBalance > 0) {
+    if (!state.peakBalance || state.peakBalance < currentBalance) state.peakBalance = currentBalance;
+    const drawdown = (state.peakBalance - currentBalance) / state.peakBalance;
+    const drawdownBlocked = (state.drawdownBlock || 0) > Date.now();
+    if (drawdown > 0.15 && !drawdownBlocked) {
+      state.drawdownBlock = Date.now() + 24 * 3600000;
+      addLog(state, 'Circuit breaker: -15% drawdown ($' + state.peakBalance.toFixed(2) + ' → $' + currentBalance.toFixed(2) + ') — blokada BUY 24h', 'err');
+    }
   }
 
   // Załaduj modele AI z KV
@@ -960,10 +972,16 @@ function kellySize(cfg, state, total) {
     return Math.max(1, Math.round(safeTotal * 0.90 * 100) / 100);
   }
 
-  const fixedSize = cfg.posSize || 15;
+  // Auto-skalowanie: gdy saldo >= 500$ użyj 3% kapitału (nie stały cfg.posSize)
+  // Pozwala botowi inwestować proporcjonalnie do wzrostu portfela
+  const autoScale = safeTotal >= 500;
+  const fixedSize = autoScale
+    ? Math.min(safeTotal * 0.03, safeTotal * 0.20)  // 3% kapitału, max 20% per pozycja
+    : (cfg.posSize || 15);
+
   const trades    = (state.trades || []).slice(-30);
   if (trades.length < 5) {
-    return Math.min(fixedSize, Math.max(10, safeTotal * (cfg.riskPct || 2) / 100));
+    return Math.min(fixedSize, Math.max(autoScale ? fixedSize : 10, safeTotal * (cfg.riskPct || 2) / 100));
   }
   const wins   = trades.filter(t => t.pnl > 0);
   const losses = trades.filter(t => t.pnl <= 0);
@@ -971,7 +989,7 @@ function kellySize(cfg, state, total) {
   const avgW = wins.length   ? wins.reduce((a,t)=>a+t.pnlPct,0)/wins.length/100   : cfg.tp;
   const avgL = losses.length ? Math.abs(losses.reduce((a,t)=>a+t.pnlPct,0)/losses.length)/100 : cfg.sl;
   const b    = avgW / (avgL > 0 ? avgL : cfg.sl || 0.04);
-  if (!isFinite(b) || b <= 0) return Math.min(fixedSize, Math.max(10, safeTotal * (cfg.riskPct||2)/100));
+  if (!isFinite(b) || b <= 0) return Math.min(fixedSize, Math.max(autoScale ? fixedSize : 10, safeTotal * (cfg.riskPct||2)/100));
   let kelly = (b * p - (1 - p)) / b;
   if (kelly <= 0) return Math.min(fixedSize, Math.max(5, safeTotal * 0.02));
   kelly = Math.min(0.05, kelly * 0.5);
@@ -2055,5 +2073,6 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
+
 
 
