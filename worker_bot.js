@@ -1,4 +1,4 @@
-﻿﻿// SwingAI Bot 24/7 — Cloudflare Worker — FULL VERSION
+// SwingAI Bot 24/7 — Cloudflare Worker — FULL VERSION
 // Pełna logika handlowa identyczna z https://tomekfalek-cyber.github.io/swingai-bot/
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
