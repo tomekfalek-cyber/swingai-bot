@@ -1892,6 +1892,7 @@ async function dashboardHTML(cfg, state, env) {
                 };
               });
               renderSigList(sigs);
+              if (typeof renderMarketTab === 'function') renderMarketTab(sigs);
               if (typeof lastSigs !== 'undefined') lastSigs = sigs;
             }
 
