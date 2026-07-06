@@ -1,4 +1,4 @@
-// SwingAI Bot 24/7 — Cloudflare Worker — MEXC VERSION
+﻿// SwingAI Bot 24/7 — Cloudflare Worker — MEXC VERSION
 // Gielda: MEXC (spot) | Dane: Gate.io (public API)
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
@@ -222,6 +222,22 @@ export default {
       } catch(e) {
         return jsonResp({ ok: false, error: e.message });
       }
+    }
+
+    // /status-public — publiczny endpoint do pollingu UI (bez auth)
+    if (url.pathname === '/status-public') {
+      const state = await getState(env);
+      const cfg   = await getConfig(env);
+      return jsonResp({
+        iter:        state.iter        || 0,
+        lastCycle:   state.lastCycle   || null,
+        posCount:    (state.positions  || []).length,
+        active:      cfg.active        || false,
+        dailyPnl:    state.dailyPnl    || 0,
+        liveBalance: state.liveBalance || null,
+        lastFG:      state.lastFG      || { val:50, label:'Neutral' },
+        log:         (state.log        || []).slice(0, 10)
+      });
     }
 
     const cfg   = await getConfig(env);
@@ -1640,49 +1656,58 @@ async function dashboardHTML(cfg, state, env) {
 
   // Wstrzyknij: Worker URL proxy + dane bota zaraz po "let CFG = {"
   const injection = `
-  // ââ CLOUDFLARE WORKER INJECTION ââââââââââââââââââââââââââââââââââ
+  // -- CLOUDFLARE WORKER INJECTION ----------------------------------
   (function() {
-    const WORKER_PROXY = 'https://swingai-bot-24h.tomek-falek.workers.dev';
-    const BOT_BASE     = 'https://swingai-bot-24h.tomek-falek.workers.dev';
-    const BOT_TOKEN    = 'swingai-secret-2024';
-    const BOT_STATE    = ${botState.replace(/<\/script>/gi, '<\\/script>')};
-    const SAVED_CREDS  = ${savedCreds.replace(/<\/script>/gi, '<\\/script>')};
+    const BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
+    const BOT_TOKEN = 'swingai-secret-2024';
+    const BOT_STATE = ${botState.replace(/<\/script>/gi, '<\\/script>')};
+    const SAVED_CREDS = ${savedCreds.replace(/<\/script>/gi, '<\\/script>')};
+
+    // -- KROK 0: Synchronizacja iter PRZED loadAll() ----------------
+    // loadAll() wczytuje swingai_v3 z localStorage — wpisujemy iter z KV
+    // zanim loadAll() sie wykona, zeby kazde urzadzenie widzialo ten sam numer.
+    if (BOT_STATE.active && BOT_STATE.iter) {
+      try {
+        var _raw = localStorage.getItem('swingai_v3');
+        var _st  = _raw ? JSON.parse(_raw) : {};
+        _st.iter      = BOT_STATE.iter;
+        _st.positions = BOT_STATE.positions   || _st.positions || [];
+        _st.trades    = BOT_STATE.trades      || _st.trades    || [];
+        _st.paperBal  = BOT_STATE.paperBalance != null ? BOT_STATE.paperBalance : (_st.paperBal || 1000);
+        _st.dailyPnl  = BOT_STATE.dailyPnl    != null ? BOT_STATE.dailyPnl     : (_st.dailyPnl || 0);
+        localStorage.setItem('swingai_v3', JSON.stringify(_st));
+      } catch(e) {}
+    }
 
     document.addEventListener('DOMContentLoaded', function() {
 
-      // Ustaw Worker URL + migracja starych wartości CFG.mode
+      // -- Ustaw Worker URL + migracja CFG ---------------------------
       try {
-        const stored = localStorage.getItem('swingai_cfg_v3');
-        const c = stored ? JSON.parse(stored) : {};
-        if (!c.workerUrl || !c.workerUrl.startsWith('https://')) {
-          c.workerUrl = WORKER_PROXY;
-        }
-        // Migracja: stara wartość 'okx' oznaczała MEXC (błąd w dropdown)
+        var stored = localStorage.getItem('swingai_cfg_v3');
+        var c = stored ? JSON.parse(stored) : {};
+        if (!c.workerUrl || !c.workerUrl.startsWith('https://')) c.workerUrl = BOT_BASE;
         if (c.mode === 'okx') { c.mode = 'mexc'; c.exchange = 'mexc'; }
-        // Migracja: wartość 'live' oznaczała Binance — zostaw jak jest
         localStorage.setItem('swingai_cfg_v3', JSON.stringify(c));
       } catch(e) {}
 
-      // Przepisz linki /start-paper, /stop, /run — dodaj ?auth=TOKEN
-      // Użytkownik klika normalnie, token dodawany automatycznie
+      // -- Przepisz linki /start-*/stop/run — dodaj token -----------
       document.querySelectorAll('a[href]').forEach(function(a) {
-        const href = a.getAttribute('href');
+        var href = a.getAttribute('href');
         if (href && (href.startsWith('/start') || href === '/stop' || href === '/run' || href.startsWith('/delete'))) {
-          const sep = href.includes('?') ? '&' : '?';
-          a.href = BOT_BASE + href + sep + 'auth=' + BOT_TOKEN;
+          a.href = BOT_BASE + href + (href.includes('?') ? '&' : '?') + 'auth=' + BOT_TOKEN;
         }
       });
 
-      // Badge statusu bota
+      // -- Badge statusu --------------------------------------------
       try {
-        const botBadge = document.getElementById('bot-status-badge');
+        var botBadge = document.getElementById('bot-status-badge');
         if (botBadge) {
           botBadge.textContent = BOT_STATE.active ? '24h BOT: AKTYWNY' : '24h BOT: OFF';
           botBadge.style.color = BOT_STATE.active ? 'var(--green)' : 'var(--text3)';
         }
       } catch(e) {}
 
-      // Nadpisz updateHeader — żeby conn-badge zawsze pokazywał ONLINE gdy Worker aktywny
+      // -- updateHeader: conn-badge ONLINE gdy Worker aktywny -------
       if (BOT_STATE.active) {
         var _origUpdateHeader = window.updateHeader;
         window.updateHeader = async function() {
@@ -1694,109 +1719,72 @@ async function dashboardHTML(cfg, state, env) {
         };
       }
 
-      // ââ WYPEŁNIJ FORMULARZ DANYMI Z KV (działa na każdym urządzeniu) ââ
+      // -- Wypelnij formularz z KV ----------------------------------
       setTimeout(function() {
         try {
-          // Telegram
           var tgTokenInput = document.getElementById('cfg-tg-token');
           var tgChatInput  = document.getElementById('cfg-tg-chat');
           if (tgTokenInput && SAVED_CREDS.tgTokenSet) {
-            // Nie pokazujemy tokenu (bezpieczeństwo), ale oznaczamy że jest zapisany
-            tgTokenInput.placeholder = '✓ Token zapisany w chmurze (wpisz nowy aby zmienić)';
+            tgTokenInput.placeholder = 'Token zapisany w chmurze (wpisz nowy aby zmienic)';
             tgTokenInput.style.borderColor = 'var(--green)';
           }
-          if (tgChatInput && SAVED_CREDS.tgChat) {
-            tgChatInput.value = SAVED_CREDS.tgChat;
-          }
-          // MEXC
-          var okxKeyInput  = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
-          var okxSecInput  = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
-          if (okxKeyInput && SAVED_CREDS.mexcApiKeySet) {
-            okxKeyInput.placeholder = 'Klucz MEXC API zapisany w chmurze (wpisz nowy aby zmienic)';
-            okxKeyInput.style.borderColor = 'var(--green)';
-          }
-          if (okxSecInput && SAVED_CREDS.mexcSecretSet) {
-            okxSecInput.placeholder = 'MEXC Secret zapisany w chmurze (wpisz nowy aby zmienic)';
-            okxSecInput.style.borderColor = 'var(--green)';
-          }
-          // Zaktualizuj wyświetlany status TG
+          if (tgChatInput && SAVED_CREDS.tgChat) tgChatInput.value = SAVED_CREDS.tgChat;
+          var okxKeyInput = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
+          var okxSecInput = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
+          if (okxKeyInput && SAVED_CREDS.mexcApiKeySet) { okxKeyInput.placeholder = 'Klucz MEXC API zapisany w chmurze (wpisz nowy aby zmienic)'; okxKeyInput.style.borderColor = 'var(--green)'; }
+          if (okxSecInput && SAVED_CREDS.mexcSecretSet) { okxSecInput.placeholder = 'MEXC Secret zapisany w chmurze (wpisz nowy aby zmienic)'; okxSecInput.style.borderColor = 'var(--green)'; }
           var rbTg = document.getElementById('rb-tg');
-          if (rbTg && SAVED_CREDS.tgTokenSet) {
-            rbTg.textContent = 'OK'; rbTg.className = 'val up';
-          }
+          if (rbTg && SAVED_CREDS.tgTokenSet) { rbTg.textContent = 'OK'; rbTg.className = 'val up'; }
         } catch(e) {}
       }, 400);
 
-      // ââ PRZECHWYCENIE saveSettings — SYNC DO WORKERA ââââââââââââââ
+      // -- saveSettings: sync do Workera ----------------------------
       var _origSaveSettings = window.saveSettings;
       window.saveSettings = function() {
-        // Najpierw wywołaj oryginalną funkcję (zapis do localStorage)
         if (_origSaveSettings) _origSaveSettings.apply(this, arguments);
-
-        // Zbierz dane z formularza
         try {
           var params = new URLSearchParams();
           params.set('auth', BOT_TOKEN);
-
           var tgTok = document.getElementById('cfg-tg-token');
           var tgCht = document.getElementById('cfg-tg-chat');
           var okxK  = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
           var okxS  = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
-          
-
           var anyNew = false;
-          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') {
-            params.set('tg', tgTok.value.trim()); anyNew = true;
-          }
-          if (tgCht && tgCht.value.trim()) {
-            params.set('tgc', tgCht.value.trim()); anyNew = true;
-          }
-          if (okxK && okxK.value.trim()) {
-            params.set('key', okxK.value.trim()); anyNew = true;
-          }
-          if (okxS && okxS.value.trim()) {
-            params.set('sec', okxS.value.trim()); anyNew = true;
-          }
-          
-
+          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { params.set('tg', tgTok.value.trim()); anyNew = true; }
+          if (tgCht && tgCht.value.trim()) { params.set('tgc', tgCht.value.trim()); anyNew = true; }
+          if (okxK  && okxK.value.trim())  { params.set('key', okxK.value.trim());  anyNew = true; }
+          if (okxS  && okxS.value.trim())  { params.set('sec', okxS.value.trim());  anyNew = true; }
           if (anyNew) {
             var hasTg = params.has('tg') || (tgCht && tgCht.value.trim());
             fetch(BOT_BASE + '/save-config?' + params.toString())
               .then(function() {
-                var st = document.getElementById('cfg-status');
-                if (st) { st.textContent = 'Zapisano + synchronizacja z chmurą ✓'; st.style.color = 'var(--green)'; }
-                // Jeśli zapisano token TG — wyślij wiadomość powitalną
-                if (hasTg) {
-                  setTimeout(function() {
-                    fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){});
-                  }, 1500);
-                }
+                var stEl = document.getElementById('cfg-status');
+                if (stEl) { stEl.textContent = 'Zapisano + synchronizacja z chmura OK'; stEl.style.color = 'var(--green)'; }
+                if (hasTg) setTimeout(function() { fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){}); }, 1500);
               })
               .catch(function(e) { console.warn('Sync z Workerem nieudana:', e); });
           }
         } catch(e) { console.warn('saveSettings injection error:', e); }
       };
 
-      // Nadpisz startBot/stopBot — klikając START/STOP użytkownik steruje Workerem (24/7)
-      // a nie lokalnym botem przeglądarki który działa tylko gdy karta jest otwarta
+      // -- startBot: deleguj do Workera, NIE startuj lokalnego timera --
       window._origStartBot = window.startBot;
       window._origStopBot  = window.stopBot;
 
       window.startBot = function() {
-        // Odczytaj tryb z CFG (zapisany w localStorage przez saveSettings)
         var isLive = typeof CFG !== 'undefined' && CFG.mode === 'mexc' && CFG.mexcApiKey;
         var startUrl;
         if (isLive) {
           var p = new URLSearchParams();
           p.set('auth', BOT_TOKEN);
-          p.set('key',  CFG.mexcApiKey  || '');
-          p.set('sec',  CFG.mexcSecret  || '');
-          p.set('tp',   ((CFG.tp   || 0.12)*100).toFixed(1));
-          p.set('sl',   ((CFG.sl   || 0.05)*100).toFixed(1));
-          p.set('trail',((CFG.trail|| 0.06)*100).toFixed(1));
-          p.set('score',String(CFG.minScore || 58));
-          p.set('maxp', String(CFG.maxPos   || 4));
-          p.set('size', String(CFG.posSize  || 15));
+          p.set('key',   CFG.mexcApiKey  || '');
+          p.set('sec',   CFG.mexcSecret  || '');
+          p.set('tp',    ((CFG.tp   || 0.12)*100).toFixed(1));
+          p.set('sl',    ((CFG.sl   || 0.05)*100).toFixed(1));
+          p.set('trail', ((CFG.trail|| 0.06)*100).toFixed(1));
+          p.set('score', String(CFG.minScore || 58));
+          p.set('maxp',  String(CFG.maxPos   || 4));
+          p.set('size',  String(CFG.posSize  || 15));
           if (CFG.tgToken) { p.set('tg', CFG.tgToken); p.set('tgc', CFG.tgChat||''); }
           startUrl = BOT_BASE + '/start-live?' + p.toString();
         } else {
@@ -1804,7 +1792,9 @@ async function dashboardHTML(cfg, state, env) {
         }
         fetch(startUrl)
           .then(function() {
-            var btnRun  = document.getElementById('btn-run');
+            // Wazne: NIE ustawiamy running = true — lokalny botCycle nie ma ruszac
+            if (typeof running !== 'undefined') running = false;
+            var btnRun = document.getElementById('btn-run');
             var btnStop = document.getElementById('btn-stop');
             var btnScan = document.getElementById('btn-scan');
             var rbStat  = document.getElementById('rb-status');
@@ -1813,19 +1803,20 @@ async function dashboardHTML(cfg, state, env) {
             if (btnRun)  btnRun.style.display  = 'none';
             if (btnStop) btnStop.style.display  = '';
             if (btnScan) btnScan.style.display  = '';
-            if (rbStat)  { rbStat.textContent = '🟢 Aktywny (24h Worker)'; rbStat.className = 'val up'; }
-            if (rbMode)  { rbMode.textContent = isLive ? 'LIVE' : 'PAPER'; rbMode.className = isLive ? 'val up' : 'val'; }
+            if (rbStat)  { rbStat.textContent = 'Aktywny (24h Worker)'; rbStat.className = 'val up'; }
+            if (rbMode)  { rbMode.textContent = isLive ? 'LIVE (MEXC)' : 'PAPER'; rbMode.className = isLive ? 'val up' : 'val'; }
             if (aiDot)   aiDot.className = 'ai-dot scan';
             var connBadge = document.getElementById('conn-badge');
             if (connBadge) { connBadge.className = 'badge bon'; connBadge.textContent = 'ONLINE'; }
-            if (typeof running !== 'undefined') running = true;
           })
-          .catch(function(e) { alert('Błąd startu Workera: ' + e.message); });
+          .catch(function(e) { alert('Blad startu Workera: ' + e.message); });
       };
 
       window.stopBot = function() {
         fetch(BOT_BASE + '/stop?auth=' + BOT_TOKEN)
           .then(function() {
+            if (typeof running !== 'undefined') running = false;
+            if (typeof botTimer !== 'undefined' && botTimer) { clearTimeout(botTimer); botTimer = null; }
             var btnRun  = document.getElementById('btn-run');
             var btnStop = document.getElementById('btn-stop');
             var btnScan = document.getElementById('btn-scan');
@@ -1834,70 +1825,78 @@ async function dashboardHTML(cfg, state, env) {
             if (btnRun)  btnRun.style.display  = '';
             if (btnStop) btnStop.style.display  = 'none';
             if (btnScan) btnScan.style.display  = 'none';
-            if (rbStat)  { rbStat.textContent = 'â¬ Zatrzymany'; rbStat.className = 'val dn'; }
+            if (rbStat)  { rbStat.textContent = 'Zatrzymany'; rbStat.className = 'val dn'; }
             if (aiDot)   aiDot.className = 'ai-dot';
-            if (typeof running !== 'undefined') running = false;
           })
-          .catch(function(e) { alert('Błąd stopu Workera: ' + e.message); });
+          .catch(function(e) { alert('Blad stopu Workera: ' + e.message); });
       };
 
-      // Jeśli Worker-bot jest aktywny — zasilij UI danymi z Workera
-      if (BOT_STATE.active) {
-        setTimeout(function() {
-          try {
-            // 1. Wstrzyknij dane do localStorage żeby loadAll() je widział
-            var stored = localStorage.getItem('swingai_v3');
-            var st = stored ? JSON.parse(stored) : {};
-            st.positions  = BOT_STATE.positions  || st.positions  || [];
-            st.trades     = BOT_STATE.trades     || st.trades     || [];
-            st.paperBal   = BOT_STATE.paperBalance || st.paperBal  || 1000;
-            st.dailyPnl   = BOT_STATE.dailyPnl   !== undefined ? BOT_STATE.dailyPnl : (st.dailyPnl || 0);
-            st.iter       = BOT_STATE.iter        || st.iter       || 0;
-            localStorage.setItem('swingai_v3', JSON.stringify(st));
+      // -- forceScan: wywolaj Worker /run zamiast lokalnego cyklu ---
+      window.forceScan = function() {
+        fetch(BOT_BASE + '/run?auth=' + BOT_TOKEN)
+          .then(function() {
+            var el = document.getElementById('scan-progress');
+            if (el) el.textContent = 'Skan zlecony Worker... odswiedz za 35s';
+            setTimeout(function() { _workerPoll(); }, 35000);
+          })
+          .catch(function(e) { console.warn('forceScan Worker error:', e); });
+      };
 
-            // 2. Odśwież stan w pamięci (ST to globalny obiekt przeglądarki)
-            if (typeof ST !== 'undefined') {
-              ST.positions = st.positions;
-              ST.trades    = st.trades;
-              ST.paperBal  = st.paperBal;
-              ST.dailyPnl  = st.dailyPnl;
-              ST.iter      = st.iter;
-            }
-            // Zaktualizuj element DOM z numerem iteracji
-            var iterEl = document.getElementById('rb-iter');
-            if (iterEl && st.iter) iterEl.textContent = st.iter;
+      // -- Zasilij UI danymi z Workera ------------------------------
+      function _applyWorkerState(bs) {
+        try {
+          var stored2 = localStorage.getItem('swingai_v3');
+          var st = stored2 ? JSON.parse(stored2) : {};
+          st.iter      = bs.iter         || st.iter      || 0;
+          st.positions = bs.positions    || st.positions || [];
+          st.trades    = bs.trades       || st.trades    || [];
+          st.paperBal  = bs.paperBalance != null ? bs.paperBalance : (st.paperBal  || 1000);
+          st.dailyPnl  = bs.dailyPnl    != null ? bs.dailyPnl     : (st.dailyPnl  || 0);
+          localStorage.setItem('swingai_v3', JSON.stringify(st));
 
-            // 3. Wyświetl pary z ostatniego skanu Workera
-            if (BOT_STATE.lastSigs && BOT_STATE.lastSigs.length > 0 && typeof renderSigList === 'function') {
-              // Dopasuj format — Worker używa BTC_USDC, frontend oczekuje sym z trendD
-              var sigs = BOT_STATE.lastSigs.map(function(s) {
-                return {
-                  sym:      s.sym.replace('_USDC', 'USDC'),
-                  price:    s.price    || 0,
-                  score:    s.score    || 0,
-                  finalProb: s.finalProb || 0,
-                  rsiD:     s.rsiD     || 50,
-                  rsi4h:    s.rsi4h    || 50,
-                  macdHist: s.macdHist || 0,
-                  bbPos:    s.bbPos    || 0.5,
-                  trendD:   s.trend === 'UP' ? 2 : s.trend === 'FLAT' ? 0 : -1,
-                  buy:      s.buy      || false,
-                  why:      s.why      || [],
-                  patterns: s.patterns || [],
-                  aiMethod: s.aiMethod || 'Worker',
-                  volR:     s.volR     || 1,
-                  vol4R:    s.vol4R    || 1,
-                  mom5:     s.mom5     || 0,
-                  mom10:    s.mom10    || 0
-                };
-              });
-              renderSigList(sigs);
-              if (typeof renderMarketTab === 'function') renderMarketTab(sigs);
-              if (typeof lastSigs !== 'undefined') lastSigs = sigs;
-            }
+          if (typeof ST !== 'undefined') {
+            ST.iter      = st.iter;
+            ST.positions = st.positions;
+            ST.trades    = st.trades;
+            ST.paperBal  = st.paperBal;
+            ST.dailyPnl  = st.dailyPnl;
+          }
 
-            // 4. Zaktualizuj UI — status aktywny, ukryj Start
-            running = true;
+          var iterEl = document.getElementById('rb-iter');
+          if (iterEl) iterEl.textContent = st.iter;
+
+          if (bs.lastSigs && bs.lastSigs.length > 0 && typeof renderSigList === 'function') {
+            var sigs = bs.lastSigs.map(function(s) {
+              return {
+                sym:       s.sym.replace('_USDC', 'USDC'),
+                price:     s.price     || 0,
+                score:     s.score     || 0,
+                finalProb: s.finalProb || 0,
+                rsiD:      s.rsiD      || 50,
+                rsi4h:     s.rsi4h     || 50,
+                macdHist:  s.macdHist  || 0,
+                bbPos:     s.bbPos     || 0.5,
+                trendD:    s.trend === 'UP' ? 2 : s.trend === 'FLAT' ? 0 : -1,
+                buy:       s.buy       || false,
+                why:       s.why       || [],
+                patterns:  s.patterns  || [],
+                aiMethod:  s.aiMethod  || 'Worker',
+                volR:      s.volR      || 1,
+                vol4R:     s.vol4R     || 1,
+                mom5:      s.mom5      || 0,
+                mom10:     s.mom10     || 0
+              };
+            });
+            renderSigList(sigs);
+            if (typeof renderMarketTab === 'function') renderMarketTab(sigs);
+            if (typeof lastSigs !== 'undefined') lastSigs = sigs;
+          }
+
+          // Zatrzymaj lokalny bot — nie duplikuj skanow
+          if (typeof running !== 'undefined') running = false;
+          if (typeof botTimer !== 'undefined' && botTimer) { clearTimeout(botTimer); botTimer = null; }
+
+          if (bs.active) {
             var btnRun  = document.getElementById('btn-run');
             var btnStop = document.getElementById('btn-stop');
             var btnScan = document.getElementById('btn-scan');
@@ -1906,60 +1905,103 @@ async function dashboardHTML(cfg, state, env) {
             if (btnRun)  btnRun.style.display  = 'none';
             if (btnStop) btnStop.style.display  = '';
             if (btnScan) btnScan.style.display  = '';
-            if (rbStat)  { rbStat.textContent = '🟢 Aktywny (24h Worker)'; rbStat.className = 'val up'; }
+            if (rbStat)  { rbStat.textContent = 'Aktywny (24h Worker)'; rbStat.className = 'val up'; }
             if (aiDot)   aiDot.className = 'ai-dot scan';
+          }
 
-            // 5. Odśwież wyświetlone pozycje i trades jeśli istnieją funkcje
-            if (typeof renderPositions === 'function') renderPositions();
-            if (typeof renderTrades    === 'function') renderTrades();
+          if (typeof renderPositions === 'function') renderPositions();
+          if (typeof renderTrades    === 'function') renderTrades();
 
-            // 6. Pokaż czas ostatniego skanu Workera
-            if (BOT_STATE.lastCycle) {
-              var d = new Date(BOT_STATE.lastCycle);
-              var pad = function(n){ return n<10?'0'+n:n; };
-              var ts = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
-              var el = document.getElementById('scan-progress');
-              if (el) el.textContent = 'ostatni skan Worker: ' + ts + ' | skan #' + (BOT_STATE.iter || '');
-            }
+          if (bs.lastCycle) {
+            var d = new Date(bs.lastCycle);
+            var pad = function(n){ return n<10?'0'+n:n; };
+            var ts = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+            var el = document.getElementById('scan-progress');
+            if (el) el.textContent = 'ostatni skan Worker: ' + ts + ' | skan #' + (bs.iter || '');
+          }
 
-            // Wyswietl gielde i worker proxy w status panelu
-            var rbExchange = document.getElementById('rb-exchange');
-            if (rbExchange) { rbExchange.textContent = BOT_STATE.exchange || 'MEXC'; rbExchange.className = 'val up'; }
-            var rbProxy = document.getElementById('rb-proxy');
-            if (rbProxy) { rbProxy.textContent = BOT_BASE; rbProxy.className = 'val up'; }
-            // Popraw tryb - upewnij sie ze pokazuje LIVE MEXC gdy mode=mexc
-            var rbMode = document.getElementById('rb-mode');
-            if (rbMode && BOT_STATE.mode) { rbMode.textContent = BOT_STATE.mode === 'mexc' ? 'LIVE (MEXC)' : BOT_STATE.mode.toUpperCase(); rbMode.className = BOT_STATE.mode === 'mexc' ? 'val up' : 'val'; }
-            // Wyswietl saldo live jesli dostepne
-            if (BOT_STATE.liveBalance !== null && BOT_STATE.liveBalance !== undefined) {
-              var rbBal = document.getElementById('rb-balance') || document.getElementById('rb-live-bal');
-              if (rbBal) { rbBal.textContent = '$' + Number(BOT_STATE.liveBalance).toFixed(2) + ' (MEXC)'; rbBal.className = 'val up'; }
-            }
+          var rbExchange = document.getElementById('rb-exchange');
+          if (rbExchange) { rbExchange.textContent = bs.exchange || 'MEXC'; rbExchange.className = 'val up'; }
+          var rbProxy = document.getElementById('rb-proxy');
+          if (rbProxy)    { rbProxy.textContent = BOT_BASE; rbProxy.className = 'val up'; }
+          var rbMode = document.getElementById('rb-mode');
+          if (rbMode && bs.mode) { rbMode.textContent = bs.mode === 'mexc' ? 'LIVE (MEXC)' : bs.mode.toUpperCase(); rbMode.className = bs.mode === 'mexc' ? 'val up' : 'val'; }
+          if (bs.liveBalance != null) {
+            var rbBal = document.getElementById('rb-live-bal') || document.getElementById('rb-balance');
+            if (rbBal) { rbBal.textContent = '$' + Number(bs.liveBalance).toFixed(2) + ' (MEXC)'; rbBal.className = 'val up'; }
+          }
 
-            // 7. Pokaż logi z Workera w log-area
+          var logArea = document.getElementById('log-area');
+          if (logArea && bs.log && bs.log.length > 0) {
+            logArea.innerHTML = '';
+            bs.log.slice(0, 30).forEach(function(entry) {
+              var div = document.createElement('div');
+              var tp = entry.type || 'info';
+              div.className = 'log-line ' + (tp==='ok'?'lok':tp==='err'?'lerr':tp==='warn'?'lwarn':'linfo');
+              var ts2 = entry.ts ? new Date(entry.ts).toLocaleTimeString('pl-PL') : '';
+              div.textContent = '[' + ts2 + '] ' + (entry.msg || '');
+              logArea.appendChild(div);
+            });
+            var lc = document.getElementById('log-count');
+            if (lc) lc.textContent = bs.log.length + ' wpisow (Worker)';
+          }
+        } catch(e) { console.warn('Worker applyState error:', e); }
+      }
+
+      // -- Auto-poll /status-public co 60s -------------------------
+      // Pobiera aktualny iter z KV — jednakowy numer na wszystkich urzadzeniach
+      function _workerPoll() {
+        fetch(BOT_BASE + '/status-public')
+          .then(function(r){ return r.json(); })
+          .then(function(data) {
+            if (!data || typeof data.iter !== 'number') return;
+            var iterEl = document.getElementById('rb-iter');
+            if (iterEl) iterEl.textContent = data.iter;
             try {
-              var logArea = document.getElementById('log-area');
-              if (logArea && BOT_STATE.log && BOT_STATE.log.length > 0) {
-                logArea.innerHTML = '';
-                BOT_STATE.log.slice(0, 30).forEach(function(entry) {
+              var raw2 = localStorage.getItem('swingai_v3');
+              var st2  = raw2 ? JSON.parse(raw2) : {};
+              if (data.iter > (st2.iter || 0)) {
+                st2.iter = data.iter;
+                if (data.dailyPnl != null) st2.dailyPnl = data.dailyPnl;
+                localStorage.setItem('swingai_v3', JSON.stringify(st2));
+              }
+              if (typeof ST !== 'undefined' && data.iter > (ST.iter || 0)) ST.iter = data.iter;
+            } catch(e2) {}
+            if (data.lastCycle) {
+              var d2  = new Date(data.lastCycle);
+              var p2  = function(n){ return n<10?'0'+n:n; };
+              var ts2 = p2(d2.getHours())+':'+p2(d2.getMinutes())+':'+p2(d2.getSeconds());
+              var el2 = document.getElementById('scan-progress');
+              if (el2) el2.textContent = 'ostatni skan Worker: ' + ts2 + ' | skan #' + data.iter;
+            }
+            if (data.log && data.log.length > 0) {
+              var logArea3 = document.getElementById('log-area');
+              if (logArea3) {
+                logArea3.innerHTML = '';
+                data.log.forEach(function(entry) {
                   var div = document.createElement('div');
                   var tp = entry.type || 'info';
                   div.className = 'log-line ' + (tp==='ok'?'lok':tp==='err'?'lerr':tp==='warn'?'lwarn':'linfo');
-                  var ts = entry.ts ? new Date(entry.ts).toLocaleTimeString('pl-PL') : '';
-                  div.textContent = '[' + ts + '] ' + (entry.msg || '');
-                  logArea.appendChild(div);
+                  var ts3 = entry.ts ? new Date(entry.ts).toLocaleTimeString('pl-PL') : '';
+                  div.textContent = '[' + ts3 + '] ' + (entry.msg || '');
+                  logArea3.appendChild(div);
                 });
-                var lc = document.getElementById('log-count');
-                if (lc) lc.textContent = BOT_STATE.log.length + ' wpisow (Worker)';
               }
-            } catch(e2) {}
-
-          } catch(e) { console.warn('Worker injection error:', e); }
-        }, 600);
+            }
+          })
+          .catch(function(){});
       }
+
+      if (BOT_STATE.active) {
+        setTimeout(function() { _applyWorkerState(BOT_STATE); }, 600);
+        // Synchronizuj iter co 60s — niezaleznie od urzadzenia i przegladarki
+        setInterval(_workerPoll, 60000);
+      }
+
     });
   })();
-  // ââ END INJECTION ââââââââââââââââââââââââââââââââââââââââââââââââ
+  // -- END INJECTION -----------------------------------------------
+`;
 `;
 
   // Wstrzyknij tuż po <script> 'use strict'; bloku (po "let CFG = {")
@@ -2074,6 +2116,7 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
+
 
 
 
