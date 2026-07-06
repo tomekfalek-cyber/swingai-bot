@@ -2002,10 +2002,8 @@ async function dashboardHTML(cfg, state, env) {
   })();
   // -- END INJECTION -----------------------------------------------
 `;
-`;
 
-  // Wstrzyknij tuż po <script> 'use strict'; bloku (po "let CFG = {")
-  // Używamy funkcji zamiast stringa — unikamy interpretacji $' $` $& przez replace()
+  // Wstrzyknij tuz po "let CFG = {" — uzywamy funkcji zamiast stringa aby replace() nie interpretowal znakow specjalnych
   html = html.replace(
     "let CFG = {",
     function() { return injection + "\nlet CFG = {"; }
