@@ -1930,6 +1930,10 @@ async function dashboardHTML(cfg, state, env) {
             var rbBal = document.getElementById('rb-live-bal') || document.getElementById('rb-balance');
             if (rbBal) { rbBal.textContent = '$' + Number(bs.liveBalance).toFixed(2) + ' (MEXC)'; rbBal.className = 'val up'; }
           }
+          if (bs.lastFG) {
+            var rbFg = document.getElementById('rb-fg');
+            if (rbFg) { rbFg.textContent = bs.lastFG.val + ' — ' + bs.lastFG.label; rbFg.className = 'val ' + (bs.lastFG.val < 25 ? 'dn' : bs.lastFG.val < 40 ? 'gold' : 'up'); }
+          }
 
           var logArea = document.getElementById('log-area');
           if (logArea && bs.log && bs.log.length > 0) {
@@ -1974,6 +1978,10 @@ async function dashboardHTML(cfg, state, env) {
               var el2 = document.getElementById('scan-progress');
               if (el2) el2.textContent = 'ostatni skan Worker: ' + ts2 + ' | skan #' + data.iter;
             }
+            if (data.lastFG) {
+              var rbFg2 = document.getElementById('rb-fg');
+              if (rbFg2) { rbFg2.textContent = data.lastFG.val + ' — ' + data.lastFG.label; rbFg2.className = 'val ' + (data.lastFG.val < 25 ? 'dn' : data.lastFG.val < 40 ? 'gold' : 'up'); }
+            }
             if (data.log && data.log.length > 0) {
               var logArea3 = document.getElementById('log-area');
               if (logArea3) {
@@ -1992,11 +2000,9 @@ async function dashboardHTML(cfg, state, env) {
           .catch(function(){});
       }
 
-      if (BOT_STATE.active) {
-        setTimeout(function() { _applyWorkerState(BOT_STATE); }, 600);
-        // Synchronizuj iter co 60s — niezaleznie od urzadzenia i przegladarki
-        setInterval(_workerPoll, 60000);
-      }
+      // Uruchom polling zawsze — niezaleznie od BOT_STATE.active (dziala tez po restarcie w nowej przegladarce)
+      setTimeout(function() { _applyWorkerState(BOT_STATE); }, 600);
+      setInterval(_workerPoll, 60000);
 
     });
   })();
