@@ -839,7 +839,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     }
   }
 
-  const _pairName = adjSig.sym.replace('USDT', '').replace('USDC', '');
+  const _pairName = adjSig.sym.replace('XBT','BTC').replace('USDT','').replace('USDC','');
   const _modeLabel = cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER (symulacja)';
   await tgSend(cfg,
     '🟢 <b>SYGNAŁ KUPNA — ' + _pairName + '</b>\n\n' +
@@ -914,7 +914,7 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
   state.stats = calcStats(state.trades);
 
   const _closeIcon = pnl >= 0 ? '🟢' : '🔴';
-  const _closeSym = pos.sym.replace('USDT','').replace('USDC','');
+  const _closeSym = pos.sym.replace('XBT','BTC').replace('USDT','').replace('USDC','');
   const _reasonPL = reason === 'TAKE PROFIT' ? 'REALIZACJA ZYSKU' :
     reason === 'STOP LOSS' ? 'STOP LOSS AKTYWOWANY' :
     reason === 'TRAILING STOP' ? 'STOP KROCZĄCY' :
@@ -1517,9 +1517,10 @@ async function mexcSign(params, cfg) {
 function mexcSymbol(sym) { return sym.replace('_','').replace('XBT','BTC').replace('USDT','USDC'); }
 
 // MEXC wymaga różnej precyzji ilości dla każdej pary
+// sym może być XBTUSDT (Kraken) lub BTCUSDC (MEXC) — obsługujemy oba
 function mexcQtyPrecision(sym) {
   if (sym.includes('DOGE') || sym.includes('SHIB') || sym.includes('XRP') || sym.includes('ADA')) return 0;
-  if (sym.includes('BTC'))  return 5;
+  if (sym.includes('BTC') || sym.includes('XBT')) return 5;
   if (sym.includes('ETH'))  return 4;
   if (sym.includes('SOL') || sym.includes('AVAX') || sym.includes('LINK')) return 3;
   return 4;
