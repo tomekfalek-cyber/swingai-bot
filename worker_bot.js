@@ -6,30 +6,34 @@
 // KONFIGURACJA
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Bybit v5 public API jako zrodlo danych — brak auth, CF Workers nie blokowane
-// Format Bybit spot USDC: BTCUSDC
-const PAIRS = ['BTCUSDC','ETHUSDC','SOLUSDC','XRPUSDC','DOGEUSDC','ADAUSDC','AVAXUSDC','LINKUSDC'];
+// Bybit spot ma tylko pary USDT — USDC pary nie istnieja w spot category (HTTP 403)
+// Dane: BTCUSDT (Bybit) | Handel: BTCUSDC (MEXC) — mapowanie w mexcPair()
+const PAIRS = ['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT'];
 const FEE   = 0.002;
 const TIMEOUT_MS = 7 * 24 * 3600000; // 7 dni
 
 const CORR_GROUPS = [
-  ['BTCUSDC'],
-  ['ETHUSDC'],
-  ['SOLUSDC','AVAXUSDC'],
-  ['XRPUSDC','ADAUSDC'],
-  ['DOGEUSDC'],
-  ['LINKUSDC']
+  ['BTCUSDT'],
+  ['ETHUSDT'],
+  ['SOLUSDT','AVAXUSDT'],
+  ['XRPUSDT','ADAUSDT'],
+  ['DOGEUSDT'],
+  ['LINKUSDT']
 ];
 
 const PAIR_PARAMS_DEFAULT = {
-  'BTCUSDC':  { tp:0.10, sl:0.04, minScore:62 },
-  'ETHUSDC':  { tp:0.12, sl:0.05, minScore:60 },
-  'SOLUSDC':  { tp:0.14, sl:0.06, minScore:58 },
-  'XRPUSDC':  { tp:0.15, sl:0.06, minScore:58 },
-  'DOGEUSDC': { tp:0.18, sl:0.07, minScore:60 },
-  'ADAUSDC':  { tp:0.14, sl:0.06, minScore:58 },
-  'AVAXUSDC': { tp:0.14, sl:0.06, minScore:58 },
-  'LINKUSDC': { tp:0.14, sl:0.06, minScore:58 }
+  'BTCUSDT':  { tp:0.10, sl:0.04, minScore:62 },
+  'ETHUSDT':  { tp:0.12, sl:0.05, minScore:60 },
+  'SOLUSDT':  { tp:0.14, sl:0.06, minScore:58 },
+  'XRPUSDT':  { tp:0.15, sl:0.06, minScore:58 },
+  'DOGEUSDT': { tp:0.18, sl:0.07, minScore:60 },
+  'ADAUSDT':  { tp:0.14, sl:0.06, minScore:58 },
+  'AVAXUSDT': { tp:0.14, sl:0.06, minScore:58 },
+  'LINKUSDT': { tp:0.14, sl:0.06, minScore:58 }
 };
+
+// Mapowanie symbolu danych (USDT Bybit) na symbol handlowy MEXC (USDC)
+function mexcPair(sym) { return sym.replace('USDT', 'USDC'); }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // GŁÓWNY HANDLER
@@ -749,7 +753,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' — pomijam', 'warn'); return; }
 
   // BTC Guard
-  if (btcDrop && sig.sym !== 'BTCUSDC') {
+  if (btcDrop && sig.sym !== 'BTCUSDT') {
     addLog(state, 'BTC Guard: pomijam ' + sig.sym, 'warn'); return;
   }
 
@@ -1501,7 +1505,8 @@ async function mexcSign(params, cfg) {
   return { qs: qs + '&signature=' + sigHex, apiKey: cfg.mexcApiKey };
 }
 
-function mexcSymbol(sym) { return sym.replace('_',''); }
+// mexcSymbol: konwertuje symbol danych (BTCUSDT Bybit) na symbol MEXC (BTCUSDC)
+function mexcSymbol(sym) { return sym.replace('_','').replace('USDT','USDC'); }
 
 // MEXC wymaga różnej precyzji ilości dla każdej pary
 function mexcQtyPrecision(sym) {
