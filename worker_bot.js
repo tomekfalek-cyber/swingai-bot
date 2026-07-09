@@ -5,30 +5,30 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // KONFIGURACJA
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Binance public API jako zrodlo danych — brak auth, CF Workers nie blokowane
-// Format Binance: BTCUSDT — ceny identyczne z MEXC USDT (<0.1% roznicy)
-const PAIRS = ['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT'];
+// Bybit v5 public API jako zrodlo danych — brak auth, CF Workers nie blokowane
+// Format Bybit spot USDC: BTCUSDC
+const PAIRS = ['BTCUSDC','ETHUSDC','SOLUSDC','XRPUSDC','DOGEUSDC','ADAUSDC','AVAXUSDC','LINKUSDC'];
 const FEE   = 0.002;
 const TIMEOUT_MS = 7 * 24 * 3600000; // 7 dni
 
 const CORR_GROUPS = [
-  ['BTCUSDT'],
-  ['ETHUSDT'],
-  ['SOLUSDT','AVAXUSDT'],
-  ['XRPUSDT','ADAUSDT'],
-  ['DOGEUSDT'],
-  ['LINKUSDT']
+  ['BTCUSDC'],
+  ['ETHUSDC'],
+  ['SOLUSDC','AVAXUSDC'],
+  ['XRPUSDC','ADAUSDC'],
+  ['DOGEUSDC'],
+  ['LINKUSDC']
 ];
 
 const PAIR_PARAMS_DEFAULT = {
-  'BTCUSDT':  { tp:0.10, sl:0.04, minScore:62 },
-  'ETHUSDT':  { tp:0.12, sl:0.05, minScore:60 },
-  'SOLUSDT':  { tp:0.14, sl:0.06, minScore:58 },
-  'XRPUSDT':  { tp:0.15, sl:0.06, minScore:58 },
-  'DOGEUSDT': { tp:0.18, sl:0.07, minScore:60 },
-  'ADAUSDT':  { tp:0.14, sl:0.06, minScore:58 },
-  'AVAXUSDT': { tp:0.14, sl:0.06, minScore:58 },
-  'LINKUSDT': { tp:0.14, sl:0.06, minScore:58 }
+  'BTCUSDC':  { tp:0.10, sl:0.04, minScore:62 },
+  'ETHUSDC':  { tp:0.12, sl:0.05, minScore:60 },
+  'SOLUSDC':  { tp:0.14, sl:0.06, minScore:58 },
+  'XRPUSDC':  { tp:0.15, sl:0.06, minScore:58 },
+  'DOGEUSDC': { tp:0.18, sl:0.07, minScore:60 },
+  'ADAUSDC':  { tp:0.14, sl:0.06, minScore:58 },
+  'AVAXUSDC': { tp:0.14, sl:0.06, minScore:58 },
+  'LINKUSDC': { tp:0.14, sl:0.06, minScore:58 }
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -749,7 +749,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' — pomijam', 'warn'); return; }
 
   // BTC Guard
-  if (btcDrop && sig.sym !== 'BTCUSDT') {
+  if (btcDrop && sig.sym !== 'BTCUSDC') {
     addLog(state, 'BTC Guard: pomijam ' + sig.sym, 'warn'); return;
   }
 
@@ -953,10 +953,11 @@ function isDeadHour() {
 
 async function btcDropGuard() {
   try {
-    const r = await fetchWithTimeout('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
+    const r = await fetchWithTimeout('https://api.bybit.com/v5/market/tickers?category=spot&symbol=BTCUSDC');
     const d = await r.json();
-    if (!d.priceChangePercent) return false;
-    return parseFloat(d.priceChangePercent) < -5;
+    const item = d.result && d.result.list && d.result.list[0];
+    if (!item) return false;
+    return parseFloat(item.price24hPcnt || '0') * 100 < -5;
   } catch(e) { return false; }
 }
 
@@ -1425,36 +1426,39 @@ function fetchWithTimeout(url, ms, headers) {
 }
 
 async function getKlines(sym, interval, limit) {
-  // Binance public API — brak auth, CF Workers nie blokowane
-  const ivMap = { 'D':'1d', '240':'4h', '60':'1h', '30':'30m', '15':'15m' };
-  const iv = ivMap[interval] || '1d';
+  // Bybit v5 public API — brak auth, CF Workers nie blokowane, wspiera USDC spot
+  const ivMap = { 'D':'D', '240':'240', '60':'60', '30':'30', '15':'15' };
+  const iv = ivMap[interval] || 'D';
   const r = await fetchWithTimeout(
-    `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${iv}&limit=${limit}`
+    `https://api.bybit.com/v5/market/kline?category=spot&symbol=${sym}&interval=${iv}&limit=${limit}`
   );
   if (!r.ok) throw new Error('getKlines HTTP ' + r.status + ' ' + sym);
   const d = await r.json();
-  if (!Array.isArray(d) || d.length === 0)
+  if (d.retCode !== 0) throw new Error('getKlines Bybit err ' + d.retMsg + ' ' + sym);
+  const list = d.result && d.result.list;
+  if (!Array.isArray(list) || list.length === 0)
     throw new Error('getKlines: brak danych ' + sym);
-  // Binance: [openTime, open, high, low, close, volume, ...]
-  return d.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5]]);
+  // Bybit: [startTime, open, high, low, close, volume, turnover] — najnowsza pierwsza, odwracamy
+  return list.slice().reverse().map(k => [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5]]);
 }
 
 async function getLastPrice(sym) {
-  const r = await fetchWithTimeout(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`);
+  const r = await fetchWithTimeout(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${sym}`);
   if (!r.ok) throw new Error('getPrice HTTP ' + r.status);
   const d = await r.json();
-  if (!d.price) throw new Error('getPrice: brak danych ' + sym);
-  return +d.price;
+  const item = d.result && d.result.list && d.result.list[0];
+  if (!item || !item.lastPrice) throw new Error('getPrice: brak danych ' + sym);
+  return +item.lastPrice;
 }
 
 async function getOrderbook(sym) {
   try {
-    const r = await fetchWithTimeout(`https://api.binance.com/api/v3/depth?symbol=${sym}&limit=10`);
+    const r = await fetchWithTimeout(`https://api.bybit.com/v5/market/orderbook?category=spot&symbol=${sym}&limit=10`);
     if (!r.ok) return { ratio: 0.5 };
     const d = await r.json();
-    if (!d.bids || !d.asks) return { ratio: 0.5 };
-    const bids = d.bids.reduce((s, x) => s + +x[1], 0);
-    const asks = d.asks.reduce((s, x) => s + +x[1], 0);
+    if (!d.result || !d.result.b || !d.result.a) return { ratio: 0.5 };
+    const bids = d.result.b.reduce((s, x) => s + +x[1], 0);
+    const asks = d.result.a.reduce((s, x) => s + +x[1], 0);
     const total = bids + asks;
     return { ratio: total > 0 ? bids / total : 0.5, bids, asks };
   } catch(e) { return { ratio: 0.5 }; }
