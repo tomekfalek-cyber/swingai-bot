@@ -1726,6 +1726,7 @@ async function dashboardHTML(cfg, state, env) {
         var c = stored ? JSON.parse(stored) : {};
         if (!c.workerUrl || !c.workerUrl.startsWith('https://')) c.workerUrl = BOT_BASE;
         if (c.mode === 'okx') { c.mode = 'mexc'; c.exchange = 'mexc'; }
+        if (c.exchange === 'binance' || c.exchange === 'okx' || !c.exchange) c.exchange = 'mexc';
         localStorage.setItem('swingai_cfg_v3', JSON.stringify(c));
       } catch(e) {}
 
