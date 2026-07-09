@@ -2326,7 +2326,6 @@ async function botCycle() {
   }, cycleMaxMs);
   try {
   ST.iter++;
-  gi('rb-iter').textContent = ST.iter;
   setStatus('Skan #'+ST.iter+'...');
   log('--- Skan #'+ST.iter+' ---');
   gi('scan-spin').style.display = '';
@@ -2413,13 +2412,10 @@ async function botCycle() {
   }
 }
 
-countdownTimer = setInterval(function() {
-  if (!running || !nextScanAt) return;
-  const l = Math.max(0, Math.round((nextScanAt-Date.now())/1000));
-  const txt = Math.floor(l/60)+'m '+l%60+'s';
-  gi('rb-next').textContent   = txt;
-  gi('cycle-info').textContent = 'skan za '+txt;
-}, 1000);
+// Uwaga: licznik "nastepny skan" (rb-next/cycle-info) jest teraz aktualizowany
+// wylacznie na podstawie stanu Workera (patrz _updateWorkerNextScan wstrzykiwane
+// przez worker_bot.js) - ta sama wartosc na kazdym urzadzeniu, niezaleznie od
+// tego czy lokalna petla w tej przegladarce dziala.
 setInterval(function() { var t = new Date().toLocaleTimeString('pl-PL'); gi('st-time').textContent = t; var hdr = gi('st-time-hdr'); if(hdr) hdr.textContent = t; }, 1000);
 
 // ── BOT CONTROL ────────────────────────────────────────────────────
@@ -2481,7 +2477,6 @@ function stopBot() {
   gi('btn-scan').style.display = 'none';
   gi('ai-dot').className = 'ai-dot off';
   gi('rb-status').textContent = 'Zatrzymany'; gi('rb-status').className = 'val neu';
-  gi('rb-next').textContent = '--';
   WS.disconnect();
   log('Bot zatrzymany','warn'); setStatus('Bot zatrzymany');
   toast('Bot zatrzymany', 'Pozycje otwarte są nadal aktywne', 'warn', 4000);
