@@ -51,7 +51,7 @@ export default {
     const authHeader  = request.headers.get('Authorization') || '';
     const authParam   = url.searchParams.get('auth') || '';
     const isAuth = authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET;
-    const publicPaths = ['/', '/status-public'];
+    const publicPaths = ['/', '/status-public', '/market'];
     if (!isAuth && !publicPaths.includes(url.pathname)) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders() });
     }
