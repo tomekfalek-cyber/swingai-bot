@@ -1728,6 +1728,11 @@ async function dashboardHTML(cfg, state, env) {
         if (c.mode === 'okx') { c.mode = 'mexc'; c.exchange = 'mexc'; }
         if (c.exchange === 'binance' || c.exchange === 'okx' || !c.exchange) c.exchange = 'mexc';
         localStorage.setItem('swingai_cfg_v3', JSON.stringify(c));
+        // Zaktualizuj żywy obiekt CFG (loadAll() już się wykonał)
+        if (typeof CFG !== 'undefined') {
+          CFG.workerUrl = c.workerUrl;
+          if (CFG.exchange === 'binance' || CFG.exchange === 'okx' || !CFG.exchange) CFG.exchange = 'mexc';
+        }
       } catch(e) {}
 
       // -- Przepisz linki /start-*/stop/run — dodaj token -----------
