@@ -2762,7 +2762,7 @@ function saveSettings() {
   CFG.secret     = gi('cfg-secret').value.trim();
   CFG.workerUrl  = gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode       = gi('cfg-mode').value;
-  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : CFG.mode==='live' ? 'binance' : 'mexc';
+  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : 'mexc';
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
