@@ -1,34 +1,34 @@
 ﻿// SwingAI Bot 24/7 — Cloudflare Worker — MEXC VERSION
-// Gielda: MEXC (spot) | Dane: Gate.io (public API)
+// Gielda: MEXC (spot) | Dane: Binance public API (Gate.io zaczal blokowac CF Workers HTTP403)
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // KONFIGURACJA
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Gate.io jako źródło danych (OKX blokuje Cloudflare Workers na pub. endpointach)
-// Format Gate.io: BTC_USDC — ceny identyczne z OKX USDC (<0.1% różnicy)
-const PAIRS = ['BTC_USDC','ETH_USDC','SOL_USDC','XRP_USDC','DOGE_USDC','ADA_USDC','AVAX_USDC','LINK_USDC'];
+// Binance public API jako zrodlo danych — brak auth, CF Workers nie blokowane
+// Format Binance: BTCUSDT — ceny identyczne z MEXC USDT (<0.1% roznicy)
+const PAIRS = ['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT'];
 const FEE   = 0.002;
 const TIMEOUT_MS = 7 * 24 * 3600000; // 7 dni
 
 const CORR_GROUPS = [
-  ['BTC_USDC'],
-  ['ETH_USDC'],
-  ['SOL_USDC','AVAX_USDC'],
-  ['XRP_USDC','ADA_USDC'],
-  ['DOGE_USDC'],
-  ['LINK_USDC']
+  ['BTCUSDT'],
+  ['ETHUSDT'],
+  ['SOLUSDT','AVAXUSDT'],
+  ['XRPUSDT','ADAUSDT'],
+  ['DOGEUSDT'],
+  ['LINKUSDT']
 ];
 
 const PAIR_PARAMS_DEFAULT = {
-  'BTC_USDC':  { tp:0.10, sl:0.04, minScore:62 },
-  'ETH_USDC':  { tp:0.12, sl:0.05, minScore:60 },
-  'SOL_USDC':  { tp:0.14, sl:0.06, minScore:58 },
-  'XRP_USDC':  { tp:0.15, sl:0.06, minScore:58 },
-  'DOGE_USDC': { tp:0.18, sl:0.07, minScore:60 },
-  'ADA_USDC':  { tp:0.14, sl:0.06, minScore:58 },
-  'AVAX_USDC': { tp:0.14, sl:0.06, minScore:58 },
-  'LINK_USDC': { tp:0.14, sl:0.06, minScore:58 }
+  'BTCUSDT':  { tp:0.10, sl:0.04, minScore:62 },
+  'ETHUSDT':  { tp:0.12, sl:0.05, minScore:60 },
+  'SOLUSDT':  { tp:0.14, sl:0.06, minScore:58 },
+  'XRPUSDT':  { tp:0.15, sl:0.06, minScore:58 },
+  'DOGEUSDT': { tp:0.18, sl:0.07, minScore:60 },
+  'ADAUSDT':  { tp:0.14, sl:0.06, minScore:58 },
+  'AVAXUSDT': { tp:0.14, sl:0.06, minScore:58 },
+  'LINKUSDT': { tp:0.14, sl:0.06, minScore:58 }
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -749,7 +749,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' — pomijam', 'warn'); return; }
 
   // BTC Guard
-  if (btcDrop && sig.sym !== 'BTC_USDC') {
+  if (btcDrop && sig.sym !== 'BTCUSDT') {
     addLog(state, 'BTC Guard: pomijam ' + sig.sym, 'warn'); return;
   }
 
@@ -837,7 +837,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     }
   }
 
-  const _pairName = adjSig.sym.replace('_USDC', '').replace('_USDT', '');
+  const _pairName = adjSig.sym.replace('USDT', '').replace('USDC', '');
   const _modeLabel = cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER (symulacja)';
   await tgSend(cfg,
     '🟢 <b>SYGNAŁ KUPNA — ' + _pairName + '</b>\n\n' +
@@ -912,7 +912,7 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
   state.stats = calcStats(state.trades);
 
   const _closeIcon = pnl >= 0 ? '🟢' : '🔴';
-  const _closeSym = pos.sym.replace('_USDC','').replace('_USDT','');
+  const _closeSym = pos.sym.replace('USDT','').replace('USDC','');
   const _reasonPL = reason === 'TAKE PROFIT' ? 'REALIZACJA ZYSKU' :
     reason === 'STOP LOSS' ? 'STOP LOSS AKTYWOWANY' :
     reason === 'TRAILING STOP' ? 'STOP KROCZĄCY' :
@@ -953,10 +953,10 @@ function isDeadHour() {
 
 async function btcDropGuard() {
   try {
-    const r = await fetchWithTimeout('https://api.gateio.ws/api/v4/spot/tickers?currency_pair=BTC_USDC');
+    const r = await fetchWithTimeout('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
     const d = await r.json();
-    if (!Array.isArray(d) || !d[0]) return false;
-    return parseFloat(d[0].change_percentage || '0') < -5;
+    if (!d.priceChangePercent) return false;
+    return parseFloat(d.priceChangePercent) < -5;
   } catch(e) { return false; }
 }
 
@@ -1425,31 +1425,31 @@ function fetchWithTimeout(url, ms, headers) {
 }
 
 async function getKlines(sym, interval, limit) {
-  // Gate.io: mapowanie interwałów
+  // Binance public API — brak auth, CF Workers nie blokowane
   const ivMap = { 'D':'1d', '240':'4h', '60':'1h', '30':'30m', '15':'15m' };
   const iv = ivMap[interval] || '1d';
   const r = await fetchWithTimeout(
-    `https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${sym}&interval=${iv}&limit=${limit}`
+    `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${iv}&limit=${limit}`
   );
   if (!r.ok) throw new Error('getKlines HTTP ' + r.status + ' ' + sym);
   const d = await r.json();
   if (!Array.isArray(d) || d.length === 0)
     throw new Error('getKlines: brak danych ' + sym);
-  // Gate.io: [timestamp, volume, close, high, low, open, ...]
-  return d.map(k => [+k[0]*1000, +k[5], +k[3], +k[4], +k[2], +k[1]]);
+  // Binance: [openTime, open, high, low, close, volume, ...]
+  return d.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5]]);
 }
 
 async function getLastPrice(sym) {
-  const r = await fetchWithTimeout(`https://api.gateio.ws/api/v4/spot/tickers?currency_pair=${sym}`);
+  const r = await fetchWithTimeout(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`);
   if (!r.ok) throw new Error('getPrice HTTP ' + r.status);
   const d = await r.json();
-  if (!Array.isArray(d) || !d[0]) throw new Error('getPrice: brak danych ' + sym);
-  return +d[0].last;
+  if (!d.price) throw new Error('getPrice: brak danych ' + sym);
+  return +d.price;
 }
 
 async function getOrderbook(sym) {
   try {
-    const r = await fetchWithTimeout(`https://api.gateio.ws/api/v4/spot/order_book?currency_pair=${sym}&limit=10`);
+    const r = await fetchWithTimeout(`https://api.binance.com/api/v3/depth?symbol=${sym}&limit=10`);
     if (!r.ok) return { ratio: 0.5 };
     const d = await r.json();
     if (!d.bids || !d.asks) return { ratio: 0.5 };
@@ -1868,7 +1868,7 @@ async function dashboardHTML(cfg, state, env) {
           if (bs.lastSigs && bs.lastSigs.length > 0 && typeof renderSigList === 'function') {
             var sigs = bs.lastSigs.map(function(s) {
               return {
-                sym:       s.sym.replace('_USDC', 'USDC'),
+                sym:       s.sym.replace('USDT', '').replace('USDC', ''),
                 price:     s.price     || 0,
                 score:     s.score     || 0,
                 finalProb: s.finalProb || 0,
@@ -2120,6 +2120,7 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
+
 
 
 
