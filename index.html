@@ -4140,7 +4140,7 @@ var CHART = {
     try {
       gi('chart-status').textContent = 'Pobieranie '+this.tf+'...';
       var limit = this.tf==='1d'?90 : this.tf==='4h'?120 : 100;
-      var raw = await getKlines(this.sym, this.tf, limit);
+      var raw = await krakenGetKlines(this.sym, this.tf, limit);
       this.klines = raw.map(function(k){
         return { t:+k[0], o:+k[1], h:+k[2], l:+k[3], c:+k[4], v:+k[5] };
       });
