@@ -4437,6 +4437,7 @@ gi('st-mode').textContent = CFG.mode.toUpperCase();
 var _tge=gi('rb-tg'); if(_tge){ _tge.textContent=CFG.tgToken?'OK':'-'; _tge.className=CFG.tgToken?'val up':'val neu'; }
 var _rxe=gi('rb-exchange'); if(_rxe){ _rxe.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='binance'?'Binance':'MEXC'; _rxe.className='val acc'; }
 renderPositions(); renderHistory(); renderStats(); renderCooldowns();
+if (ST.iter) gi('rb-iter').textContent = ST.iter;
 updateAIStatusPanel();
 log('SwingAI Bot v2 | '+PAIRS.length+' par | Kelly | Fear&Greed | PumpDump | 1H confirm');
 log('Tryb: '+CFG.mode.toUpperCase()+' | min score: '+CFG.minScore+' | ryzko: '+CFG.riskPct+'%/trade');
