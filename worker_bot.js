@@ -1913,7 +1913,7 @@ async function dashboardHTML(cfg, state, env) {
           if (bs.lastSigs && bs.lastSigs.length > 0 && typeof renderSigList === 'function') {
             var sigs = bs.lastSigs.map(function(s) {
               return {
-                sym:       s.sym.replace('USDT', '').replace('USDC', ''),
+                sym:       s.sym.replace('XBT','BTC').replace('USDT','USDC'),
                 price:     s.price     || 0,
                 score:     s.score     || 0,
                 finalProb: s.finalProb || 0,
