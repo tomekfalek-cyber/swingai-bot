@@ -1327,8 +1327,30 @@ async function pub(path, params={}) {
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
-const getKlines = (s,tf,n=200) => CFG.exchange==='bybit' ? bybGetKlines(s,tf,n) : CFG.exchange==='okx' ? okxGetKlines(s,tf,n) : pub('/api/v3/klines', {symbol:s, interval:tf, limit:n});
-const getTicker = (s) => CFG.exchange==='bybit' ? bybGetTicker(s) : CFG.exchange==='okx' ? okxGetTicker(s) : pub('/api/v3/ticker/24hr', {symbol:s});
+const KRAKEN_MAP = {'BTCUSDC':'XBTUSDT','ETHUSDC':'ETHUSDT','BNBUSDC':'BNBUSDT','SOLUSDC':'SOLUSDT','XRPUSDC':'XRPUSDT','DOGEUSDC':'DOGEUSDT','ADAUSDC':'ADAUSDT','AVAXUSDC':'AVAXUSDT','DOTUSDC':'DOTUSDT','LINKUSDC':'LINKUSDT','LTCUSDC':'LTCUSDT','NEARUSDC':'NEARUSDT','UNIUSDC':'UNIUSDT','ATOMUSDC':'ATOMUSDT','SHIBUSDC':'SHIBUSDT'};
+const KRAKEN_TF  = {'1d':'1440','4h':'240','1h':'60','30m':'30','15m':'15','5m':'5'};
+const WORKER_BASE = 'https://swingai-bot-24h.tomek-falek.workers.dev';
+async function krakenGetKlines(s,tf,n){
+  const kSym=KRAKEN_MAP[s]||s; const kTf=KRAKEN_TF[tf]||'60';
+  const url=WORKER_BASE+'/market?path='+encodeURIComponent('/0/public/OHLC')+'&qs='+encodeURIComponent('pair='+kSym+'&interval='+kTf);
+  const r=await fetch(url); if(!r.ok) throw new Error('Kraken HTTP '+r.status);
+  const d=await r.json(); if(d.error&&d.error.length) throw new Error(d.error[0]);
+  const key=Object.keys(d.result||{}).find(function(k){return k!=='last';});
+  const rows=key?d.result[key]:[];
+  return rows.slice(-(n||200)).map(function(k){return [+k[0]*1000,+k[1],+k[2],+k[3],+k[4],+k[6]];});
+}
+async function krakenGetTicker(s){
+  const kSym=KRAKEN_MAP[s]||s;
+  const url=WORKER_BASE+'/market?path='+encodeURIComponent('/0/public/Ticker')+'&qs='+encodeURIComponent('pair='+kSym);
+  const r=await fetch(url); if(!r.ok) throw new Error('Kraken ticker HTTP '+r.status);
+  const d=await r.json(); if(d.error&&d.error.length) throw new Error(d.error[0]);
+  const key=Object.keys(d.result||{})[0]; const t=key?d.result[key]:null;
+  if(!t) throw new Error('Kraken ticker brak danych '+s);
+  const last=t.c[0]; const open=t.o; const changePct=open&&+open>0?((+last-+open)/+open*100).toFixed(2):'0';
+  return {lastPrice:last, priceChangePercent:changePct};
+}
+const getKlines = (s,tf,n=200) => CFG.exchange==='bybit' ? bybGetKlines(s,tf,n) : CFG.exchange==='okx' ? okxGetKlines(s,tf,n) : krakenGetKlines(s,tf,n);
+const getTicker = (s) => CFG.exchange==='bybit' ? bybGetTicker(s) : CFG.exchange==='okx' ? okxGetTicker(s) : krakenGetTicker(s);
 
 async function getUSDC() {
   if (CFG.mode === 'paper') return ST.paperBal;
