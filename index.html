@@ -1334,8 +1334,8 @@ const WORKER_BASE = 'https://swingai-bot-24h.tomek-falek.workers.dev';
 async function krakenGetKlines(s,tf,n){
   const kSym=KRAKEN_MAP[s]||s; const kTf=KRAKEN_TF[tf]||'60';
   const url=WORKER_BASE+'/market?path='+encodeURIComponent('/0/public/OHLC')+'&qs='+encodeURIComponent('pair='+kSym+'&interval='+kTf);
-  const r=await fetch(url); if(!r.ok) throw new Error('Kraken HTTP '+r.status);
-  const d=await r.json(); if(d.error&&d.error.length) throw new Error(d.error[0]);
+  const r=await fetch(url); if(!r.ok) throw new Error('Kraken HTTP '+r.status+' sym='+s+' kSym='+kSym);
+  const d=await r.json(); if(d.error&&d.error.length) throw new Error(d.error[0]+' sym='+s+' kSym='+kSym);
   const key=Object.keys(d.result||{}).find(function(k){return k!=='last';});
   const rows=key?d.result[key]:[];
   return rows.slice(-(n||200)).map(function(k){return [+k[0]*1000,+k[1],+k[2],+k[3],+k[4],+k[6]];});
