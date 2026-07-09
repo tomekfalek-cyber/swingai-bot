@@ -226,6 +226,27 @@ export default {
       }
     }
 
+    // /market — publiczny proxy Kraken dla dashboard (wykresy świecowe)
+    if (url.pathname === '/market') {
+      const path = url.searchParams.get('path') || '';
+      const qs   = url.searchParams.get('qs')   || '';
+      if (path.includes('..') || qs.includes('..')) {
+        return new Response('Forbidden', { status: 403, headers: corsHeaders() });
+      }
+      const allowed = ['/0/public/OHLC', '/0/public/Ticker', '/0/public/Depth'];
+      if (!allowed.includes(path.split('?')[0])) {
+        return new Response('Forbidden', { status: 403, headers: corsHeaders() });
+      }
+      try {
+        const krakenUrl = 'https://api.kraken.com' + path + (qs ? '?' + qs : '');
+        const r = await fetch(krakenUrl, { headers: { 'User-Agent': 'SwingAI/1.0' } });
+        const body = await r.text();
+        return new Response(body, { status: r.status, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
+      }
+    }
+
     // /status-public — publiczny endpoint do pollingu UI (bez auth)
     if (url.pathname === '/status-public') {
       const state = await getState(env);
