@@ -1,4 +1,4 @@
-﻿// SwingAI Bot 24/7 — Cloudflare Worker — MEXC VERSION
+// SwingAI Bot 24/7 — Cloudflare Worker — MEXC VERSION
 // Gielda: MEXC (spot) | Dane: Binance public API (Gate.io zaczal blokowac CF Workers HTTP403)
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
@@ -251,9 +251,11 @@ export default {
     if (url.pathname === '/status-public') {
       const state = await getState(env);
       const cfg   = await getConfig(env);
+      const nextCycle = state.lastCycle ? state.lastCycle + 5 * 60 * 1000 : null;
       return jsonResp({
         iter:        state.iter        || 0,
         lastCycle:   state.lastCycle   || null,
+        nextCycle:   nextCycle,
         posCount:    (state.positions  || []).length,
         active:      cfg.active        || false,
         dailyPnl:    state.dailyPnl    || 0,
@@ -1964,6 +1966,23 @@ async function dashboardHTML(cfg, state, env) {
             var el = document.getElementById('scan-progress');
             if (el) el.textContent = 'ostatni skan Worker: ' + ts + ' | skan #' + (bs.iter || '');
           }
+          if (bs.nextCycle) {
+            window._workerNextCycle = bs.nextCycle;
+            if (typeof nextScanAt !== 'undefined') nextScanAt = bs.nextCycle;
+            var rbNext = document.getElementById('rb-next');
+            if (rbNext && !window._workerCountdownInterval) {
+              window._workerCountdownInterval = setInterval(function() {
+                var nc = window._workerNextCycle || 0;
+                if (!nc) return;
+                var left = Math.max(0, Math.round((nc - Date.now()) / 1000));
+                var txt = Math.floor(left/60) + 'm ' + (left%60) + 's';
+                var el2 = document.getElementById('rb-next');
+                var ci  = document.getElementById('cycle-info');
+                if (el2) el2.textContent = left > 0 ? txt : 'za chwilę...';
+                if (ci)  ci.textContent  = left > 0 ? 'skan za ' + txt : 'skan za chwilę...';
+              }, 1000);
+            }
+          }
 
           var rbExchange = document.getElementById('rb-exchange');
           if (rbExchange) { rbExchange.textContent = bs.exchange || 'MEXC'; rbExchange.className = 'val up'; }
@@ -2022,6 +2041,22 @@ async function dashboardHTML(cfg, state, env) {
               var ts2 = p2(d2.getHours())+':'+p2(d2.getMinutes())+':'+p2(d2.getSeconds());
               var el2 = document.getElementById('scan-progress');
               if (el2) el2.textContent = 'ostatni skan Worker: ' + ts2 + ' | skan #' + data.iter;
+            }
+            if (data.nextCycle) {
+              window._workerNextCycle = data.nextCycle;
+              if (typeof nextScanAt !== 'undefined') nextScanAt = data.nextCycle;
+              if (!window._workerCountdownInterval) {
+                window._workerCountdownInterval = setInterval(function() {
+                  var nc = window._workerNextCycle || 0;
+                  if (!nc) return;
+                  var left = Math.max(0, Math.round((nc - Date.now()) / 1000));
+                  var txt = Math.floor(left/60) + 'm ' + (left%60) + 's';
+                  var rnEl = document.getElementById('rb-next');
+                  var ciEl = document.getElementById('cycle-info');
+                  if (rnEl) rnEl.textContent = left > 0 ? txt : 'za chwilę...';
+                  if (ciEl) ciEl.textContent = left > 0 ? 'skan za ' + txt : 'skan za chwilę...';
+                }, 1000);
+              }
             }
             if (data.lastFG) {
               var rbFg2 = document.getElementById('rb-fg');
