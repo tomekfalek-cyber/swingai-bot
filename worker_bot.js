@@ -1970,8 +1970,8 @@ async function dashboardHTML(cfg, state, env) {
           if (bs.nextCycle) {
             window._workerNextCycle = bs.nextCycle;
             if (typeof nextScanAt !== 'undefined') nextScanAt = bs.nextCycle;
-            var rbNext = document.getElementById('rb-next');
-            if (rbNext && !window._workerCountdownInterval) {
+            if (window._workerCountdownInterval) { clearInterval(window._workerCountdownInterval); window._workerCountdownInterval = null; }
+            if (true) {
               window._workerCountdownInterval = setInterval(function() {
                 var nc = window._workerNextCycle || 0;
                 if (!nc) return;
@@ -2046,8 +2046,8 @@ async function dashboardHTML(cfg, state, env) {
             if (data.nextCycle) {
               window._workerNextCycle = data.nextCycle;
               if (typeof nextScanAt !== 'undefined') nextScanAt = data.nextCycle;
-              if (!window._workerCountdownInterval) {
-                window._workerCountdownInterval = setInterval(function() {
+              if (window._workerCountdownInterval) { clearInterval(window._workerCountdownInterval); window._workerCountdownInterval = null; }
+              window._workerCountdownInterval = setInterval(function() {
                   var nc = window._workerNextCycle || 0;
                   if (!nc) return;
                   var left = Math.max(0, Math.round((nc - Date.now()) / 1000));
