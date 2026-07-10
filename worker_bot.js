@@ -1971,7 +1971,6 @@ async function dashboardHTML(cfg, state, env) {
             window._workerNextCycle = bs.nextCycle;
             if (typeof nextScanAt !== 'undefined') nextScanAt = bs.nextCycle;
             if (window._workerCountdownInterval) { clearInterval(window._workerCountdownInterval); window._workerCountdownInterval = null; }
-            if (true) {
               window._workerCountdownInterval = setInterval(function() {
                 var nc = window._workerNextCycle || 0;
                 if (!nc) return;
@@ -1982,7 +1981,6 @@ async function dashboardHTML(cfg, state, env) {
                 if (el2) el2.textContent = left > 0 ? txt : 'za chwilę...';
                 if (ci)  ci.textContent  = left > 0 ? 'skan za ' + txt : 'skan za chwilę...';
               }, 1000);
-            }
           }
 
           var rbExchange = document.getElementById('rb-exchange');
@@ -2057,7 +2055,7 @@ async function dashboardHTML(cfg, state, env) {
                   if (rnEl) rnEl.textContent = left > 0 ? txt : 'za chwilę...';
                   if (ciEl) ciEl.textContent = left > 0 ? 'skan za ' + txt : 'skan za chwilę...';
                 }, 1000);
-              }
+            }
             if (data.lastFG) {
               var rbFg2 = document.getElementById('rb-fg');
               if (rbFg2) { rbFg2.textContent = data.lastFG.val + ' — ' + data.lastFG.label; rbFg2.className = 'val ' + (data.lastFG.val < 25 ? 'dn' : data.lastFG.val < 40 ? 'gold' : 'up'); }
