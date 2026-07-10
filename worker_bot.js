@@ -2058,7 +2058,6 @@ async function dashboardHTML(cfg, state, env) {
                   if (ciEl) ciEl.textContent = left > 0 ? 'skan za ' + txt : 'skan za chwilę...';
                 }, 1000);
               }
-            }
             if (data.lastFG) {
               var rbFg2 = document.getElementById('rb-fg');
               if (rbFg2) { rbFg2.textContent = data.lastFG.val + ' — ' + data.lastFG.label; rbFg2.className = 'val ' + (data.lastFG.val < 25 ? 'dn' : data.lastFG.val < 40 ? 'gold' : 'up'); }
