@@ -251,7 +251,7 @@ export default {
     if (url.pathname === '/status-public') {
       const state = await getState(env);
       const cfg   = await getConfig(env);
-      const nextCycle = state.lastCycle ? state.lastCycle + 5 * 60 * 1000 : null;
+      const nextCycle = state.nextCycle || (state.lastCycle ? state.lastCycle + 5 * 60 * 1000 : null);
       return jsonResp({
         iter:        state.iter        || 0,
         lastCycle:   state.lastCycle   || null,
@@ -413,6 +413,7 @@ async function runBotCycle(env) {
     }
 
     state.lastCycle = Date.now();
+    state.nextCycle  = Date.now() + 5 * 60 * 1000;
     addLog(state, 'Skan #' + state.iter + ' OK | poz: ' + (state.positions||[]).length + '/' + cfg.maxPos + ' | F&G:' + fg.val, 'ok');
 
   } catch(e) {
