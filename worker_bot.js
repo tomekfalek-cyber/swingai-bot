@@ -101,7 +101,7 @@ export default {
       if (p.get('maxp'))  cfg.maxPos   = parseInt(p.get('maxp'));
       if (p.get('size'))  cfg.posSize  = parseFloat(p.get('size'));
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
-      return new Response(redirectHTML('✅ Konfiguracja zapisana!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return jsonResp({ok:true, msg:'Konfiguracja zapisana'});
     }
 
     if (url.pathname === '/delete-keys') {
