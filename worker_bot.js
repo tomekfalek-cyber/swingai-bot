@@ -2084,6 +2084,11 @@ async function dashboardHTML(cfg, state, env) {
       setTimeout(function() { _applyWorkerState(BOT_STATE); }, 600);
       setInterval(_workerPoll, 60000);
 
+      // Natychmiastowe odswiezenie gdy uzytkownik wraca do zakladki
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') { _workerPoll(); }
+      });
+
     });
   })();
   // -- END INJECTION -----------------------------------------------
