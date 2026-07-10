@@ -2081,6 +2081,7 @@ async function dashboardHTML(cfg, state, env) {
       // Uruchom polling zawsze — niezaleznie od BOT_STATE.active (dziala tez po restarcie w nowej przegladarce)
       setTimeout(function() { _applyWorkerState(BOT_STATE); }, 600);
       setInterval(_workerPoll, 60000);
+      setTimeout(_workerPoll, 1500);
 
       // Natychmiastowe odswiezenie gdy uzytkownik wraca do zakladki
       document.addEventListener('visibilitychange', function() {
