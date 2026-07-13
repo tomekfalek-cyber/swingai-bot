@@ -280,6 +280,23 @@ async function runBotCycle(env) {
   const cfg   = await getConfig(env);
   if (!cfg.active) return;
   const state = await getState(env);
+
+  // Zabezpieczenie przed rownoleglym uruchomieniem cyklu.
+  // Masz kilka niezaleznych zrodel wyzwalajacych /run: wlasny Cron Trigger Workera,
+  // watchdog (osobny Cron Trigger pingujacy /run) i reczny "Wymus skan". Bez tej
+  // blokady dwa cykle moga czytac i nadpisywac ten sam klucz KV 'state' rownolegle,
+  // co gubi zmiany (otwarte pozycje, iter, log) i objawia sie "zawieszeniem" az do
+  // recznego resetu. Blokada jest samoczynnie odblokowujaca sie (stale-lock) na
+  // wypadek gdyby poprzedni cykl padl w polowie i nigdy jej nie zdjal.
+  const now = Date.now();
+  const STALE_LOCK_MS = 4 * 60 * 1000; // dluzej niz realistyczny czas 1 cyklu
+  if (state.cycleRunning && (now - (state.cycleStartedAt || 0)) < STALE_LOCK_MS) {
+    return; // inny cykl juz trwa - pomijamy ten trigger, nie nadpisujemy jego pracy
+  }
+  state.cycleRunning   = true;
+  state.cycleStartedAt = now;
+  await env.SWINGAI_KV.put('state', JSON.stringify(state));
+
   state.iter  = (state.iter || 0) + 1;
   addLog(state, '--- Skan #' + state.iter + ' ---');
 
@@ -420,6 +437,7 @@ async function runBotCycle(env) {
     addLog(state, 'BŁĄD CYKLU: ' + e.message, 'err');
   }
 
+  state.cycleRunning = false;
   await env.SWINGAI_KV.put('state', JSON.stringify(state));
 }
 
