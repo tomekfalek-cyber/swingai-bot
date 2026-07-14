@@ -928,7 +928,7 @@ function kellySize(total) {
   if (isMicroAccount(safeTotal)) {
     return Math.max(1, Math.round(safeTotal * 0.90 * 100) / 100);
   }
-  const trades = ST.trades.slice(-30);
+  const trades = ST.trades.slice(0, 30);
   if (trades.length < 5) {
     // Brak historii — zwróć mniejszy z: rozmiar z cfg lub % kapitału
     return Math.min(fixedSize, Math.max(10, safeTotal * (CFG.riskPct/100)));
