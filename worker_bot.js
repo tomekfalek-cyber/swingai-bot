@@ -402,7 +402,7 @@ async function runBotCycle(env) {
     const lastRefit = state.lastGbmRefit || 0;
     const tradesSinceRefit = trades.filter(t => { const tsN = typeof t.ts === 'string' ? new Date(t.ts).getTime() : (t.ts||0); return tsN > lastRefit; }).length;
     if ((tradesSinceRefit >= 50 && trades.length >= 20) || (!gbm.trained && trades.length >= 20)) {
-      gbm.trainFromTrades(trades.slice(-200));
+      gbm.trainFromTrades(trades.slice(0, 200));
       state.lastGbmRefit = Date.now();
       addLog(state, 'GBM walk-forward refit: ' + Math.min(trades.length,200) + ' tradów, OOS=' + gbm.accuracyOOS + '%', 'ok');
     }
@@ -732,8 +732,8 @@ async function checkPositions(cfg, state, env, ql) {
       // Po partial TP pos.sl = entry*(1+FEE*2) — break-even powyżej entry dla long.
       // Sprawdzamy bezpośrednio cenę vs pos.sl zamiast liczyć pnlPct threshold (który byłby dodatni i nigdy nie wyzwoliłby SL).
       if (Date.now() - pos.entryTs > TIMEOUT_MS) reason = 'TIMEOUT 7d';
-      else if (pnlPct >= cfg.tp * 100)             reason = 'TAKE PROFIT';
-      else if (pos.partialClosed ? price <= pos.sl : pnlPct <= -cfg.sl * 100) reason = 'STOP LOSS';
+      else if (price >= (pos.tp > 0 ? pos.tp : pos.entry * (1 + cfg.tp))) reason = 'TAKE PROFIT';
+      else if (price <= (pos.partialClosed ? pos.sl : (pos.sl > 0 ? pos.sl : pos.entry * (1 - cfg.sl)))) reason = 'STOP LOSS';
       else if (price <= trail && pnlPct > 1.5)     reason = 'TRAILING STOP';
 
       // Partial TP (50% pozycji przy połowie TP)
@@ -1046,7 +1046,7 @@ function kellySize(cfg, state, total) {
     ? Math.min(safeTotal * 0.03, safeTotal * 0.20)  // 3% kapitału, max 20% per pozycja
     : (cfg.posSize || 15);
 
-  const trades    = (state.trades || []).slice(-30);
+  const trades    = (state.trades || []).slice(0, 30);
   if (trades.length < 5) {
     return Math.min(fixedSize, Math.max(autoScale ? fixedSize : 10, safeTotal * (cfg.riskPct || 2) / 100));
   }
@@ -2131,7 +2131,7 @@ async function dashboardHTML(cfg, state, env) {
 
   // Podmień openSettings — pola z kluczami w KV pokazują zielony placeholder
   html = html.replace(
-    "function openSettings() {\n  gi('cfg-key').value      = CFG.apiKey||'';\n  gi('cfg-secret').value   = CFG.secret||'';\n  gi('cfg-worker').value   = CFG.workerUrl||'';\n  gi('cfg-mode').value     = CFG.mode;\n  gi('cfg-byb-key').value    = CFG.bybApiKey||'';\n  gi('cfg-byb-secret').value = CFG.bybSecret||'';\n  gi('cfg-byb-worker').value = CFG.bybWorker||'';\n  gi('cfg-okx-key').value      = CFG.okxApiKey||'';\n  gi('cfg-okx-secret').value   = CFG.okxSecret||'';\n  gi('cfg-okx-pass').value     = CFG.okxPassphrase||'';\n  gi('cfg-okx-worker').value   = CFG.okxWorker||'';",
+    "function openSettings() {\n  gi('cfg-key').value      = CFG.apiKey||'';\n  gi('cfg-secret').value   = CFG.secret||'';\n  gi('cfg-worker').value   = CFG.workerUrl||'';\n  gi('cfg-mode').value     = CFG.mode;\n  gi('cfg-byb-key').value    = CFG.bybApiKey||'';\n  gi('cfg-byb-secret').value = CFG.bybSecret||'';\n  gi('cfg-byb-worker').value = CFG.bybWorker||'';\n  gi('cfg-mexc-key').value     = CFG.mexcApiKey||CFG.okxApiKey||'';\n  gi('cfg-mexc-secret').value  = CFG.mexcSecret||CFG.okxSecret||'';\n  gi('cfg-mexc-worker').value  = CFG.mexcWorker||CFG.workerUrl||'';",
     `function openSettings() {
   gi('cfg-key').value      = CFG.apiKey||'';
   gi('cfg-secret').value   = CFG.secret||'';
@@ -2173,7 +2173,7 @@ async function dashboardHTML(cfg, state, env) {
     var okxK  = (gi('cfg-mexc-key') ? gi('cfg-mexc-key') : (gi('cfg-okx-key') || {value:''})).value.trim();
     var okxS  = (gi('cfg-mexc-secret') ? gi('cfg-mexc-secret') : (gi('cfg-okx-secret') || {value:''})).value.trim();
     var okxP  = ''; // MEXC nie uzywa passphrase
-    var hasTg = SAVED_CREDS.tgTokenSet;
+    var hasTg = (typeof SAVED_CREDS !== 'undefined') ? SAVED_CREDS.tgTokenSet : false;
     if (tgTok) { params.set('tg', tgTok); hasTg = true; }
     if (tgCht) { params.set('tgc', tgCht); hasTg = true; }
     if (okxK)  params.set('key',  okxK);
@@ -2196,7 +2196,7 @@ async function dashboardHTML(cfg, state, env) {
 
   // Dodaj badge bota w nagłówku (tuż przed </div> zamykającym #hdr-stats)
   const botBadgeHtml = `<div id="bot-status-badge" style="font-size:7.5pt;padding:2px 9px;border-radius:6px;background:rgba(0,229,160,.12);color:var(--green);font-weight:700;white-space:nowrap;margin-left:4px">${cfg.active ? '24h BOT: AKTYWNY' : '24h BOT: OFF'}</div>`;
-  html = html.replace('</div>\n</div>\n\n<div id="main">', botBadgeHtml + '\n</div>\n</div>\n\n<div id="main">');
+  html = html.replace('</div>\n</div>\n\n<!-- MAIN -->\n<div id="main">', botBadgeHtml + '\n</div>\n</div>\n\n<!-- MAIN -->\n<div id="main">');
 
   return html;
 }
