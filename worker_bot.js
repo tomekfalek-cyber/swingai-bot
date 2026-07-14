@@ -122,7 +122,7 @@ export default {
       const exUrl = url.searchParams.get('u') || '';
       if (!exUrl) return jsonResp({ error: 'brak parametru u' });
       try {
-        const r = await fetch(exUrl, { headers: { 'Content-Type': 'application/json' } });
+        const r = await fetchWithTimeout(exUrl, 8000, { headers: { 'Content-Type': 'application/json' } });
         const text = await r.text();
         return jsonResp({ status: r.status, body: text.slice(0, 300) });
       } catch(e) {
@@ -170,7 +170,7 @@ export default {
 
     if (url.pathname === '/tg-updates') {
       const cfg = await getConfig(env);
-      const r = await fetch('https://api.telegram.org/bot' + cfg.tgToken + '/getUpdates');
+      const r = await fetchWithTimeout('https://api.telegram.org/bot' + cfg.tgToken + '/getUpdates', 8000);
       const d = await r.json();
       return jsonResp(d);
     }
@@ -181,7 +181,7 @@ export default {
       const tgUrl = 'https://api.telegram.org/bot' + cfg.tgToken + '/sendMessage';
       let tgResult;
       try {
-        const r = await fetch(tgUrl, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const r = await fetchWithTimeout(tgUrl, 8000, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         tgResult = await r.json();
       } catch(e) { tgResult = { fetchError: e.message }; }
       return jsonResp({ tokenPrefix: cfg.tgToken.slice(0,12)+'...', chat_id: cfg.tgChat, payload, tgResult });
@@ -193,8 +193,9 @@ export default {
         return jsonResp({ ok: false, error: 'Brak tokenu Telegram w konfiguracji', token: !!cfg.tgToken, chat: !!cfg.tgChat });
       }
       try {
-        const tgResp = await fetch(
+        const tgResp = await fetchWithTimeout(
           'https://api.telegram.org/bot' + cfg.tgToken + '/sendMessage',
+          8000,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -239,7 +240,7 @@ export default {
       }
       try {
         const krakenUrl = 'https://api.kraken.com' + path + (qs ? '?' + qs : '');
-        const r = await fetch(krakenUrl, { headers: { 'User-Agent': 'SwingAI/1.0' } });
+        const r = await fetchWithTimeout(krakenUrl, 8000, { headers: { 'User-Agent': 'SwingAI/1.0' } });
         const body = await r.text();
         return new Response(body, { status: r.status, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
       } catch(e) {
@@ -1465,13 +1466,12 @@ function atr(h, l, c, p=14) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MARKET DATA — BYBIT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function fetchWithTimeout(url, ms, headers) {
+function fetchWithTimeout(url, ms, opts) {
   ms = ms || 8000;
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), ms);
-  const opts = { signal: ctrl.signal };
-  if (headers) opts.headers = headers;
-  return fetch(url, opts).finally(() => clearTimeout(tid));
+  const fetchOpts = Object.assign({}, opts || {}, { signal: ctrl.signal });
+  return fetch(url, fetchOpts).finally(() => clearTimeout(tid));
 }
 
 async function getKlines(sym, interval, limit) {
@@ -1575,12 +1575,12 @@ function mexcFmtQty(sym, qty) {
 async function mexcMarketBuy(sym, quoteQty, cfg) {
   const msym = mexcSymbol(sym);
   const s = await mexcSign('symbol=' + msym + '&side=BUY&type=MARKET&quoteOrderQty=' + quoteQty.toFixed(2), cfg);
-  const r = await fetch('https://api.mexc.com/api/v3/order?' + s.qs, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
+  const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
   const d = await r.json();
   if (!d.orderId) throw new Error('MEXC buy: ' + (d.msg || JSON.stringify(d)));
   await sleep(1000);
   const s2 = await mexcSign('symbol=' + msym + '&orderId=' + d.orderId, cfg);
-  const det = await (await fetch('https://api.mexc.com/api/v3/order?' + s2.qs, { headers: { 'X-MEXC-APIKEY': s2.apiKey } })).json();
+  const det = await (await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s2.qs, 10000, { headers: { 'X-MEXC-APIKEY': s2.apiKey } })).json();
   const avgPrice = det.avgPrice ? +det.avgPrice : (det.price ? +det.price : 0);
   const qty = det.executedQty ? +det.executedQty : (quoteQty / (avgPrice || 1));
   return { price: avgPrice, qty };
@@ -1589,7 +1589,7 @@ async function mexcMarketBuy(sym, quoteQty, cfg) {
 async function mexcMarketSell(sym, qty, cfg) {
   const msym = mexcSymbol(sym);
   const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + mexcFmtQty(sym, qty), cfg);
-  const r = await fetch('https://api.mexc.com/api/v3/order?' + s.qs, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
+  const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
   const d = await r.json();
   if (!d.orderId) throw new Error('MEXC sell: ' + (d.msg || JSON.stringify(d)));
   return true;
@@ -1602,8 +1602,8 @@ async function mexcGetBalance(cfg) {
     { name:'HMAC', hash:'SHA-256' }, false, ['sign']);
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(qs));
   const sigHex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
-  const r = await fetch('https://api.mexc.com/api/v3/account?' + qs + '&signature=' + sigHex,
-    { headers: { 'X-MEXC-APIKEY': cfg.mexcApiKey } });
+  const r = await fetchWithTimeout('https://api.mexc.com/api/v3/account?' + qs + '&signature=' + sigHex,
+    10000, { headers: { 'X-MEXC-APIKEY': cfg.mexcApiKey } });
   const d = await r.json();
   if (!d.balances) throw new Error('MEXC balance: ' + JSON.stringify(d));
   const usdc = d.balances.find(b => b.asset === 'USDC');
@@ -1616,7 +1616,7 @@ async function mexcGetBalance(cfg) {
 async function tgSend(cfg, msg) {
   if (!cfg.tgToken || !cfg.tgChat) return;
   try {
-    await fetch(`https://api.telegram.org/bot${cfg.tgToken}/sendMessage`, {
+    await fetchWithTimeout(`https://api.telegram.org/bot${cfg.tgToken}/sendMessage`, 8000, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: cfg.tgChat, text: msg, parse_mode: 'HTML' })
