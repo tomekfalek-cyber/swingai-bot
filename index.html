@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -885,11 +885,19 @@ function loadModels() {
 }
 
 // ── TELEGRAM ───────────────────────────────────────────────────────
+function fetchWithTimeout(url, msOrOpts, opts) {
+  var ms = 15000, options = {};
+  if (typeof msOrOpts === 'number') { ms = msOrOpts; options = opts || {}; }
+  else if (msOrOpts && typeof msOrOpts === 'object') { options = msOrOpts; }
+  var ctrl = new AbortController();
+  var tid = setTimeout(function(){ ctrl.abort(); }, ms);
+  return fetch(url, Object.assign({}, options, { signal: ctrl.signal })).finally(function(){ clearTimeout(tid); });
+}
 async function tgSend(msg) {
   if (!CFG.tgToken || !CFG.tgChat || !msg) return;
   msg = msg.substring(0, 4000);
   try {
-    await fetch('https://api.telegram.org/bot'+CFG.tgToken+'/sendMessage', {
+    await fetchWithTimeout('https://api.telegram.org/bot'+CFG.tgToken+'/sendMessage', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({chat_id:CFG.tgChat, text:msg, parse_mode:'HTML'})
     });
@@ -901,7 +909,7 @@ let fgCache = {val:50, label:'Neutral', ts:0};
 async function getFearGreed() {
   if (Date.now() - fgCache.ts < 3600000) return fgCache;
   try {
-    const r = await fetch('https://api.alternative.me/fng/?limit=1');
+    const r = await fetchWithTimeout('https://api.alternative.me/fng/?limit=1');
     const d = await r.json();
     if (!d.data || !d.data[0]) return fgCache;
     const val = +d.data[0].value;
@@ -1004,7 +1012,7 @@ async function bybSignedReq(method, path, params={}) {
   const url = method==='GET'
     ? proxyBase + path + (qs ? '?'+qs : '')
     : proxyBase + path;
-  const r = await fetch(url, {
+  const r = await fetchWithTimeout(url, {
     method,
     headers,
     body: method!=='GET' ? JSON.stringify(params) : undefined
@@ -1018,7 +1026,7 @@ async function bybSignedReq(method, path, params={}) {
 // Publiczne dane z Bybit (świece, ticker) — bez proxy
 async function bybPub(path, params={}) {
   const qs = Object.keys(params).length ? '?'+new URLSearchParams(params) : '';
-  const r = await fetch(BYBIT_BASE + path + qs);
+  const r = await fetchWithTimeout(BYBIT_BASE + path + qs);
   if (!r.ok) throw new Error('Bybit pub ' + r.status);
   const d = await r.json();
   if (d.retCode !== 0) throw new Error('Bybit: ' + d.retMsg);
@@ -1135,7 +1143,7 @@ async function okxSignedReq(method, path, body) {
     'Content-Type': 'application/json'
   };
   const proxyUrl = CFG.okxWorker.replace(/\/+$/,'') + '/proxy' + path;
-  const r = await fetch(proxyUrl, {
+  const r = await fetchWithTimeout(proxyUrl, {
     method,
     headers,
     body: bodyStr || undefined
@@ -1149,7 +1157,7 @@ async function okxSignedReq(method, path, body) {
 // Publiczne dane OKX — bez proxy (OKX nie blokuje EU CORS dla /market)
 async function okxPub(path, params) {
   const qs = params ? '?' + new URLSearchParams(params) : '';
-  const r = await fetch(OKX_BASE + path + qs);
+  const r = await fetchWithTimeout(OKX_BASE + path + qs);
   if (!r.ok) throw new Error('OKX pub ' + r.status);
   const d = await r.json();
   if (d.code !== '0') throw new Error('OKX pub: ' + (d.msg || d.code));
@@ -1266,7 +1274,7 @@ async function signedReq(method, path, params={}) {
   params.recvWindow = 5000;  // chroni przed odrzuceniem zlecenia przy opóźnieniu sieci
   const qs1 = new URLSearchParams(params).toString();
   params.signature = await hmac(qs1);
-  const r = await fetch(apiBase()+path+'?'+new URLSearchParams(params).toString(),
+  const r = await fetchWithTimeout(apiBase()+path+'?'+new URLSearchParams(params).toString(),
     {method, headers:{'X-MBX-APIKEY':CFG.apiKey}});
   if (!r.ok) { const e=await r.json().catch(()=>({msg:r.statusText})); throw new Error(e.msg||r.statusText); }
   return r.json();
@@ -1324,7 +1332,7 @@ async function prefetchStepSizes() {
   }
 }
 async function pub(path, params={}) {
-  const r = await fetch(BASE+path+(Object.keys(params).length?'?'+new URLSearchParams(params):''));
+  const r = await fetchWithTimeout(BASE+path+(Object.keys(params).length?'?'+new URLSearchParams(params):''));
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
@@ -1358,7 +1366,7 @@ function _saveKrakenPairCache() {
 }
 async function _krakenFetchOHLC(kSym, kTf) {
   const url=WORKER_BASE+'/market?path='+encodeURIComponent('/0/public/OHLC')+'&qs='+encodeURIComponent('pair='+kSym+'&interval='+kTf);
-  const r=await fetch(url);
+  const r=await fetchWithTimeout(url);
   if(!r.ok) throw new Error('Kraken HTTP '+r.status+' kSym='+kSym);
   const d=await r.json();
   if(d.error&&d.error.length) throw new Error(d.error[0]+' kSym='+kSym);
@@ -1384,7 +1392,7 @@ async function krakenGetKlines(s,tf,n){
 }
 async function _krakenFetchTicker(kSym) {
   const url=WORKER_BASE+'/market?path='+encodeURIComponent('/0/public/Ticker')+'&qs='+encodeURIComponent('pair='+kSym);
-  const r=await fetch(url); if(!r.ok) throw new Error('Kraken ticker HTTP '+r.status+' kSym='+kSym);
+  const r=await fetchWithTimeout(url); if(!r.ok) throw new Error('Kraken ticker HTTP '+r.status+' kSym='+kSym);
   const d=await r.json(); if(d.error&&d.error.length) throw new Error(d.error[0]+' kSym='+kSym);
   const key=Object.keys(d.result||{})[0]; const t=key?d.result[key]:null;
   if(!t) throw new Error('Kraken ticker brak danych kSym='+kSym);
@@ -2881,7 +2889,7 @@ async function testConn() {
       try { const u=await bybGetUSDC(); lines.push('Bybit konto OK | USDC: $'+u.toFixed(2)); } catch(e){ lines.push('Bybit konto ERR: '+e.message); }
     }
     if (CFG.bybWorker) {
-      try { const r=await fetch(CFG.bybWorker+'/proxy/v5/market/tickers?category=spot&symbol=BTCUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('Bybit Worker OK'); } catch(e){ lines.push('Bybit Worker ERR: '+e.message); }
+      try { const r=await fetchWithTimeout(CFG.bybWorker+'/proxy/v5/market/tickers?category=spot&symbol=BTCUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('Bybit Worker OK'); } catch(e){ lines.push('Bybit Worker ERR: '+e.message); }
     } else if (CFG.mode==='bybit') { lines.push('Brak Bybit Worker URL — wymagany do LIVE'); }
   } else if (CFG.exchange === 'okx') {
     try { const t=await okxGetTicker('BTCUSDC'); lines.push('OKX OK | BTC: $'+(+t.lastPrice).toFixed(0)); } catch(e){ lines.push('OKX ERR: '+e.message); }
@@ -2889,13 +2897,13 @@ async function testConn() {
       try { const u=await okxGetUSDC(); lines.push('OKX konto OK | USDC: $'+u.toFixed(2)); } catch(e){ lines.push('OKX konto ERR: '+e.message); }
     }
     if (CFG.okxWorker) {
-      try { const r=await fetch(CFG.okxWorker+'/proxy/api/v5/market/ticker?instId=BTC-USDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('OKX Worker OK'); } catch(e){ lines.push('OKX Worker ERR: '+e.message); }
+      try { const r=await fetchWithTimeout(CFG.okxWorker+'/proxy/api/v5/market/ticker?instId=BTC-USDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('OKX Worker OK'); } catch(e){ lines.push('OKX Worker ERR: '+e.message); }
     } else if (CFG.mode==='okx') { lines.push('Brak OKX Worker URL — wymagany do LIVE'); }
   } else if (CFG.exchange === 'mexc') {
     const BOT = 'https://swingai-bot-24h.tomek-falek.workers.dev';
     const AUTH = 'swingai-secret-2024';
     try {
-      const r = await fetch(BOT + '/balance?auth=' + AUTH);
+      const r = await fetchWithTimeout(BOT + '/balance?auth=' + AUTH);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       if (d.error) throw new Error(d.error);
@@ -2909,7 +2917,7 @@ async function testConn() {
   } else {
     try { const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'}); lines.push('Binance OK | BTC: $'+(+t.price).toFixed(0)); } catch(e){ lines.push('Binance ERR: '+e.message); }
     if (CFG.workerUrl) {
-      try { const r=await fetch(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); lines.push('Binance Worker OK | ETH: $'+(+d.price).toFixed(2)); } catch(e){ lines.push('Binance Worker ERR: '+e.message); }
+      try { const r=await fetchWithTimeout(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); lines.push('Binance Worker OK | ETH: $'+(+d.price).toFixed(2)); } catch(e){ lines.push('Binance Worker ERR: '+e.message); }
     } else if (CFG.mode==='live') { lines.push('Brak Binance Worker URL — wymagany do LIVE'); }
     if (CFG.mode==='live'&&CFG.apiKey&&workerReady()) {
       try { const a=await signedReq('GET','/api/v3/account'); const u=(a.balances||[]).find(function(b){ return b.asset==='USDC'; }); lines.push('Binance Konto OK | USDC: $'+(u?parseFloat(u.free).toFixed(2):'0')); } catch(e){ lines.push('Binance Konto ERR: '+e.message); }
