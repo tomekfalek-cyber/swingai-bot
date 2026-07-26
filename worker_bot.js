@@ -290,7 +290,14 @@ async function runBotCycle(env) {
   // recznego resetu. Blokada jest samoczynnie odblokowujaca sie (stale-lock) na
   // wypadek gdyby poprzedni cykl padl w polowie i nigdy jej nie zdjal.
   const now = Date.now();
-  const STALE_LOCK_MS = 4 * 60 * 1000; // dluzej niz realistyczny czas 1 cyklu
+  // WAZNE: 8 pairs x 3 interwaly klines x do 8s timeout kazdy + sleep(700ms) miedzy
+  // parami + checkPositions + F&G + BTC guard + saldo MEXC + Telegram = realistyczny
+  // NAJGORSZY (ale wciaz normalny, nie zawieszony) czas 1 cyklu moze dojsc do ok.
+  // 4-4.5 min przy wolnych odpowiedziach API. Poprzedni prog 4 min byl za blisko tej
+  // wartosci i mogl falszywie uznawac wciaz trwajacy, tylko wolny cykl za "zawieszony",
+  // pozwalajac nastepnemu triggerowi wystartowac rownolegle - czyli dokladnie problem,
+  // ktoremu ta blokada ma zapobiegac. 8 min daje bezpieczny zapas.
+  const STALE_LOCK_MS = 8 * 60 * 1000;
   if (state.cycleRunning && (now - (state.cycleStartedAt || 0)) < STALE_LOCK_MS) {
     return; // inny cykl juz trwa - pomijamy ten trigger, nie nadpisujemy jego pracy
   }
