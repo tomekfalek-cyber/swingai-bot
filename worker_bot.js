@@ -262,6 +262,7 @@ export default {
         dailyPnl:    state.dailyPnl    || 0,
         liveBalance: state.liveBalance || null,
         lastFG:      state.lastFG      || { val:50, label:'Neutral' },
+        lastSigs:    state.lastSigs    || [],
         log:         (state.log        || []).slice(0, 10)
       });
     }
@@ -1915,6 +1916,38 @@ async function dashboardHTML(cfg, state, env) {
           .catch(function(e) { console.warn('forceScan Worker error:', e); });
       };
 
+      // -- Wspolna funkcja renderujaca liste sygnalow z danych Workera -----
+      // (uzywana zarowno przy pelnym zaladowaniu strony, jak i przy kazdym
+      // okresowym pollingu /status-public - bez tego lista sygnalow nigdy
+      // nie odswiezala sie sama, tylko przy recznym przeladowaniu strony)
+      function _renderSigsFromServer(rawSigs) {
+        if (!rawSigs || !rawSigs.length || typeof renderSigList !== 'function') return;
+        var sigs = rawSigs.map(function(s) {
+          return {
+            sym:       s.sym.replace('XBT','BTC').replace('USDT','USDC'),
+            price:     s.price     || 0,
+            score:     s.score     || 0,
+            finalProb: s.finalProb || 0,
+            rsiD:      s.rsiD      || 50,
+            rsi4h:     s.rsi4h     || 50,
+            macdHist:  s.macdHist  || 0,
+            bbPos:     s.bbPos     || 0.5,
+            trendD:    s.trend === 'UP' ? 2 : s.trend === 'FLAT' ? 0 : -1,
+            buy:       s.buy       || false,
+            why:       s.why       || [],
+            patterns:  s.patterns  || [],
+            aiMethod:  s.aiMethod  || 'Worker',
+            volR:      s.volR      || 1,
+            vol4R:     s.vol4R     || 1,
+            mom5:      s.mom5      || 0,
+            mom10:     s.mom10     || 0
+          };
+        });
+        renderSigList(sigs);
+        if (typeof renderMarketTab === 'function') renderMarketTab(sigs);
+        if (typeof lastSigs !== 'undefined') lastSigs = sigs;
+      }
+
       // -- Zasilij UI danymi z Workera ------------------------------
       function _applyWorkerState(bs) {
         try {
@@ -1938,32 +1971,7 @@ async function dashboardHTML(cfg, state, env) {
           var iterEl = document.getElementById('rb-iter');
           if (iterEl) iterEl.textContent = st.iter;
 
-          if (bs.lastSigs && bs.lastSigs.length > 0 && typeof renderSigList === 'function') {
-            var sigs = bs.lastSigs.map(function(s) {
-              return {
-                sym:       s.sym.replace('XBT','BTC').replace('USDT','USDC'),
-                price:     s.price     || 0,
-                score:     s.score     || 0,
-                finalProb: s.finalProb || 0,
-                rsiD:      s.rsiD      || 50,
-                rsi4h:     s.rsi4h     || 50,
-                macdHist:  s.macdHist  || 0,
-                bbPos:     s.bbPos     || 0.5,
-                trendD:    s.trend === 'UP' ? 2 : s.trend === 'FLAT' ? 0 : -1,
-                buy:       s.buy       || false,
-                why:       s.why       || [],
-                patterns:  s.patterns  || [],
-                aiMethod:  s.aiMethod  || 'Worker',
-                volR:      s.volR      || 1,
-                vol4R:     s.vol4R     || 1,
-                mom5:      s.mom5      || 0,
-                mom10:     s.mom10     || 0
-              };
-            });
-            renderSigList(sigs);
-            if (typeof renderMarketTab === 'function') renderMarketTab(sigs);
-            if (typeof lastSigs !== 'undefined') lastSigs = sigs;
-          }
+          _renderSigsFromServer(bs.lastSigs);
 
           // Zatrzymaj lokalny bot — nie duplikuj skanow
           if (typeof running !== 'undefined') running = false;
@@ -2049,6 +2057,7 @@ async function dashboardHTML(cfg, state, env) {
             if (!data || typeof data.iter !== 'number') return;
             var iterEl = document.getElementById('rb-iter');
             if (iterEl) iterEl.textContent = data.iter;
+            _renderSigsFromServer(data.lastSigs);
             try {
               var raw2 = localStorage.getItem('swingai_v3');
               var st2  = raw2 ? JSON.parse(raw2) : {};
