@@ -1926,11 +1926,14 @@ var WS = {
           if (!sym || !price) return;
           WS.livePrice[sym] = price;
           WS.lastPing = Date.now();
+          // Uwaga: tylko aktualizacja WYSWIETLANEJ ceny (podglad). Realne zamykanie
+          // pozycji (SL/TP/trailing) robi WYLACZNIE Worker po stronie serwera - nie
+          // wywolujemy tu checkTrail/wsExitQueue, zeby przegladarka nigdy sama nie
+          // skladala prawdziwych zlecen zamkniecia niezaleznie od Workera.
           ST.positions.forEach(function(pos) {
             if (pos.sym !== sym) return;
             pos.cp = price;
             if (price > (pos.highP || pos.entry)) pos.highP = price;
-            WS.checkTrail(pos, price);
           });
         } catch(e) {}
       };
@@ -1953,8 +1956,10 @@ var WS = {
           return; // brak dalszych prob
         }
         // Kolejna proba z exponential backoff (10s, 20s, 40s)
+        // Uwaga: nie zalezy juz od 'running' - to zmienna lokalnej (wylaczonej) petli
+        // tradingowej. WS sluzy wylacznie do podgladu ceny, wiec zawsze probuje wracac.
         var delay = 10000 * Math.pow(2, WS.retries - 1);
-        setTimeout(function(){ if (running && !WS.blocked) WS.connect(); }, delay);
+        setTimeout(function(){ if (!WS.blocked) WS.connect(); }, delay);
       };
     } catch(e) {
       WS.blocked = true;
@@ -1979,23 +1984,12 @@ var WS = {
     updateWSStatus(false);
   },
 
-  // Sprawdz trailing stop na zywej cenie (wywolywane z onmessage)
+  // WYLACZONE CELOWO: realne zamykanie pozycji (SL/TP/trailing) robi WYLACZNIE
+  // Worker po stronie serwera (24/7, niezaleznie od przegladarki). Ta funkcja
+  // pozostaje jako no-op, zeby przegladarka nigdy sama nie skladala prawdziwych
+  // zlecen zamkniecia rownolegle do Workera (ryzyko podwojnego handlu).
   checkTrail: function(pos, cp) {
-    if (!pos.entry || pos.entry <= 0) return;
-    // Dedup: nie dodawaj jeśli ta pozycja już jest w kolejce (tick może przyjść 10x/s)
-    if (wsExitQueue.some(function(item){ return item.pos === pos; })) return;
-    var pnlPct = (cp - pos.entry) / pos.entry * 100;
-    var trailDist = pos.trailDist || CFG.trail;
-    var trail  = pos.highP * (1 - trailDist);
-    if (cp <= pos.sl) {
-      wsExitQueue.push({pos:pos, cp:cp, reason:'STOP LOSS (live)'});
-    } else if (cp >= pos.tp) {
-      wsExitQueue.push({pos:pos, cp:cp, reason:'TAKE PROFIT (live)'});
-    } else if (cp <= trail && pnlPct > 1.5) {
-      wsExitQueue.push({pos:pos, cp:cp, reason:'TRAILING STOP (live)'});
-    } else if (pnlPct <= -12) {
-      wsExitQueue.push({pos:pos, cp:cp, reason:'EMERGENCY STOP (live)'});
-    }
+    return; // celowo brak akcji - patrz komentarz wyzej
   },
 
   getPrice: function(sym) {
@@ -2028,12 +2022,18 @@ wsExitQueueTimer = setInterval(async function() {
   renderHistory();
 }, 500);
 
-// Watchdog — rekonektuj jesli WS padl, ale tylko gdy nie jest trwale zablokowany
+// Watchdog — rekonektuj jesli WS padl, ale tylko gdy nie jest trwale zablokowany.
+// Niezalezny od 'running' (martwa zmienna lokalnej petli tradingowej) - WS ma
+// dzialac zawsze, gdy strona jest otwarta, wylacznie do podgladu ceny na zywo.
 setInterval(function() {
-  if (running && !WS.blocked && !WS.isAlive() && WS.retries < WS.maxRetries) {
+  if (!WS.blocked && !WS.isAlive() && WS.retries < WS.maxRetries) {
     WS.connect();
   }
 }, 30000);
+
+// Pierwsze polaczenie WS przy zaladowaniu strony (podglad ceny) - niezalezne od
+// lokalnego startBot()/running, ktore juz nie steruje realnym handlem.
+document.addEventListener('DOMContentLoaded', function() { WS.connect(); });
 
 function updateWSStatus(active) {
   var el = gi('rb-ws');
