@@ -1664,28 +1664,33 @@ async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // DASHBOARD HTML — SERVER-SIDE RENDER
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function dashboardHTML(cfg, state, env) {
-  // Pobierz HTML z GitHub z cache KV (TTL 5 minut) — unikamy fetcha przy każdym odświeżeniu
+  // Pobierz HTML z GitHub, z cache w Cache API Workera (TTL 5 minut).
+  // WAZNE: uzywamy Cache API (caches.default), NIE KV — Cache API nie liczy sie
+  // do dziennego limitu 1000 zapisow KV na darmowym planie Cloudflare. Poprzednio
+  // ten cache pisal do KV (2 zapisy za kazdym razem gdy wygasal, co przy czestym
+  // odswiezaniu strony moglo dawac do ~576 zapisow/dobe SAMEGO cache'a HTML —
+  // razem z cyklem handlowym (~576/dobe) to przekraczalo limit 1000/dobe i
+  // powodowalo, ze KV zaczynalo odrzucac zapisy do konca dnia (do resetu o
+  // 00:00 UTC) — obserwowane jako "bot przerywa prace raz na dobe".
   let html;
-  const CACHE_KEY = 'html_cache';
-  const CACHE_TS_KEY = 'html_cache_ts';
-  const CACHE_TTL_MS = 5 * 60 * 1000;
+  const CACHE_URL = 'https://swingai-internal-cache/dashboard-html-v1';
+  const CACHE_TTL_S = 300; // 5 minut
   try {
-    const now = Date.now();
-    const cachedTs = await env.SWINGAI_KV.get(CACHE_TS_KEY);
-    const tsOk = cachedTs && (now - parseInt(cachedTs)) < CACHE_TTL_MS;
-    if (tsOk) {
-      html = await env.SWINGAI_KV.get(CACHE_KEY);
-    }
-    if (!html) {
+    const cache = caches.default;
+    const cacheKey = new Request(CACHE_URL);
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      html = await cached.text();
+    } else {
       const resp = await fetchWithTimeout('https://tomekfalek-cyber.github.io/swingai-bot/', 10000);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       html = await resp.text();
-      await env.SWINGAI_KV.put(CACHE_KEY, html);
-      await env.SWINGAI_KV.put(CACHE_TS_KEY, String(now));
+      const respToCache = new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'max-age=' + CACHE_TTL_S }
+      });
+      await cache.put(cacheKey, respToCache);
     }
   } catch(e) {
-    // Spróbuj użyć stale cache jeśli fetch się nie powiódł
-    try { const stale = await env.SWINGAI_KV.get(CACHE_KEY); if (stale) html = stale; } catch(_) {}
     if (!html) return '<html><body style="background:#020810;color:#ff3d5a;font-family:sans-serif;padding:40px"><h2>Błąd pobierania frontendu</h2><p>' + e.message + '</p><p><a href="/" style="color:#2d8fff">Odśwież</a></p></body></html>';
   }
 
