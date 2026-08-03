@@ -306,10 +306,17 @@ async function runBotCycle(env) {
   state.cycleStartedAt = now;
   await env.SWINGAI_KV.put('state', JSON.stringify(state));
 
-  state.iter  = (state.iter || 0) + 1;
-  addLog(state, '--- Skan #' + state.iter + ' ---');
+  // Od tego miejsca AZ DO KONCA funkcji dziala try/finally (nizej) - gwarantuje to,
+  // ze blokada cycleRunning ZAWSZE zostanie zwolniona, niezaleznie od tego, czy
+  // wyjatek wystapi w resecie dziennym, circuit breakerze, ladowaniu modeli AI,
+  // czy w glownej logice skanu. Poprzednio tylko sama logika skanu byla chroniona -
+  // blad gdziekolwiek indziej zostawialby blokade zaciecionym na 8 minut bez zadnego
+  // wpisu w logu tlumaczacego dlaczego.
+  try {
+    state.iter  = (state.iter || 0) + 1;
+    addLog(state, '--- Skan #' + state.iter + ' ---');
 
-  // Daily reset: zeruj dzienny PnL i startBalance o północy UTC
+    // Daily reset: zeruj dzienny PnL i startBalance o północy UTC
   const todayUTC = new Date().toISOString().slice(0, 10);
   if (state.dailyDate !== todayUTC) {
     state.dailyDate         = todayUTC;
@@ -445,9 +452,20 @@ async function runBotCycle(env) {
   } catch(e) {
     addLog(state, 'BŁĄD CYKLU: ' + e.message, 'err');
   }
-
-  state.cycleRunning = false;
-  await env.SWINGAI_KV.put('state', JSON.stringify(state));
+  } catch(e2) {
+    // Wyjatek gdziekolwiek POZA glowna logika skanu (reset dzienny, circuit
+    // breaker, ladowanie modeli AI) - wczesniej taki blad zostawialby blokade
+    // zaciecionym bez zadnego wpisu w logu. Teraz jest zawsze zalogowany.
+    addLog(state, 'BŁĄD CYKLU (poza glowna petla): ' + e2.message, 'err');
+  } finally {
+    // GWARANCJA: blokada zawsze zostaje zwolniona, niezaleznie od tego co
+    // wyzej rzucilo wyjatek. To jest siatka bezpieczenstwa uzupelniajaca
+    // samoczynne wygasanie po 8 min - teraz nie trzeba nawet czekac.
+    state.cycleRunning = false;
+    try {
+      await env.SWINGAI_KV.put('state', JSON.stringify(state));
+    } catch(e3) { /* jesli nawet to sie nie uda, 8-min stale-lock i tak zadziala */ }
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
