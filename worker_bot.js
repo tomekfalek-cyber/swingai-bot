@@ -9,17 +9,15 @@
 // Kraken public API jako zrodlo danych — nie blokuje CF Workers
 // Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC — mapowanie w mexcSymbol()
 // Uwaga: BTC w Kraken = XBT
-const PAIRS = ['XBTUSDT','ETHUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT'];
+const PAIRS = ['XBTUSDT','ETHUSDT','SOLUSDT','XRPUSDT','ADAUSDT'];
 const FEE   = 0.002;
 const TIMEOUT_MS = 7 * 24 * 3600000; // 7 dni
 
 const CORR_GROUPS = [
   ['XBTUSDT'],
   ['ETHUSDT'],
-  ['SOLUSDT','AVAXUSDT'],
-  ['XRPUSDT','ADAUSDT'],
-  ['DOGEUSDT'],
-  ['LINKUSDT']
+  ['SOLUSDT'],
+  ['XRPUSDT','ADAUSDT']
 ];
 
 const PAIR_PARAMS_DEFAULT = {
@@ -27,10 +25,7 @@ const PAIR_PARAMS_DEFAULT = {
   'ETHUSDT':  { tp:0.12, sl:0.05, minScore:60 },
   'SOLUSDT':  { tp:0.14, sl:0.06, minScore:58 },
   'XRPUSDT':  { tp:0.15, sl:0.06, minScore:58 },
-  'DOGEUSDT': { tp:0.18, sl:0.07, minScore:60 },
-  'ADAUSDT':  { tp:0.14, sl:0.06, minScore:58 },
-  'AVAXUSDT': { tp:0.14, sl:0.06, minScore:58 },
-  'LINKUSDT': { tp:0.14, sl:0.06, minScore:58 }
+  'ADAUSDT':  { tp:0.14, sl:0.06, minScore:58 }
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -201,7 +196,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: cfg.tgChat,
-              text: '👋 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP DOGE ADA AVAX LINK\nSkany co 1h przez Cloudflare Worker.',
+              text: '👋 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP ADA\nSkany co 1h przez Cloudflare Worker.',
               parse_mode: 'HTML'
             })
           }
@@ -2261,8 +2256,3 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
-
-
-
-
-
