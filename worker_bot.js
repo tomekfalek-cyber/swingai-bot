@@ -196,7 +196,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: cfg.tgChat,
-              text: '🤖 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP ADA\nSkany co 1h przez Cloudflare Worker.',
+              text: '🤖 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP ADA\nSkany co 10 min przez Cloudflare Worker.',
               parse_mode: 'HTML'
             })
           }
@@ -247,7 +247,7 @@ export default {
     if (url.pathname === '/status-public') {
       const state = await getState(env);
       const cfg   = await getConfig(env);
-      const nextCycle = state.nextCycle || (state.lastCycle ? state.lastCycle + 5 * 60 * 1000 : null);
+      const nextCycle = state.nextCycle || (state.lastCycle ? state.lastCycle + 10 * 60 * 1000 : null);
       return jsonResp({
         iter:        state.iter        || 0,
         lastCycle:   state.lastCycle   || null,
@@ -279,20 +279,22 @@ async function runBotCycle(env) {
   const state = await getState(env);
 
   // Zabezpieczenie przed rownoleglym uruchomieniem cyklu.
-  // Masz kilka niezaleznych zrodel wyzwalajacych /run: wlasny Cron Trigger Workera,
-  // watchdog (osobny Cron Trigger pingujacy /run) i reczny "Wymus skan". Bez tej
-  // blokady dwa cykle moga czytac i nadpisywac ten sam klucz KV 'state' rownolegle,
-  // co gubi zmiany (otwarte pozycje, iter, log) i objawia sie "zawieszeniem" az do
-  // recznego resetu. Blokada jest samoczynnie odblokowujaca sie (stale-lock) na
-  // wypadek gdyby poprzedni cykl padl w polowie i nigdy jej nie zdjal.
+  // Masz kilka niezaleznych zrodel wyzwalajacych /run: wlasny Cron Trigger Workera
+  // (co 10 min), watchdog (osobny Cron Trigger pingujacy /run, rowniez co 10 min)
+  // i reczny "Wymus skan". Bez tej blokady dwa cykle moga czytac i nadpisywac ten
+  // sam klucz KV 'state' rownolegle, co gubi zmiany (otwarte pozycje, iter, log)
+  // i objawia sie "zawieszeniem" az do recznego resetu. Blokada jest samoczynnie
+  // odblokowujaca sie (stale-lock) na wypadek gdyby poprzedni cykl padl w polowie
+  // i nigdy jej nie zdjal.
   const now = Date.now();
-  // WAZNE: 8 pairs x 3 interwaly klines x do 8s timeout kazdy + sleep(700ms) miedzy
-  // parami + checkPositions + F&G + BTC guard + saldo MEXC + Telegram = realistyczny
-  // NAJGORSZY (ale wciaz normalny, nie zawieszony) czas 1 cyklu moze dojsc do ok.
-  // 4-4.5 min przy wolnych odpowiedziach API. Poprzedni prog 4 min byl za blisko tej
-  // wartosci i mogl falszywie uznawac wciaz trwajacy, tylko wolny cykl za "zawieszony",
-  // pozwalajac nastepnemu triggerowi wystartowac rownolegle - czyli dokladnie problem,
-  // ktoremu ta blokada ma zapobiegac. 8 min daje bezpieczny zapas.
+  // WAZNE: 5 pairs x 3 interwaly klines + orderbook, kazde z retry do 3 prob na
+  // rate-limit Krakena (do +5s backoff na wywolanie) + sleep 400ms miedzy wywolaniami
+  // w analyzeSwing + sleep 700ms miedzy parami + checkPositions + F&G + BTC guard +
+  // saldo MEXC + Telegram = realistyczny NAJGORSZY (ale wciaz normalny, nie zawieszony)
+  // czas 1 cyklu moze dojsc do ok. 5-6 min przy wolnych/rate-limitowanych odpowiedziach
+  // API. Cron i watchdog teraz odpalaja co 10 min (zamiast 5) wlasnie po to, zeby ten
+  // NAJGORSZY czas mial pewny zapas przed kolejnym triggerem. Prog 8 min wciaz daje
+  // bezpieczny margines nad 10-minutowym interwalem triggerow.
   const STALE_LOCK_MS = 8 * 60 * 1000;
   if (state.cycleRunning && (now - (state.cycleStartedAt || 0)) < STALE_LOCK_MS) {
     return; // inny cykl juz trwa - pomijamy ten trigger, nie nadpisujemy jego pracy
@@ -441,7 +443,7 @@ async function runBotCycle(env) {
     }
 
     state.lastCycle = Date.now();
-    state.nextCycle  = Date.now() + 5 * 60 * 1000;
+    state.nextCycle  = Date.now() + 10 * 60 * 1000;
     addLog(state, 'Skan #' + state.iter + ' OK | poz: ' + (state.positions||[]).length + '/' + cfg.maxPos + ' | F&G:' + fg.val, 'ok');
 
   } catch(e) {
