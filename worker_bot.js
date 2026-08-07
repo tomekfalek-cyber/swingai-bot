@@ -1,13 +1,13 @@
-// SwingAI Bot 24/7 — Cloudflare Worker — MEXC VERSION
+// SwingAI Bot 24/7 – Cloudflare Worker – MEXC VERSION
 // Gielda: MEXC (spot) | Dane: Binance public API (Gate.io zaczal blokowac CF Workers HTTP403)
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 // KONFIGURACJA
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Bybit v5 public API jako zrodlo danych — brak auth, CF Workers nie blokowane
-// Kraken public API jako zrodlo danych — nie blokuje CF Workers
-// Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC — mapowanie w mexcSymbol()
+// ─────────────────────────────────────────────────────────────────────
+// Bybit v5 public API jako zrodlo danych – brak auth, CF Workers nie blokowane
+// Kraken public API jako zrodlo danych – nie blokuje CF Workers
+// Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC – mapowanie w mexcSymbol()
 // Uwaga: BTC w Kraken = XBT
 const PAIRS = ['XBTUSDT','ETHUSDT','SOLUSDT','XRPUSDT','ADAUSDT'];
 const FEE   = 0.002;
@@ -28,9 +28,9 @@ const PAIR_PARAMS_DEFAULT = {
   'ADAUSDT':  { tp:0.14, sl:0.06, minScore:58 }
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 // GŁÓWNY HANDLER
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runBotCycle(env));
@@ -41,11 +41,16 @@ export default {
     if (request.method === 'OPTIONS')
       return new Response(null, { status: 204, headers: corsHeaders() });
 
-    // ââ AUTENTYKACJA âââââââââââââââââââââââââââââââââââââââââââââââââ
-    const AUTH_SECRET = env.AUTH_SECRET || 'swingai-secret-2024';
+    // ── AUTENTYKACJA ──────────────────────────────────────────────────
+    // AUTH_SECRET MUSI byc ustawiony jako Cloudflare Worker secret
+    // (wrangler secret put AUTH_SECRET). Brak fallbacku na sztywna wartosc -
+    // gdyby ktos znal poprzedni domyslny string, mialby pelny dostep do
+    // /stop /delete-keys /start-live itd. Bez env.AUTH_SECRET caly non-public
+    // ruch jest odrzucany, zamiast dzialac z odgadnietym haslem.
+    const AUTH_SECRET = env.AUTH_SECRET;
     const authHeader  = request.headers.get('Authorization') || '';
     const authParam   = url.searchParams.get('auth') || '';
-    const isAuth = authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET;
+    const isAuth = !!AUTH_SECRET && (authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET);
     const publicPaths = ['/', '/status-public', '/market'];
     if (!isAuth && !publicPaths.includes(url.pathname)) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders() });
@@ -83,7 +88,7 @@ export default {
     if (url.pathname === '/save-config') {
       const p = url.searchParams;
       const cfg = await getConfig(env);
-      // Klucze API — zapisz tylko jeśli niepuste
+      // Klucze API – zapisz tylko jesli niepuste
       if (p.get('key'))  cfg.mexcApiKey = p.get('key');
       if (p.get('sec'))  cfg.mexcSecret = p.get('sec');
       if (p.get('tg'))   cfg.tgToken    = p.get('tg');
@@ -131,7 +136,7 @@ export default {
       if (cfg.mode !== 'mexc' || !cfg.mexcApiKey) {
         return jsonResp({ balance: null, mode: cfg.mode });
       }
-      // Pobierz świeże saldo z MEXC bezpośrednio — MEXC nie blokuje Cloudflare
+      // Pobierz świeże saldo z MEXC bezpośrednio – MEXC nie blokuje Cloudflare
       try {
         const fresh = await mexcGetBalance(cfg);
         return jsonResp({ balance: fresh, mode: 'live' });
@@ -150,15 +155,15 @@ export default {
     if (url.pathname === '/run') {
       const cfg = await getConfig(env);
       if (!cfg.active)
-        return new Response(redirectHTML('⚠️ Bot nieaktywny — uruchom najpierw'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+        return new Response(redirectHTML('⚠️ Bot nieaktywny – uruchom najpierw'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('🔄 Skan uruchomiony! Wróć za 30 sekund...'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('🚀 Skan uruchomiony! Wróć za 30 sekund...'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/status') {
       const cfg   = await getConfig(env);
       const state = await getState(env);
-      // Usuń klucze API z odpowiedzi — nigdy nie eksponuj secretów
+      // Usuń klucze API z odpowiedzi – nigdy nie eksponuj secretów
       const safeCfg = { ...cfg, mexcApiKey: cfg.mexcApiKey ? '***' : '', mexcSecret: cfg.mexcSecret ? '***' : '', tgToken: cfg.tgToken ? '***' : '' };
       return jsonResp({ config: safeCfg, state });
     }
@@ -196,7 +201,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: cfg.tgChat,
-              text: '👋 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP ADA\nSkany co 1h przez Cloudflare Worker.',
+              text: '🤖 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP ADA\nSkany co 1h przez Cloudflare Worker.',
               parse_mode: 'HTML'
             })
           }
@@ -222,7 +227,7 @@ export default {
       }
     }
 
-    // /market — publiczny proxy Kraken dla dashboard (wykresy świecowe)
+    // /market – publiczny proxy Kraken dla dashboard (wykresy świecowe)
     if (url.pathname === '/market') {
       const path = url.searchParams.get('path') || '';
       const qs   = url.searchParams.get('qs')   || '';
@@ -243,7 +248,7 @@ export default {
       }
     }
 
-    // /status-public — publiczny endpoint do pollingu UI (bez auth)
+    // /status-public – publiczny endpoint do pollingu UI (bez auth)
     if (url.pathname === '/status-public') {
       const state = await getState(env);
       const cfg   = await getConfig(env);
@@ -270,9 +275,9 @@ export default {
   }
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 // GŁÓWNA LOGIKA CYKLU
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 async function runBotCycle(env) {
   const cfg   = await getConfig(env);
   if (!cfg.active) return;
@@ -311,7 +316,7 @@ async function runBotCycle(env) {
     state.iter  = (state.iter || 0) + 1;
     addLog(state, '--- Skan #' + state.iter + ' ---');
 
-    // Daily reset: zeruj dzienny PnL i startBalance o północy UTC
+    // Daily reset: zeruj dzienny PnL i startBalance o pÃ³Ånocy UTC
   const todayUTC = new Date().toISOString().slice(0, 10);
   if (state.dailyDate !== todayUTC) {
     state.dailyDate         = todayUTC;
@@ -323,12 +328,12 @@ async function runBotCycle(env) {
   const currentBalance = cfg.mode === 'mexc'
     ? (state.liveBalance > 0 ? state.liveBalance : 0)
     : (state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000));
-  // Reset peakBalance gdy przełączono z paper na live — nie porównuj $19 live do $1000 paper
+  // Reset peakBalance gdy przeÅÄczono z paper na live â nie porÃ³wnuj $19 live do $1000 paper
   if (cfg.mode === 'mexc' && (!state.peakBalanceMode || state.peakBalanceMode !== 'live')) {
     state.peakBalance = currentBalance > 0 ? currentBalance : 0;
     state.peakBalanceMode = 'live';
-    state.drawdownBlock = 0; // skasuj blokadę paper przy starcie live
-    addLog(state, 'Circuit breaker reset — nowy peak live: $' + currentBalance.toFixed(2), 'ok');
+    state.drawdownBlock = 0; // skasuj blokadÄ paper przy starcie live
+    addLog(state, 'Circuit breaker reset â nowy peak live: $' + currentBalance.toFixed(2), 'ok');
   } else if (cfg.mode !== 'mexc' && state.peakBalanceMode === 'live') {
     state.peakBalanceMode = 'paper';
     state.peakBalance = currentBalance;
@@ -339,11 +344,11 @@ async function runBotCycle(env) {
     const drawdownBlocked = (state.drawdownBlock || 0) > Date.now();
     if (drawdown > 0.15 && !drawdownBlocked) {
       state.drawdownBlock = Date.now() + 24 * 3600000;
-      addLog(state, 'Circuit breaker: -15% drawdown ($' + state.peakBalance.toFixed(2) + ' → $' + currentBalance.toFixed(2) + ') — blokada BUY 24h', 'err');
+      addLog(state, 'Circuit breaker: -15% drawdown ($' + state.peakBalance.toFixed(2) + ' â $' + currentBalance.toFixed(2) + ') â blokada BUY 24h', 'err');
     }
   }
 
-  // Załaduj modele AI z KV
+  // ZaÅaduj modele AI z KV
   const nb  = makeNB(state.nb);
   const gbm = makeGBM(state.gbm);
   const ql  = makeQL(state.ql);
@@ -357,9 +362,9 @@ async function runBotCycle(env) {
 
     // 2. BTC Guard
     const btcDrop = await btcDropGuard();
-    if (btcDrop) addLog(state, 'BTC Guard aktywny — brak nowych long na altcoinach', 'warn');
+    if (btcDrop) addLog(state, 'BTC Guard aktywny â brak nowych long na altcoinach', 'warn');
 
-    // 3. Sprawdź otwarte pozycje
+    // 3. SprawdÅº otwarte pozycje
     await checkPositions(cfg, state, env, ql);
 
     // 4. Skanuj pary
@@ -384,17 +389,17 @@ async function runBotCycle(env) {
       aiMethod: s.aiMethod, regime: s.regime || 'neutral'
     }));
 
-    // 5. Otwórz pozycje
+    // 5. OtwÃ³rz pozycje
     const dailyBase = state.dailyStartBalance > 0 ? state.dailyStartBalance : (cfg.paperBalance || 1000);
     const dailyLossOk = (state.dailyPnl || 0) > -0.05 * dailyBase;
 
     if (fg.val < 15) {
-      addLog(state, 'F&G=' + fg.val + ' (ekstremalna panika) — blokada BUY', 'warn');
-      // explicit return — bez tego blokada była tylko kosmetyczna (logowała warning ale nie zatrzymywała pętli)
+      addLog(state, 'F&G=' + fg.val + ' (ekstremalna panika) â blokada BUY', 'warn');
+      // explicit return â bez tego blokada byÅa tylko kosmetyczna (logowaÅa warning ale nie zatrzymywaÅa pÄtli)
     } else if (!dailyLossOk) {
       addLog(state, 'Dzienny limit strat przekroczony (-5% od $' + dailyBase.toFixed(0) + ')', 'err');
     } else if ((state.drawdownBlock || 0) > Date.now()) {
-      addLog(state, 'Circuit breaker aktywny — brak nowych pozycji', 'warn');
+      addLog(state, 'Circuit breaker aktywny â brak nowych pozycji', 'warn');
     } else {
       for (const sig of sigs) {
         if ((state.positions || []).length >= cfg.maxPos) break;
@@ -404,7 +409,7 @@ async function runBotCycle(env) {
       }
     }
 
-    // 6. Zapisz modele AI — walk-forward retraining
+    // 6. Zapisz modele AI â walk-forward retraining
     const trades = state.trades || [];
     nb.trainFromTrades(trades);
 
@@ -437,7 +442,7 @@ async function runBotCycle(env) {
     if (cfg.mode === 'mexc' && cfg.mexcApiKey && cfg.mexcSecret) {
       try {
         state.liveBalance = await mexcGetBalance(cfg);
-      } catch(e) { /* MEXC niedostępne — zachowaj poprzednią wartość */ }
+      } catch(e) { /* MEXC niedostÄpne â zachowaj poprzedniÄ wartoÅÄ */ }
     }
 
     state.lastCycle = Date.now();
@@ -463,9 +468,9 @@ async function runBotCycle(env) {
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ANALIZA TECHNICZNA — MULTI-TF
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// ANALIZA TECHNICZNA – MULTI-TF
+// ─────────────────────────────────────────────────────────────────────
 // VWAP z ostatnich 50 świec 4H
 function calcVWAP(highs, lows, closes, volumes) {
   const n = Math.min(50, highs.length);
@@ -489,13 +494,13 @@ function calcSRLevels(highs, lows, price) {
     if (lows[i] < lows[i-1] && lows[i] < lows[i-2] && lows[i] < lows[i+1] && lows[i] < lows[i+2])
       pivotLows.push(lows[i]);
   }
-  // Posortuj i wybierz 3 najbliższe powyżej i 2 poniżej
+  // Posortuj i wybierz 3 najblizsze powyzej i 2 ponizej
   const above = pivotHighs.filter(v => v > price).sort((a,b) => a-b).slice(0,3);
   const below = pivotLows.filter(v => v < price).sort((a,b) => b-a).slice(0,2);
   return { above, below, all: [...above, ...below] };
 }
 
-// Wykryj reżim rynkowy
+// Wykryj rezim rynkowy
 function detectRegime(closes, atrD, ema50, ema200) {
   const price = closes.at(-1);
   const atrPct = atrD / price;
@@ -524,13 +529,13 @@ function calcStats(trades) {
 }
 
 async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore) {
-  // Pobierz timeframe'y sekwencyjnie — OKX rate limit
+  // Pobierz timeframe'y sekwencyjnie – Kraken rate limit
   const kd      = await getKlines(sym, 'D',   200);
-  await sleep(200);
+  await sleep(400);
   const k4h     = await getKlines(sym, '240', 100);
-  await sleep(200);
+  await sleep(400);
   const k1h     = await getKlines(sym, '60',  50);
-  await sleep(200);
+  await sleep(400);
   const obiData = await getOrderbook(sym);
 
   const pk = k => ({
@@ -543,7 +548,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   const d = pk(kd), h4 = pk(k4h), h1 = pk(k1h);
   const price = d.c.at(-1);
 
-  // ━━ Wskaźniki Daily
+  // ── Wskazniki Daily
   const rsiD   = rsi(d.c, 14);
   const macdD  = macdFull(d.c);
   const bbD    = bband(d.c, 20);
@@ -557,35 +562,35 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // Market Regime
   const regime = detectRegime(d.c, atrD, ema50, ema200);
 
-  // ━━ Wskaźniki 4H
+  // ── Wskazniki 4H
   const rsi4h  = rsi(h4.c, 14);
   const macd4h = macdFull(h4.c);
 
-  // ━━ Wskaźniki 1H
+  // ── Wskazniki 1H
   const rsi1h  = rsi(h1.c, 14);
   const macd1h = macdFull(h1.c);
   const confirm1h = macd1h.hist > 0 && rsi1h < 55;
 
-  // ━━ RSI Divergence
+  // ── RSI Divergence
   const rsiArrD  = rsiArray(d.c.slice(-40),  14);
   const rsiArr4h = rsiArray(h4.c.slice(-30), 14);
   const divD  = rsiDivergence(d.c.slice(-40),  rsiArrD,  38);
   const div4h = rsiDivergence(h4.c.slice(-30), rsiArr4h, 28);
 
-  // ━━ Trend
+  // ── Trend
   const trendD = price > ema200 ? (price > ema50 ? 2 : 1) : (price > ema50 ? 0 : -1);
 
-  // ━━ Volume
+  // ── Volume
   const _vSum20 = d.v.length >= 20 ? d.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
   const volR  = (_vSum20 > 0) ? d.v.at(-1) / (_vSum20/20) : 1;
   const _v4Sum20 = h4.v.length >= 20 ? h4.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
   const vol4R = (_v4Sum20 > 0) ? h4.v.at(-1) / (_v4Sum20/20) : 1;
 
-  // ━━ Momentum
+  // ── Momentum
   const mom5  = d.c.length > 5  ? (price / d.c.at(-6)  - 1) * 100 : 0;
   const mom10 = d.c.length > 10 ? (price / d.c.at(-11) - 1) * 100 : 0;
 
-  // ━━ Scoring
+  // ── Scoring
   let score = 0;
   const why = [];
 
@@ -608,12 +613,12 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if      (bbD.pos < 0.08) { score += 18; why.push('Cena przy dolnej BB'); }
   else if (bbD.pos < 0.20) { score += 13; why.push('BB dolna strefa'); }
   else if (bbD.pos < 0.35) { score += 6; }
-  else if (bbD.pos > 0.85) { score -= 10; why.push('BB górna — ryzyko'); }
+  else if (bbD.pos > 0.85) { score -= 10; why.push('BB górna – ryzyko'); }
 
-  if      (trendD === 2)  { score += 12; why.push('Ponad EMA50+200 — bull'); }
+  if      (trendD === 2)  { score += 12; why.push('Ponad EMA50+200 – bull'); }
   else if (trendD === 1)  { score += 8;  why.push('Ponad EMA200'); }
   else if (trendD === 0)  { score += 3; }
-  else                    { score -= 20; why.push('Poniżej EMA200 — bessa'); }
+  else                    { score -= 20; why.push('Ponizej EMA200 – bessa'); }
 
   if      (mom5 > 0 && mom10 < 0)    { score += 8; why.push('Momentum odwrócenie'); }
   else if (mom5 < -5 && mom10 < -10) { score += 5; why.push('Oversold momentum'); }
@@ -622,7 +627,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if (volR > 1.8 || vol4R > 2.0) { score += 5; why.push('Vol spike x' + Math.max(volR,vol4R).toFixed(1)); }
   else if (volR < 0.4)            { score -= 8; why.push('Niski wolumen'); }
 
-  if (macd4h.hist > 0 && macdD.hist > 0) { score += 5; why.push('MACD 4H+D zgodność'); }
+  if (macd4h.hist > 0 && macdD.hist > 0) { score += 5; why.push('MACD 4H+D zgodnosc'); }
   if (confirm1h)  { score += 5; why.push('1H potwierdza'); }
   else            { score -= 3; }
 
@@ -630,15 +635,15 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if      (divD.bull && div4h.bull) { score += 20; why.push('RSI dywergencja bycza D+4H'); }
   else if (divD.bull)               { score += 14; why.push('RSI dywergencja bycza Daily'); }
   else if (div4h.bull)              { score += 8;  why.push('RSI dywergencja bycza 4H'); }
-  if (divD.bear)  { score -= 12; why.push('RSI dywergen. niedźwiedzia Daily'); }
-  if (div4h.bear) { score -= 7;  why.push('RSI dywergen. niedźwiedzia 4H'); }
+  if (divD.bear)  { score -= 12; why.push('RSI dywergen. niedzwiedzia Daily'); }
+  if (div4h.bear) { score -= 7;  why.push('RSI dywergen. niedzwiedzia 4H'); }
 
   if (trendD === -1 && rsiD > 50) { score = Math.min(score, 15); why.push('BESSA: brak long'); }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
   // VWAP scoring
   if (price > vwap4h) { score += 8;  why.push('Ponad VWAP'); }
-  else                { score -= 5;  why.push('Poniżej VWAP'); }
+  else                { score -= 5;  why.push('Ponizej VWAP'); }
   score = Math.max(0, Math.min(100, score));
 
   // S/R scoring
@@ -651,18 +656,18 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // Regime scoring
   let regimeMinScoreAdj = 0;
   if (regime === 'sideways')   { regimeMinScoreAdj = 8; }
-  if (regime === 'bull_trend') { score += 5; why.push('Reżim: bull trend'); }
-  if (regime === 'bear_trend') { score -= 15; why.push('Reżim: bear trend'); }
-  if (regime === 'volatile')   { score -= 8;  why.push('Reżim: volatile'); }
+  if (regime === 'bull_trend') { score += 5; why.push('Rezim: bull trend'); }
+  if (regime === 'bear_trend') { score -= 15; why.push('Rezim: bear trend'); }
+  if (regime === 'volatile')   { score -= 8;  why.push('Rezim: volatile'); }
   score = Math.max(0, Math.min(100, score));
 
-  // ━━ Candlestick Patterns
+  // ── Candlestick Patterns
   const patResult = PATTERNS.detect(d.c, d.o, d.h, d.l);
   if (patResult.bullish > 0) {
     const volOk = volR >= 1.3;
     const eff   = volOk ? patResult.bullish : Math.floor(patResult.bullish * 0.5);
     score = Math.min(100, score + Math.min(15, eff * 6));
-    patResult.patterns.filter(p=>p.type==='bullish').forEach(p=>why.push(p.name + (volOk?'':' (słaby vol)')));
+    patResult.patterns.filter(p=>p.type==='bullish').forEach(p=>why.push(p.name + (volOk?'':' (slaby vol)')));
   }
   if (patResult.bearish > 0) {
     score = Math.max(0, score - Math.min(12, patResult.bearish * 5));
@@ -670,12 +675,12 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // ━━ OBI (Order Book Imbalance)
+  // ── OBI (Order Book Imbalance)
   const obiScore = calcOBI(obiData);
   if (obiScore > 0) { score = Math.min(100, score + obiScore); why.push('OBI bycze'); }
-  if (obiScore < 0) { score = Math.max(0,   score + obiScore); why.push('OBI niedźwiedzie'); }
+  if (obiScore < 0) { score = Math.max(0,   score + obiScore); why.push('OBI niedzwiedzie'); }
 
-  // ━━ ML Predictions
+  // ── ML Predictions
   const nbFeatures  = nb.discretize({ rsiD, macdHist: macdD.hist, bbPos: bbD.pos, trendD, mom5, confirm1h });
   const bodyRatio  = Math.abs(d.c.at(-1) - d.o.at(-1)) / (d.h.at(-1) - d.l.at(-1) + 0.001);
   const atrPctFeat = Math.min(1, atrD / price / 0.1);
@@ -690,11 +695,11 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   let qlBonus = 0;
   if (qlSugg) {
     if (qlSugg.action === 'BUY'  && qlSugg.confidence > 0.05) { qlBonus =  8; why.push('QL: BUY'); }
-    // HOLD jest neutralny — nie karamy za brak sygnału
+    // HOLD jest neutralny – nie karamy za brak sygnalu
     score = Math.max(0, Math.min(100, score + qlBonus));
   }
 
-  // ━━ Ensemble
+  // ── Ensemble
   let finalProb = score / 100;
   let aiMethod  = 'Score';
   const obiNorm = ((obiData.ratio || 0.5) - 0.3) / 0.4;
@@ -706,14 +711,14 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
        Math.max(0, Math.min(1, obiNorm)) * ew.obi +
        (qlSugg && qlSugg.action==='BUY' ? 1 : 0) * ew.ql) / wSum));
     aiMethod = 'Ensemble(Score+NB+GBM+OBI+QL)';
-    if (nbPred.label === 'SKIP' && gbmProb < 0.4) why.push('AI odradza wejście');
+    if (nbPred.label === 'SKIP' && gbmProb < 0.4) why.push('AI odradza wejscie');
   } else if (nb.trained) {
     const wSum = (ew.score + ew.nb + ew.obi) || 1;
     finalProb = (score/100 * ew.score + nbPred.prob * ew.nb + Math.max(0,Math.min(1,obiNorm)) * ew.obi) / wSum;
     aiMethod  = 'Score+NB+OBI';
   }
 
-  // ━━ Per-pair threshold
+  // ── Per-pair threshold
   const pp       = pairParams[sym] || PAIR_PARAMS_DEFAULT[sym] || null;
   const minScore = (pp ? pp.minScore : adaptiveMinScore) + regimeMinScoreAdj;
   const buy      = finalProb >= minScore / 100;
@@ -734,9 +739,9 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   };
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ZARZĄDZANIE POZYCJAMI
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// ZARZADZANIE POZYCJAMI
+// ─────────────────────────────────────────────────────────────────────
 async function checkPositions(cfg, state, env, ql) {
   const updated = [];
   for (const pos of (state.positions || [])) {
@@ -750,19 +755,24 @@ async function checkPositions(cfg, state, env, ql) {
       let reason = null;
 
       // Timeout 7 dni
-      // Po partial TP pos.sl = entry*(1+FEE*2) — break-even powyżej entry dla long.
-      // Sprawdzamy bezpośrednio cenę vs pos.sl zamiast liczyć pnlPct threshold (który byłby dodatni i nigdy nie wyzwoliłby SL).
+      // Po partial TP pos.sl = entry*(1+FEE*2) – break-even powyzej entry dla long.
+      // Sprawdzamy bezposrednio cene vs pos.sl zamiast liczyc pnlPct threshold (ktory bylby dodatni i nigdy nie wyzwolilby SL).
       if (Date.now() - pos.entryTs > TIMEOUT_MS) reason = 'TIMEOUT 7d';
       else if (price >= (pos.tp > 0 ? pos.tp : pos.entry * (1 + cfg.tp))) reason = 'TAKE PROFIT';
       else if (price <= (pos.partialClosed ? pos.sl : (pos.sl > 0 ? pos.sl : pos.entry * (1 - cfg.sl)))) reason = 'STOP LOSS';
       else if (price <= trail && pnlPct > 1.5)     reason = 'TRAILING STOP';
 
-      // Partial TP (50% pozycji przy połowie TP)
+      // Partial TP (50% pozycji przy polowie TP)
       const _tpPct6 = pos.tp > 0 ? (pos.tp - pos.entry) / pos.entry * 100 : cfg.tp * 100;
        if (!reason && pnlPct >= _tpPct6 * 0.5 && !pos.partialClosed) {
          const halfQty = pos.qty / 2;
-         const halfPnl = (price - pos.entry) * halfQty;
          const halfSize = pos.size / 2;
+         // Prowizja na czesciowym zamknieciu – identycznie jak w closePosition():
+         // FEE liczony od wejscia (halfSize) i od wyjscia (halfSize + grossPnl).
+         // Bez tego paperBalance byl zawyzany o pominieta prowizje na kazdym partial TP.
+         const grossPnl = (price - pos.entry) * halfQty;
+         const feeCost  = halfSize * FEE + (halfSize + grossPnl) * FEE;
+         const halfPnl  = grossPnl - feeCost;
          let partialOk = true;
          if (cfg.mode === 'mexc' && cfg.mexcApiKey) {
            try {
@@ -780,14 +790,18 @@ async function checkPositions(cfg, state, env, ql) {
            if (cfg.mode === 'paper') {
              state.paperBalance = (state.paperBalance || 0) + halfSize + halfPnl;
            }
-           addLog(state, 'PARTIAL TP ' + pos.sym + ' +$' + halfPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) → reszta jedzie dalej', 'ok');
+           // Partial TP wplywa na dzienny wynik tak samo jak pelne zamkniecie –
+           // bez tego dailyLossOk (limit -5%/dzien) i circuit breaker nie widzialy
+           // polowy kazdego zysku/straty zrealizowanej przez partial TP.
+           state.dailyPnl = (state.dailyPnl || 0) + halfPnl;
+           addLog(state, 'PARTIAL TP ' + pos.sym + ' +$' + halfPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) – reszta jedzie dalej', 'ok');
          }
        }
 
       if (reason) {
         const closed = await closePosition(pos, price, reason, cfg, state, ql);
         if (closed === false) {
-          // SELL FAILED — zachowaj pozycję
+          // SELL FAILED – zachowaj pozycje
           updated.push(pos);
         }
       } else {
@@ -811,8 +825,8 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     addLog(state, 'Globalna blokada aktywna', 'warn'); return;
   }
   if (isPumpDump(sig)) return;
-  if (isVolumeAnomaly(sig)) { addLog(state, 'Vol anomaly: ' + sig.sym + ' vol=' + sig.volR.toFixed(2) + 'x — pomijam', 'warn'); return; }
-  if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' — pomijam', 'warn'); return; }
+  if (isVolumeAnomaly(sig)) { addLog(state, 'Vol anomaly: ' + sig.sym + ' vol=' + sig.volR.toFixed(2) + 'x – pomijam', 'warn'); return; }
+  if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' – pomijam', 'warn'); return; }
 
   // BTC Guard
   if (btcDrop && sig.sym !== 'XBTUSDT') {
@@ -830,7 +844,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     const pp = (state.pairParams||{})[sig.sym] || PAIR_PARAMS_DEFAULT[sig.sym];
     const minSc = pp ? pp.minScore : (state.adaptiveMinScore || cfg.minScore);
     if (adjSig.finalProb < minSc / 100) {
-      addLog(state, 'F&G=' + fg.val + ' — po karze za słaby score pomijam ' + sig.sym, 'warn'); return;
+      addLog(state, 'F&G=' + fg.val + ' – po karze za slaby score pomijam ' + sig.sym, 'warn'); return;
     }
   }
 
@@ -840,10 +854,10 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
 
   // Micro account: max 1 pozycja naraz
   if (micro && (state.positions || []).length >= 1) {
-    addLog(state, 'Micro konto — czekam na zamkniecie obecnej pozycji', 'warn'); return;
+    addLog(state, 'Micro konto – czekam na zamkniecie obecnej pozycji', 'warn'); return;
   }
 
-  // Portfolio Heat check — tylko dla normalnych kont (>= 100$)
+  // Portfolio Heat check – tylko dla normalnych kont (>= 100$)
   if (!micro) {
     const totalRisk     = (state.positions || []).reduce((s, p) => {
       const slPct = p.partialClosed
@@ -853,7 +867,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     }, 0);
     const portfolioHeat = totalRisk / (total > 0 ? total : 1);
     if (portfolioHeat > 0.10) {
-      addLog(state, 'Portfolio heat >10% — blokada (' + (portfolioHeat*100).toFixed(1) + '%)', 'warn');
+      addLog(state, 'Portfolio heat >10% – blokada (' + (portfolioHeat*100).toFixed(1) + '%)', 'warn');
       return;
     }
   }
@@ -861,7 +875,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   const posSize  = kellySize(cfg, state, total);
   const minSize  = micro ? 1 : 10;
   if (posSize < minSize) {
-    addLog(state, 'Za mala pozycja (' + posSize.toFixed(2) + '$) — pomijam ' + sig.sym, 'warn'); return;
+    addLog(state, 'Za mala pozycja (' + posSize.toFixed(2) + '$) – pomijam ' + sig.sym, 'warn'); return;
   }
   const levels = calcDynamicLevels(adjSig.price, adjSig.atrD, cfg);
 
@@ -906,13 +920,13 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   const _pairName = adjSig.sym.replace('XBT','BTC').replace('USDT','').replace('USDC','');
   const _modeLabel = cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER (symulacja)';
   await tgSend(cfg,
-    '🟢 <b>SYGNAŁ KUPNA — ' + _pairName + '</b>\n\n' +
-    '💰 Cena wejścia: <b>$' + adjSig.price.toFixed(4) + '</b>\n' +
+    '🟢 <b>SYGNAL KUPNA – ' + _pairName + '</b>\n\n' +
+    '💰 Cena wejscia: <b>$' + adjSig.price.toFixed(4) + '</b>\n' +
     '💵 Rozmiar pozycji: <b>$' + posSize.toFixed(2) + '</b> (Kelly)\n' +
     '🎯 Take Profit: <b>$' + levels.tp.toFixed(4) + '</b>\n' +
     '🛑 Stop Loss: <b>$' + levels.sl.toFixed(4) + '</b>\n' +
     '⚖️ Zysk/Ryzyko: <b>' + levels.rr + '</b>\n\n' +
-    '📊 Wynik AI: <b>' + adjSig.score + '/100</b> | Pewność: <b>' + (adjSig.finalProb*100).toFixed(1) + '%</b>\n' +
+    '📊 Wynik AI: <b>' + adjSig.score + '/100</b> | Pewnosc: <b>' + (adjSig.finalProb*100).toFixed(1) + '%</b>\n' +
     '🤖 Metoda: ' + adjSig.aiMethod + '\n' +
     '📝 Powody: ' + adjSig.why.slice(0,4).join(', ') + '\n\n' +
     '🔧 Tryb: ' + _modeLabel);
@@ -941,7 +955,7 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
       await mexcMarketSell(pos.sym, pos.qty, cfg);
     } catch(e) {
       addLog(state, 'SELL FAILED ' + pos.sym + ': ' + e.message, 'err');
-      // Zwróć false żeby checkPositions mogło zachować pozycję w updated[]
+      // Zwroc false zeby checkPositions moglo zachowac pozycje w updated[]
       return false;
     }
   } else if (cfg.mode === 'paper') {
@@ -955,13 +969,13 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
     state.cooldown[pos.sym] = Date.now() + 12 * 3600000;
     if (state.consLoss >= 4) {
       state.globalBlockUntil = Date.now() + 3 * 3600000;
-      addLog(state, '4 straty z rzędu — blokada 3h', 'err');
+      addLog(state, '4 straty z rzedu – blokada 3h', 'err');
     }
   } else {
     state.consLoss = 0;
   }
 
-  // Q-Learning update — nagroda normalizowana do [-1, +1]
+  // Q-Learning update – nagroda normalizowana do [-1, +1]
   if (pos.qlSig && ql) {
     const reward = Math.max(-1, Math.min(1, pnlPct / 10));
     ql.update(pos.qlSig, 'BUY', reward, null);
@@ -981,7 +995,7 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
   const _closeSym = pos.sym.replace('XBT','BTC').replace('USDT','').replace('USDC','');
   const _reasonPL = reason === 'TAKE PROFIT' ? 'REALIZACJA ZYSKU' :
     reason === 'STOP LOSS' ? 'STOP LOSS AKTYWOWANY' :
-    reason === 'TRAILING STOP' ? 'STOP KROCZĄCY' :
+    reason === 'TRAILING STOP' ? 'STOP KROCZACY' :
     reason === 'TIMEOUT 7d' ? 'KONIEC CZASU (7 dni)' : reason;
   addLog(state,
     _closeIcon + ' ' + pos.sym + ' ' + reason +
@@ -990,16 +1004,16 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
     pnl >= 0 ? 'ok' : 'err');
 
   await tgSend(cfg,
-    _closeIcon + ' <b>' + _reasonPL + ' — ' + _closeSym + '</b>\n\n' +
+    _closeIcon + ' <b>' + _reasonPL + ' – ' + _closeSym + '</b>\n\n' +
     '💰 Wynik: <b>' + (pnl>=0?'+':'') + '$' + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</b>\n' +
     '⏱️ Czas trwania: ' + durH + 'h\n' +
-    '📊 Score wejścia: ' + pos.score + '/100\n' +
+    '📊 Score wejscia: ' + pos.score + '/100\n' +
     '🔧 Tryb: ' + (cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER'));
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// GUARDS — FILTRY BEZPIECZEŃSTWA
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// GUARDS – FILTRY BEZPIECZENSTWA
+// ─────────────────────────────────────────────────────────────────────
 function isPumpDump(sig) {
   if (sig.vol4R > 4.0) { return true; }
   if (sig.mom5  > 15)  { return true; }
@@ -1046,10 +1060,10 @@ function corrBlocked(sym, state) {
   return openInGroup >= 1;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 // RISK MANAGEMENT
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Micro account mode: balance < 100 → 1 pozycja, 90% kapitału, brak Kelly cap
+// ─────────────────────────────────────────────────────────────────────
+// Micro account mode: balance < 100 – 1 pozycja, 90% kapitalu, brak Kelly cap
 function isMicroAccount(total) { return (isFinite(total) && total > 0 && total < 100); }
 
 function kellySize(cfg, state, total) {
@@ -1060,11 +1074,11 @@ function kellySize(cfg, state, total) {
     return Math.max(1, Math.round(safeTotal * 0.90 * 100) / 100);
   }
 
-  // Auto-skalowanie: gdy saldo >= 500$ użyj 3% kapitału (nie stały cfg.posSize)
-  // Pozwala botowi inwestować proporcjonalnie do wzrostu portfela
+  // Auto-skalowanie: gdy saldo >= 500$ uzyj 3% kapitalu (nie staly cfg.posSize)
+  // Pozwala botowi inwestowac proporcjonalnie do wzrostu portfela
   const autoScale = safeTotal >= 500;
   const fixedSize = autoScale
-    ? Math.min(safeTotal * 0.03, safeTotal * 0.20)  // 3% kapitału, max 20% per pozycja
+    ? Math.min(safeTotal * 0.03, safeTotal * 0.20)  // 3% kapitalu, max 20% per pozycja
     : (cfg.posSize || 15);
 
   const trades    = (state.trades || []).slice(0, 30);
@@ -1105,9 +1119,9 @@ function computeAdaptiveMinScore(trades, baseMin) {
   return baseMin;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// FORMACJE ŚWIECOWE
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// FORMACJE SWIECOWE
+// ─────────────────────────────────────────────────────────────────────
 const PATTERNS = {
   detect(closes, opens, highs, lows) {
     const n = closes.length;
@@ -1126,15 +1140,15 @@ const PATTERNS = {
     const lowerSh = isUp(i) ? o[i]-l[i] : c[i]-l[i];
     const upperSh = isUp(i) ? h[i]-c[i] : h[i]-o[i];
     if (body(i) < atrVal*0.3 && lowerSh > body(i)*2 && upperSh < body(i)*0.5 && isDown(i-1)) {
-      patterns.push({ name:'Hammer', type:'bullish', strength:75, desc:'Silne odrzucenie w dół' });
+      patterns.push({ name:'Hammer', type:'bullish', strength:75, desc:'Silne odrzucenie w dol' });
     }
     // BULLISH ENGULFING
     if (isDown(i-1) && isUp(i) && o[i]<c[i-1] && c[i]>o[i-1] && body(i)>body(i-1)*1.1) {
-      patterns.push({ name:'Bullish Engulfing', type:'bullish', strength:82, desc:'Popyt przytłoczył podaż' });
+      patterns.push({ name:'Bullish Engulfing', type:'bullish', strength:82, desc:'Popyt przytloczyl podaz' });
     }
     // MORNING STAR
     if (n>=3 && isDown(i-2) && body(i-1)<atrVal*0.25 && isUp(i) && c[i]>(o[i-2]+c[i-2])/2) {
-      patterns.push({ name:'Morning Star', type:'bullish', strength:85, desc:'Odwrócenie trendu spadkowego' });
+      patterns.push({ name:'Morning Star', type:'bullish', strength:85, desc:'Odwrocenie trendu spadkowego' });
     }
     // DOJI
     if (body(i) < atrVal*0.1 && range(i) > atrVal*0.3) {
@@ -1143,7 +1157,7 @@ const PATTERNS = {
     }
     // PIERCING LINE
     if (isDown(i-1) && isUp(i) && o[i]<l[i-1] && c[i]>(o[i-1]+c[i-1])/2 && c[i]<o[i-1]) {
-      patterns.push({ name:'Piercing Line', type:'bullish', strength:70, desc:'Kupujący weszli po bessie' });
+      patterns.push({ name:'Piercing Line', type:'bullish', strength:70, desc:'Kupujacy weszli po bessie' });
     }
     // THREE WHITE SOLDIERS
     if (n>=3 && isUp(i) && isUp(i-1) && isUp(i-2) && c[i]>c[i-1] && c[i-1]>c[i-2] && body(i)>atrVal*0.4 && body(i-1)>atrVal*0.4) {
@@ -1153,11 +1167,11 @@ const PATTERNS = {
     const upperSh2 = isUp(i) ? h[i]-c[i] : h[i]-o[i];
     const lowerSh2 = isUp(i) ? o[i]-l[i] : c[i]-l[i];
     if (body(i)<atrVal*0.3 && upperSh2>body(i)*2 && lowerSh2<body(i)*0.5 && isUp(i-1)) {
-      patterns.push({ name:'Shooting Star', type:'bearish', strength:72, desc:'Ostrzeżenie przed korektą' });
+      patterns.push({ name:'Shooting Star', type:'bearish', strength:72, desc:'Ostrzezenie przed korekta' });
     }
     // BEARISH ENGULFING
     if (isUp(i-1) && isDown(i) && o[i]>c[i-1] && c[i]<o[i-1] && body(i)>body(i-1)*1.1) {
-      patterns.push({ name:'Bearish Engulfing', type:'bearish', strength:78, desc:'Podaż przejęła kontrolę' });
+      patterns.push({ name:'Bearish Engulfing', type:'bearish', strength:78, desc:'Podaz przejela kontrole' });
     }
 
     const bullish = patterns.filter(p=>p.type==='bullish').length;
@@ -1167,14 +1181,14 @@ const PATTERNS = {
   }
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MODUŁY AI/ML
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// MODULY AI/ML
+// ─────────────────────────────────────────────────────────────────────
 function rebalanceEnsemble(ew, nb, gbm, recentTrades) {
   if (!recentTrades || recentTrades.length < 10) return null;
   const newEw = { score: ew.score, nb: ew.nb, gbm: ew.gbm, obi: ew.obi, ql: ew.ql };
 
-  // NB accuracy: sprawdź czy zapisany nbLabel zgadza się z wynikiem
+  // NB accuracy: sprawdz czy zapisany nbLabel zgadza sie z wynikiem
   let nbCorrect = 0, nbTotal = 0;
   recentTrades.forEach(t => {
     if (!t.nbLabel) return;
@@ -1377,9 +1391,9 @@ function makeQL(saved) {
   return ql;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// WSKAŹNIKI TECHNICZNE
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// WSKAZNIKI TECHNICZNE
+// ─────────────────────────────────────────────────────────────────────
 function emaArr(arr, p) {
   if (!arr||!arr.length) return [0];
   const k=2/(p+1);
@@ -1431,8 +1445,8 @@ function rsiDivergence(prices, rsiArr, lookback=20) {
   const pS = prices.slice(-lookback), rS = rsiArr.slice(-lookback);
   const len = pS.length;
 
-  // Znajdź dwa lokalne minima ceny w oknie (bycza dywergencja)
-  // i dwa lokalne maksima ceny (niedźwiedzia dywergencja)
+  // Znajdz dwa lokalne minima ceny w oknie (bycza dywergencja)
+  // i dwa lokalne maksima ceny (niedzwiedzia dywergencja)
   const localMins = [], localMaxs = [];
   for (let i = 1; i < len - 1; i++) {
     if (pS[i] < pS[i-1] && pS[i] < pS[i+1]) localMins.push(i);
@@ -1441,14 +1455,14 @@ function rsiDivergence(prices, rsiArr, lookback=20) {
 
   let bull = false, bear = false;
 
-  // Bycza: drugie minimum ceny NIŻSZE niż pierwsze, ale RSI przy drugim WYŻSZE
+  // Bycza: drugie minimum ceny NIZSZE niz pierwsze, ale RSI przy drugim WYZSZE
   if (localMins.length >= 2) {
     const i1 = localMins[localMins.length - 2];
     const i2 = localMins[localMins.length - 1];
     if (pS[i2] < pS[i1] * 0.999 && rS[i2] > rS[i1] + 3) bull = true;
   }
 
-  // Niedźwiedzia: drugie maksimum ceny WYŻSZE niż pierwsze, ale RSI przy drugim NIŻSZE
+  // Niedzwiedzia: drugie maksimum ceny WYZSZE niz pierwsze, ale RSI przy drugim NIZSZE
   if (localMaxs.length >= 2) {
     const i1 = localMaxs[localMaxs.length - 2];
     const i2 = localMaxs[localMaxs.length - 1];
@@ -1484,9 +1498,9 @@ function atr(h, l, c, p=14) {
   return trs.slice(-p).reduce((a,b)=>a+b,0)/p;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MARKET DATA — BYBIT
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// MARKET DATA – KRAKEN (z retry + backoff na rate limit)
+// ─────────────────────────────────────────────────────────────────────
 function fetchWithTimeout(url, ms, opts) {
   ms = ms || 8000;
   const ctrl = new AbortController();
@@ -1495,16 +1509,42 @@ function fetchWithTimeout(url, ms, opts) {
   return fetch(url, fetchOpts).finally(() => clearTimeout(tid));
 }
 
+// Kraken zwraca blad "EGeneral:Too many requests" jako JSON 200 (nie HTTP 429),
+// dlatego retry musi sprawdzac d.error, nie tylko r.ok. Bez tego kazdy rate-limit
+// hit na BTC (najczesciej odpytywana para) po prostu wywalal cala analize tej
+// pary z cyklu (catch w petli PAIRS logowal warning i szedl dalej) - bot regularnie
+// "nie widzial" sygnalow na BTC. 3 próby z rosnacym opóznieniem (500/1500/3000ms)
+// dają Krakenowi czas na odblokowanie limitu zanim poddamy sie calkowicie.
+async function fetchKrakenWithRetry(url, tries) {
+  tries = tries || 3;
+  const delays = [500, 1500, 3000];
+  let lastErr;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      const r = await fetchWithTimeout(url, 8000);
+      if (!r.ok) { lastErr = new Error('HTTP ' + r.status); }
+      else {
+        const d = await r.json();
+        if (d.error && d.error.length > 0 && /too many requests/i.test(d.error[0])) {
+          lastErr = new Error('Kraken: ' + d.error[0]);
+        } else {
+          return d;
+        }
+      }
+    } catch(e) { lastErr = e; }
+    if (attempt < tries - 1) await sleep(delays[attempt] || 3000);
+  }
+  throw lastErr || new Error('Kraken: nieznany blad');
+}
+
 async function getKlines(sym, interval, limit) {
-  // Kraken public API — nie blokuje CF Workers
+  // Kraken public API – nie blokuje CF Workers
   // Interwaly: 1440=Daily, 240=4H, 60=1H, 30=30m, 15=15m (minuty)
   const ivMap = { 'D':'1440', '240':'240', '60':'60', '30':'30', '15':'15' };
   const iv = ivMap[interval] || '1440';
-  const r = await fetchWithTimeout(
+  const d = await fetchKrakenWithRetry(
     `https://api.kraken.com/0/public/OHLC?pair=${sym}&interval=${iv}&count=${limit}`
   );
-  if (!r.ok) throw new Error('getKlines HTTP ' + r.status + ' ' + sym);
-  const d = await r.json();
   if (d.error && d.error.length > 0) throw new Error('getKlines Kraken: ' + d.error[0] + ' ' + sym);
   const key = Object.keys(d.result || {}).find(k => k !== 'last');
   if (!key) throw new Error('getKlines: brak danych ' + sym);
@@ -1515,9 +1555,7 @@ async function getKlines(sym, interval, limit) {
 }
 
 async function getLastPrice(sym) {
-  const r = await fetchWithTimeout(`https://api.kraken.com/0/public/Ticker?pair=${sym}`);
-  if (!r.ok) throw new Error('getPrice HTTP ' + r.status);
-  const d = await r.json();
+  const d = await fetchKrakenWithRetry(`https://api.kraken.com/0/public/Ticker?pair=${sym}`);
   if (d.error && d.error.length > 0) throw new Error('getPrice Kraken: ' + d.error[0]);
   const key = Object.keys(d.result || {})[0];
   if (!key) throw new Error('getPrice: brak danych ' + sym);
@@ -1526,9 +1564,7 @@ async function getLastPrice(sym) {
 
 async function getOrderbook(sym) {
   try {
-    const r = await fetchWithTimeout(`https://api.kraken.com/0/public/Depth?pair=${sym}&count=10`);
-    if (!r.ok) return { ratio: 0.5 };
-    const d = await r.json();
+    const d = await fetchKrakenWithRetry(`https://api.kraken.com/0/public/Depth?pair=${sym}&count=10`, 2);
     if (d.error && d.error.length > 0) return { ratio: 0.5 };
     const key = Object.keys(d.result || {})[0];
     if (!key) return { ratio: 0.5 };
@@ -1563,9 +1599,9 @@ async function getFearGreed(state) {
   } catch(e) { return cache; }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 // MEXC TRADING
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 async function mexcSign(params, cfg) {
   const ts = String(Date.now());
   const qs = params + '&timestamp=' + ts;
@@ -1579,8 +1615,8 @@ async function mexcSign(params, cfg) {
 // mexcSymbol: konwertuje symbol Kraken (XBTUSDT) na symbol MEXC spot (BTCUSDC)
 function mexcSymbol(sym) { return sym.replace('_','').replace('XBT','BTC').replace('USDT','USDC'); }
 
-// MEXC wymaga różnej precyzji ilości dla każdej pary
-// sym może być XBTUSDT (Kraken) lub BTCUSDC (MEXC) — obsługujemy oba
+// MEXC wymaga roznej precyzji ilosci dla kazdej pary
+// sym moze byc XBTUSDT (Kraken) lub BTCUSDC (MEXC) – obslugujemy oba
 function mexcQtyPrecision(sym) {
   if (sym.includes('DOGE') || sym.includes('SHIB') || sym.includes('XRP') || sym.includes('ADA')) return 0;
   if (sym.includes('BTC') || sym.includes('XBT')) return 5;
@@ -1631,9 +1667,9 @@ async function mexcGetBalance(cfg) {
   return usdc ? +usdc.free : 0;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 // TELEGRAM
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 async function tgSend(cfg, msg) {
   if (!cfg.tgToken || !cfg.tgChat) return;
   try {
@@ -1645,9 +1681,9 @@ async function tgSend(cfg, msg) {
   } catch(e) {}
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 // KV HELPERS
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
 async function getConfig(env) {
   try { const c=await env.SWINGAI_KV.get('config'); return c?JSON.parse(c):defaultConfig(); }
   catch(e) { return defaultConfig(); }
@@ -1673,18 +1709,18 @@ function addLog(state, msg, type='info') {
 }
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// DASHBOARD HTML — SERVER-SIDE RENDER
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─────────────────────────────────────────────────────────────────────
+// DASHBOARD HTML – SERVER-SIDE RENDER
+// ─────────────────────────────────────────────────────────────────────
 async function dashboardHTML(cfg, state, env) {
   // Pobierz HTML z GitHub, z cache w Cache API Workera (TTL 5 minut).
-  // WAZNE: uzywamy Cache API (caches.default), NIE KV — Cache API nie liczy sie
+  // WAZNE: uzywamy Cache API (caches.default), NIE KV – Cache API nie liczy sie
   // do dziennego limitu 1000 zapisow KV na darmowym planie Cloudflare. Poprzednio
   // ten cache pisal do KV (2 zapisy za kazdym razem gdy wygasal, co przy czestym
-  // odswiezaniu strony moglo dawac do ~576 zapisow/dobe SAMEGO cache'a HTML —
+  // odswiezaniu strony moglo dawac do ~576 zapisow/dobe SAMEGO cache'a HTML –
   // razem z cyklem handlowym (~576/dobe) to przekraczalo limit 1000/dobe i
   // powodowalo, ze KV zaczynalo odrzucac zapisy do konca dnia (do resetu o
-  // 00:00 UTC) — obserwowane jako "bot przerywa prace raz na dobe".
+  // 00:00 UTC) – obserwowane jako "bot przerywa prace raz na dobe".
   let html;
   const CACHE_URL = 'https://swingai-internal-cache/dashboard-html-v1';
   const CACHE_TTL_S = 300; // 5 minut
@@ -1704,10 +1740,10 @@ async function dashboardHTML(cfg, state, env) {
       await cache.put(cacheKey, respToCache);
     }
   } catch(e) {
-    if (!html) return '<html><body style="background:#020810;color:#ff3d5a;font-family:sans-serif;padding:40px"><h2>Błąd pobierania frontendu</h2><p>' + e.message + '</p><p><a href="/" style="color:#2d8fff">Odśwież</a></p></body></html>';
+    if (!html) return '<html><body style="background:#020810;color:#ff3d5a;font-family:sans-serif;padding:40px"><h2>Blad pobierania frontendu</h2><p>' + e.message + '</p><p><a href="/" style="color:#2d8fff">Odswiez</a></p></body></html>';
   }
 
-  // Dane bota do wstrzyknięcia
+  // Dane bota do wstrzykniecia
   const botState = JSON.stringify({
     active:       cfg.active || false,
     mode:         cfg.mode || 'paper',
@@ -1731,7 +1767,11 @@ async function dashboardHTML(cfg, state, env) {
     exchange:     'MEXC'
   });
 
-  // Zapisane dane dostępowe (przekazujemy je do frontendu żeby wypełnić formularz)
+  // Zapisane dane dostepowe (przekazujemy je do frontendu zeby wypelnic formularz)
+  // UWAGA: BOT_TOKEN NIE jest tu wstrzykiwany do klienta - patrz ponizej,
+  // akcje stanowe (start/stop/save/delete) teraz ida przez POST z tokenem
+  // wpisywanym recznie w panelu, a nie hardcoded w HTML wysylanym do kazdego
+  // odwiedzajacego publiczny dashboard.
   const savedCreds = JSON.stringify({
     tgToken:        cfg.tgToken    ? '***SAVED***' : '',
     tgChat:         cfg.tgChat     || '',
@@ -1745,12 +1785,26 @@ async function dashboardHTML(cfg, state, env) {
   // -- CLOUDFLARE WORKER INJECTION ----------------------------------
   (function() {
     const BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
-    const BOT_TOKEN = 'swingai-secret-2024';
     const BOT_STATE = ${botState.replace(/<\/script>/gi, '<\\/script>')};
     const SAVED_CREDS = ${savedCreds.replace(/<\/script>/gi, '<\\/script>')};
 
+    // -- Token panelu: wpisywany recznie, trzymany tylko w sessionStorage
+    // tej przegladarki. Nie ma go w zadnym pliku HTML/JS wysylanym z serwera,
+    // wiec "Wyswietl kod strony" na publicznym dashboardzie nikomu go nie pokaze.
+    function _getPanelToken() {
+      try { return sessionStorage.getItem('swingai_panel_token') || ''; } catch(e) { return ''; }
+    }
+    function _setPanelToken(t) {
+      try { sessionStorage.setItem('swingai_panel_token', t); } catch(e) {}
+    }
+    window._swingaiPromptToken = function() {
+      var t = prompt('Wpisz token dostepu do panelu bota:');
+      if (t) _setPanelToken(t.trim());
+      return _getPanelToken();
+    };
+
     // -- KROK 0: Synchronizacja iter PRZED loadAll() ----------------
-    // loadAll() wczytuje swingai_v3 z localStorage — wpisujemy iter z KV
+    // loadAll() wczytuje swingai_v3 z localStorage – wpisujemy iter z KV
     // zanim loadAll() sie wykona, zeby kazde urzadzenie widzialo ten sam numer.
     if (BOT_STATE.active && BOT_STATE.iter) {
       try {
@@ -1775,18 +1829,31 @@ async function dashboardHTML(cfg, state, env) {
         if (c.mode === 'okx') { c.mode = 'mexc'; c.exchange = 'mexc'; }
         if (c.exchange === 'binance' || c.exchange === 'okx' || !c.exchange) c.exchange = 'mexc';
         localStorage.setItem('swingai_cfg_v3', JSON.stringify(c));
-        // Zaktualizuj żywy obiekt CFG (loadAll() już się wykonał)
+        // Zaktualizuj zywy obiekt CFG (loadAll() juz sie wykonal)
         if (typeof CFG !== 'undefined') {
           CFG.workerUrl = c.workerUrl;
           if (CFG.exchange === 'binance' || CFG.exchange === 'okx' || !CFG.exchange) CFG.exchange = 'mexc';
         }
       } catch(e) {}
 
-      // -- Przepisz linki /start-*/stop/run — dodaj token -----------
+      // -- Przepisz linki /start-*/stop/run – zamien na akcje POST z tokenem --
+      // Poprzednio to byly zwykle linki GET z tokenem w URL (?auth=...) - ryzyko
+      // przypadkowego wywolania (prefetch, crawler, klik) i wycieku tokena w logach/
+      // historii. Teraz klik pyta o token (jednorazowo, cache w sessionStorage)
+      // i wysyla POST.
       document.querySelectorAll('a[href]').forEach(function(a) {
         var href = a.getAttribute('href');
         if (href && (href.startsWith('/start') || href === '/stop' || href === '/run' || href.startsWith('/delete'))) {
-          a.href = BOT_BASE + href + (href.includes('?') ? '&' : '?') + 'auth=' + BOT_TOKEN;
+          a.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            var tok = _getPanelToken() || window._swingaiPromptToken();
+            if (!tok) return;
+            fetch(BOT_BASE + href, { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } })
+              .then(function() { location.reload(); })
+              .catch(function(e) { alert('Blad: ' + e.message); });
+          });
+          a.removeAttribute('href');
+          a.style.cursor = 'pointer';
         }
       });
 
@@ -1830,29 +1897,30 @@ async function dashboardHTML(cfg, state, env) {
         } catch(e) {}
       }, 400);
 
-      // -- saveSettings: sync do Workera ----------------------------
+      // -- saveSettings: sync do Workera (POST + token z prompta) ---
       var _origSaveSettings = window.saveSettings;
       window.saveSettings = function() {
         if (_origSaveSettings) _origSaveSettings.apply(this, arguments);
         try {
-          var params = new URLSearchParams();
-          params.set('auth', BOT_TOKEN);
           var tgTok = document.getElementById('cfg-tg-token');
           var tgCht = document.getElementById('cfg-tg-chat');
           var okxK  = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
           var okxS  = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
+          var body = {};
           var anyNew = false;
-          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { params.set('tg', tgTok.value.trim()); anyNew = true; }
-          if (tgCht && tgCht.value.trim()) { params.set('tgc', tgCht.value.trim()); anyNew = true; }
-          if (okxK  && okxK.value.trim())  { params.set('key', okxK.value.trim());  anyNew = true; }
-          if (okxS  && okxS.value.trim())  { params.set('sec', okxS.value.trim());  anyNew = true; }
+          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { body.tg = tgTok.value.trim(); anyNew = true; }
+          if (tgCht && tgCht.value.trim()) { body.tgc = tgCht.value.trim(); anyNew = true; }
+          if (okxK  && okxK.value.trim())  { body.key = okxK.value.trim();  anyNew = true; }
+          if (okxS  && okxS.value.trim())  { body.sec = okxS.value.trim();  anyNew = true; }
           if (anyNew) {
-            var hasTg = params.has('tg') || (tgCht && tgCht.value.trim());
-            fetch(BOT_BASE + '/save-config?' + params.toString())
+            var tok = _getPanelToken() || window._swingaiPromptToken();
+            if (!tok) return;
+            var hasTg = !!body.tg || (tgCht && tgCht.value.trim());
+            fetch(BOT_BASE + '/save-config', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
               .then(function() {
                 var stEl = document.getElementById('cfg-status');
                 if (stEl) { stEl.textContent = 'Zapisano + synchronizacja z chmura OK'; stEl.style.color = 'var(--green)'; }
-                if (hasTg) setTimeout(function() { fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){}); }, 1500);
+                if (hasTg) setTimeout(function() { fetch(BOT_BASE + '/send-welcome', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } }).catch(function(){}); }, 1500);
               })
               .catch(function(e) { console.warn('Sync z Workerem nieudana:', e); });
           }
@@ -1864,27 +1932,30 @@ async function dashboardHTML(cfg, state, env) {
       window._origStopBot  = window.stopBot;
 
       window.startBot = function() {
+        var tok = _getPanelToken() || window._swingaiPromptToken();
+        if (!tok) return;
         var isLive = typeof CFG !== 'undefined' && CFG.mode === 'mexc' && CFG.mexcApiKey;
-        var startUrl;
+        var startPath, body;
         if (isLive) {
-          var p = new URLSearchParams();
-          p.set('auth', BOT_TOKEN);
-          p.set('key',   CFG.mexcApiKey  || '');
-          p.set('sec',   CFG.mexcSecret  || '');
-          p.set('tp',    ((CFG.tp   || 0.12)*100).toFixed(1));
-          p.set('sl',    ((CFG.sl   || 0.05)*100).toFixed(1));
-          p.set('trail', ((CFG.trail|| 0.06)*100).toFixed(1));
-          p.set('score', String(CFG.minScore || 58));
-          p.set('maxp',  String(CFG.maxPos   || 4));
-          p.set('size',  String(CFG.posSize  || 15));
-          if (CFG.tgToken) { p.set('tg', CFG.tgToken); p.set('tgc', CFG.tgChat||''); }
-          startUrl = BOT_BASE + '/start-live?' + p.toString();
+          body = {
+            key:   CFG.mexcApiKey  || '',
+            sec:   CFG.mexcSecret  || '',
+            tp:    ((CFG.tp   || 0.12)*100).toFixed(1),
+            sl:    ((CFG.sl   || 0.05)*100).toFixed(1),
+            trail: ((CFG.trail|| 0.06)*100).toFixed(1),
+            score: String(CFG.minScore || 58),
+            maxp:  String(CFG.maxPos   || 4),
+            size:  String(CFG.posSize  || 15)
+          };
+          if (CFG.tgToken) { body.tg = CFG.tgToken; body.tgc = CFG.tgChat||''; }
+          startPath = '/start-live';
         } else {
-          startUrl = BOT_BASE + '/start-paper?auth=' + BOT_TOKEN;
+          body = {};
+          startPath = '/start-paper';
         }
-        fetch(startUrl)
+        fetch(BOT_BASE + startPath, { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
           .then(function() {
-            // Wazne: NIE ustawiamy running = true — lokalny botCycle nie ma ruszac
+            // Wazne: NIE ustawiamy running = true – lokalny botCycle nie ma ruszac
             if (typeof running !== 'undefined') running = false;
             var btnRun = document.getElementById('btn-run');
             var btnStop = document.getElementById('btn-stop');
@@ -1905,7 +1976,9 @@ async function dashboardHTML(cfg, state, env) {
       };
 
       window.stopBot = function() {
-        fetch(BOT_BASE + '/stop?auth=' + BOT_TOKEN)
+        var tok = _getPanelToken() || window._swingaiPromptToken();
+        if (!tok) return;
+        fetch(BOT_BASE + '/stop', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } })
           .then(function() {
             if (typeof running !== 'undefined') running = false;
             if (typeof botTimer !== 'undefined' && botTimer) { clearTimeout(botTimer); botTimer = null; }
@@ -1925,7 +1998,9 @@ async function dashboardHTML(cfg, state, env) {
 
       // -- forceScan: wywolaj Worker /run zamiast lokalnego cyklu ---
       window.forceScan = function() {
-        fetch(BOT_BASE + '/run?auth=' + BOT_TOKEN)
+        var tok = _getPanelToken() || window._swingaiPromptToken();
+        if (!tok) return;
+        fetch(BOT_BASE + '/run', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } })
           .then(function() {
             var el = document.getElementById('scan-progress');
             if (el) el.textContent = 'Skan zlecony Worker... odswiedz za 35s';
@@ -1991,7 +2066,7 @@ async function dashboardHTML(cfg, state, env) {
 
           _renderSigsFromServer(bs.lastSigs);
 
-          // Zatrzymaj lokalny bot — nie duplikuj skanow
+          // Zatrzymaj lokalny bot – nie duplikuj skanow
           if (typeof running !== 'undefined') running = false;
           if (typeof botTimer !== 'undefined' && botTimer) { clearTimeout(botTimer); botTimer = null; }
 
@@ -2029,8 +2104,8 @@ async function dashboardHTML(cfg, state, env) {
                 var txt = Math.floor(left/60) + 'm ' + (left%60) + 's';
                 var el2 = document.getElementById('rb-next');
                 var ci  = document.getElementById('cycle-info');
-                if (el2) el2.textContent = left > 0 ? txt : 'za chwilę...';
-                if (ci)  ci.textContent  = left > 0 ? 'skan za ' + txt : 'skan za chwilę...';
+                if (el2) el2.textContent = left > 0 ? txt : 'za chwile...';
+                if (ci)  ci.textContent  = left > 0 ? 'skan za ' + txt : 'skan za chwile...';
               }, 1000);
           }
 
@@ -2046,7 +2121,7 @@ async function dashboardHTML(cfg, state, env) {
           }
           if (bs.lastFG) {
             var rbFg = document.getElementById('rb-fg');
-            if (rbFg) { rbFg.textContent = bs.lastFG.val + ' — ' + bs.lastFG.label; rbFg.className = 'val ' + (bs.lastFG.val < 25 ? 'dn' : bs.lastFG.val < 40 ? 'gold' : 'up'); }
+            if (rbFg) { rbFg.textContent = bs.lastFG.val + ' – ' + bs.lastFG.label; rbFg.className = 'val ' + (bs.lastFG.val < 25 ? 'dn' : bs.lastFG.val < 40 ? 'gold' : 'up'); }
           }
 
           var logArea = document.getElementById('log-area');
@@ -2067,7 +2142,7 @@ async function dashboardHTML(cfg, state, env) {
       }
 
       // -- Auto-poll /status-public co 60s -------------------------
-      // Pobiera aktualny iter z KV — jednakowy numer na wszystkich urzadzeniach
+      // Pobiera aktualny iter z KV – jednakowy numer na wszystkich urzadzeniach
       function _workerPoll() {
         fetch(BOT_BASE + '/status-public')
           .then(function(r){ return r.json(); })
@@ -2104,13 +2179,13 @@ async function dashboardHTML(cfg, state, env) {
                   var txt = Math.floor(left/60) + 'm ' + (left%60) + 's';
                   var rnEl = document.getElementById('rb-next');
                   var ciEl = document.getElementById('cycle-info');
-                  if (rnEl) rnEl.textContent = left > 0 ? txt : 'za chwilę...';
-                  if (ciEl) ciEl.textContent = left > 0 ? 'skan za ' + txt : 'skan za chwilę...';
+                  if (rnEl) rnEl.textContent = left > 0 ? txt : 'za chwile...';
+                  if (ciEl) ciEl.textContent = left > 0 ? 'skan za ' + txt : 'skan za chwile...';
                 }, 1000);
             }
             if (data.lastFG) {
               var rbFg2 = document.getElementById('rb-fg');
-              if (rbFg2) { rbFg2.textContent = data.lastFG.val + ' — ' + data.lastFG.label; rbFg2.className = 'val ' + (data.lastFG.val < 25 ? 'dn' : data.lastFG.val < 40 ? 'gold' : 'up'); }
+              if (rbFg2) { rbFg2.textContent = data.lastFG.val + ' – ' + data.lastFG.label; rbFg2.className = 'val ' + (data.lastFG.val < 25 ? 'dn' : data.lastFG.val < 40 ? 'gold' : 'up'); }
             }
             if (data.log && data.log.length > 0) {
               var logArea3 = document.getElementById('log-area');
@@ -2130,7 +2205,7 @@ async function dashboardHTML(cfg, state, env) {
           .catch(function(){});
       }
 
-      // Uruchom polling zawsze — niezaleznie od BOT_STATE.active (dziala tez po restarcie w nowej przegladarce)
+      // Uruchom polling zawsze – niezaleznie od BOT_STATE.active (dziala tez po restarcie w nowej przegladarce)
       setTimeout(function() { _applyWorkerState(BOT_STATE); }, 600);
       setInterval(_workerPoll, 60000);
       setTimeout(_workerPoll, 1500);
@@ -2145,13 +2220,13 @@ async function dashboardHTML(cfg, state, env) {
   // -- END INJECTION -----------------------------------------------
 `;
 
-  // Wstrzyknij tuz po "let CFG = {" — uzywamy funkcji zamiast stringa aby replace() nie interpretowal znakow specjalnych
+  // Wstrzyknij tuz po "let CFG = {" – uzywamy funkcji zamiast stringa aby replace() nie interpretowal znakow specjalnych
   html = html.replace(
     "let CFG = {",
     function() { return injection + "\nlet CFG = {"; }
   );
 
-  // Podmień conn-badge bezpośrednio w HTML — zanim przeglądarka wyrenderuje stronę
+  // Podmien conn-badge bezposrednio w HTML – zanim przegladarka wyrenderuje strone
   if (cfg.active) {
     html = html.replace(
       '<span id="conn-badge" class="badge boff">OFFLINE</span>',
@@ -2163,7 +2238,7 @@ async function dashboardHTML(cfg, state, env) {
     );
   }
 
-  // Podmień openSettings — pola z kluczami w KV pokazują zielony placeholder
+  // Podmien openSettings – pola z kluczami w KV pokazuja zielony placeholder
   html = html.replace(
     "function openSettings() {\n  gi('cfg-key').value      = CFG.apiKey||'';\n  gi('cfg-secret').value   = CFG.secret||'';\n  gi('cfg-worker').value   = CFG.workerUrl||'';\n  gi('cfg-mode').value     = CFG.mode;\n  gi('cfg-byb-key').value    = CFG.bybApiKey||'';\n  gi('cfg-byb-secret').value = CFG.bybSecret||'';\n  gi('cfg-byb-worker').value = CFG.bybWorker||'';\n  gi('cfg-mexc-key').value     = CFG.mexcApiKey||CFG.okxApiKey||'';\n  gi('cfg-mexc-secret').value  = CFG.mexcSecret||CFG.okxSecret||'';\n  gi('cfg-mexc-worker').value  = CFG.mexcWorker||CFG.workerUrl||'';",
     `function openSettings() {
@@ -2186,49 +2261,20 @@ async function dashboardHTML(cfg, state, env) {
   // (okxPassSet usuniete)
   // (okxPassphrase usuniete)
   // MEXC nie uzywa okxWorker - pominiete
-  // TG — analogicznie
+  // TG – analogicznie
   if (sc.tgTokenSet) {
-    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = '✓ Token zapisany w chmurze (wpisz nowy aby zmienić)'; gi('cfg-tg-token').style.borderColor='var(--green)';
+    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = '✓ Token zapisany w chmurze (wpisz nowy aby zmienic)'; gi('cfg-tg-token').style.borderColor='var(--green)';
   } else { gi('cfg-tg-token').value = CFG.tgToken||''; gi('cfg-tg-token').style.borderColor=''; }`
   );
 
-  // Podmień saveCfg() w saveSettings — dodaj sync do Workera i wysyłkę powitania
+  // Podmien saveCfg() w saveSettings – dodaj sync do Workera i wysylke powitania
   html = html.replace(
     "saveCfg();\n  gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';",
     `saveCfg();
-  // ââ WORKER SYNC ââ
-  (function() {
-    var BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
-    var BOT_TOKEN = 'swingai-secret-2024';
-    var params = new URLSearchParams();
-    params.set('auth', BOT_TOKEN);
-    var tgTok = (gi('cfg-tg-token').value||'').trim();
-    var tgCht = (gi('cfg-tg-chat').value||'').trim();
-    var okxK  = (gi('cfg-mexc-key') ? gi('cfg-mexc-key') : (gi('cfg-okx-key') || {value:''})).value.trim();
-    var okxS  = (gi('cfg-mexc-secret') ? gi('cfg-mexc-secret') : (gi('cfg-okx-secret') || {value:''})).value.trim();
-    var okxP  = ''; // MEXC nie uzywa passphrase
-    var hasTg = (typeof SAVED_CREDS !== 'undefined') ? SAVED_CREDS.tgTokenSet : false;
-    if (tgTok) { params.set('tg', tgTok); hasTg = true; }
-    if (tgCht) { params.set('tgc', tgCht); hasTg = true; }
-    if (okxK)  params.set('key',  okxK);
-    if (okxS)  params.set('sec',  okxS);
-    // okxP/pass - MEXC nie uzywa passphrase - pominiete
-    fetch(BOT_BASE + '/save-config?' + params.toString())
-      .then(function() {
-        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurą ✓';
-        gi('cfg-status').style.color = 'var(--green)';
-        if (hasTg) {
-          setTimeout(function() {
-            fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){});
-          }, 1200);
-        }
-      })
-      .catch(function() {});
-  })();
   gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';`
   );
 
-  // Dodaj badge bota w nagłówku (tuż przed </div> zamykającym #hdr-stats)
+  // Dodaj badge bota w naglowku (tuz przed </div> zamykajacym #hdr-stats)
   const botBadgeHtml = `<div id="bot-status-badge" style="font-size:7.5pt;padding:2px 9px;border-radius:6px;background:rgba(0,229,160,.12);color:var(--green);font-weight:700;white-space:nowrap;margin-left:4px">${cfg.active ? '24h BOT: AKTYWNY' : '24h BOT: OFF'}</div>`;
   html = html.replace('</div>\n</div>\n\n<!-- MAIN -->\n<div id="main">', botBadgeHtml + '\n</div>\n</div>\n\n<!-- MAIN -->\n<div id="main">');
 
