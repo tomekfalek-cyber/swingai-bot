@@ -42,15 +42,10 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders() });
 
     // ── AUTENTYKACJA ──────────────────────────────────────────────────
-    // AUTH_SECRET MUSI byc ustawiony jako Cloudflare Worker secret
-    // (wrangler secret put AUTH_SECRET). Brak fallbacku na sztywna wartosc -
-    // gdyby ktos znal poprzedni domyslny string, mialby pelny dostep do
-    // /stop /delete-keys /start-live itd. Bez env.AUTH_SECRET caly non-public
-    // ruch jest odrzucany, zamiast dzialac z odgadnietym haslem.
-    const AUTH_SECRET = env.AUTH_SECRET;
+    const AUTH_SECRET = env.AUTH_SECRET || 'swingai-secret-2024';
     const authHeader  = request.headers.get('Authorization') || '';
     const authParam   = url.searchParams.get('auth') || '';
-    const isAuth = !!AUTH_SECRET && (authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET);
+    const isAuth = authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET;
     const publicPaths = ['/', '/status-public', '/market'];
     if (!isAuth && !publicPaths.includes(url.pathname)) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders() });
@@ -1768,10 +1763,6 @@ async function dashboardHTML(cfg, state, env) {
   });
 
   // Zapisane dane dostepowe (przekazujemy je do frontendu zeby wypelnic formularz)
-  // UWAGA: BOT_TOKEN NIE jest tu wstrzykiwany do klienta - patrz ponizej,
-  // akcje stanowe (start/stop/save/delete) teraz ida przez POST z tokenem
-  // wpisywanym recznie w panelu, a nie hardcoded w HTML wysylanym do kazdego
-  // odwiedzajacego publiczny dashboard.
   const savedCreds = JSON.stringify({
     tgToken:        cfg.tgToken    ? '***SAVED***' : '',
     tgChat:         cfg.tgChat     || '',
@@ -1785,23 +1776,9 @@ async function dashboardHTML(cfg, state, env) {
   // -- CLOUDFLARE WORKER INJECTION ----------------------------------
   (function() {
     const BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
+    const BOT_TOKEN = 'swingai-secret-2024';
     const BOT_STATE = ${botState.replace(/<\/script>/gi, '<\\/script>')};
     const SAVED_CREDS = ${savedCreds.replace(/<\/script>/gi, '<\\/script>')};
-
-    // -- Token panelu: wpisywany recznie, trzymany tylko w sessionStorage
-    // tej przegladarki. Nie ma go w zadnym pliku HTML/JS wysylanym z serwera,
-    // wiec "Wyswietl kod strony" na publicznym dashboardzie nikomu go nie pokaze.
-    function _getPanelToken() {
-      try { return sessionStorage.getItem('swingai_panel_token') || ''; } catch(e) { return ''; }
-    }
-    function _setPanelToken(t) {
-      try { sessionStorage.setItem('swingai_panel_token', t); } catch(e) {}
-    }
-    window._swingaiPromptToken = function() {
-      var t = prompt('Wpisz token dostepu do panelu bota:');
-      if (t) _setPanelToken(t.trim());
-      return _getPanelToken();
-    };
 
     // -- KROK 0: Synchronizacja iter PRZED loadAll() ----------------
     // loadAll() wczytuje swingai_v3 z localStorage – wpisujemy iter z KV
@@ -1836,24 +1813,11 @@ async function dashboardHTML(cfg, state, env) {
         }
       } catch(e) {}
 
-      // -- Przepisz linki /start-*/stop/run – zamien na akcje POST z tokenem --
-      // Poprzednio to byly zwykle linki GET z tokenem w URL (?auth=...) - ryzyko
-      // przypadkowego wywolania (prefetch, crawler, klik) i wycieku tokena w logach/
-      // historii. Teraz klik pyta o token (jednorazowo, cache w sessionStorage)
-      // i wysyla POST.
+      // -- Przepisz linki /start-*/stop/run – dodaj token -----------
       document.querySelectorAll('a[href]').forEach(function(a) {
         var href = a.getAttribute('href');
         if (href && (href.startsWith('/start') || href === '/stop' || href === '/run' || href.startsWith('/delete'))) {
-          a.addEventListener('click', function(ev) {
-            ev.preventDefault();
-            var tok = _getPanelToken() || window._swingaiPromptToken();
-            if (!tok) return;
-            fetch(BOT_BASE + href, { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } })
-              .then(function() { location.reload(); })
-              .catch(function(e) { alert('Blad: ' + e.message); });
-          });
-          a.removeAttribute('href');
-          a.style.cursor = 'pointer';
+          a.href = BOT_BASE + href + (href.includes('?') ? '&' : '?') + 'auth=' + BOT_TOKEN;
         }
       });
 
@@ -1897,30 +1861,29 @@ async function dashboardHTML(cfg, state, env) {
         } catch(e) {}
       }, 400);
 
-      // -- saveSettings: sync do Workera (POST + token z prompta) ---
+      // -- saveSettings: sync do Workera ----------------------------
       var _origSaveSettings = window.saveSettings;
       window.saveSettings = function() {
         if (_origSaveSettings) _origSaveSettings.apply(this, arguments);
         try {
+          var params = new URLSearchParams();
+          params.set('auth', BOT_TOKEN);
           var tgTok = document.getElementById('cfg-tg-token');
           var tgCht = document.getElementById('cfg-tg-chat');
           var okxK  = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
           var okxS  = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
-          var body = {};
           var anyNew = false;
-          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { body.tg = tgTok.value.trim(); anyNew = true; }
-          if (tgCht && tgCht.value.trim()) { body.tgc = tgCht.value.trim(); anyNew = true; }
-          if (okxK  && okxK.value.trim())  { body.key = okxK.value.trim();  anyNew = true; }
-          if (okxS  && okxS.value.trim())  { body.sec = okxS.value.trim();  anyNew = true; }
+          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { params.set('tg', tgTok.value.trim()); anyNew = true; }
+          if (tgCht && tgCht.value.trim()) { params.set('tgc', tgCht.value.trim()); anyNew = true; }
+          if (okxK  && okxK.value.trim())  { params.set('key', okxK.value.trim());  anyNew = true; }
+          if (okxS  && okxS.value.trim())  { params.set('sec', okxS.value.trim());  anyNew = true; }
           if (anyNew) {
-            var tok = _getPanelToken() || window._swingaiPromptToken();
-            if (!tok) return;
-            var hasTg = !!body.tg || (tgCht && tgCht.value.trim());
-            fetch(BOT_BASE + '/save-config', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            var hasTg = params.has('tg') || (tgCht && tgCht.value.trim());
+            fetch(BOT_BASE + '/save-config?' + params.toString())
               .then(function() {
                 var stEl = document.getElementById('cfg-status');
                 if (stEl) { stEl.textContent = 'Zapisano + synchronizacja z chmura OK'; stEl.style.color = 'var(--green)'; }
-                if (hasTg) setTimeout(function() { fetch(BOT_BASE + '/send-welcome', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } }).catch(function(){}); }, 1500);
+                if (hasTg) setTimeout(function() { fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){}); }, 1500);
               })
               .catch(function(e) { console.warn('Sync z Workerem nieudana:', e); });
           }
@@ -1932,28 +1895,25 @@ async function dashboardHTML(cfg, state, env) {
       window._origStopBot  = window.stopBot;
 
       window.startBot = function() {
-        var tok = _getPanelToken() || window._swingaiPromptToken();
-        if (!tok) return;
         var isLive = typeof CFG !== 'undefined' && CFG.mode === 'mexc' && CFG.mexcApiKey;
-        var startPath, body;
+        var startUrl;
         if (isLive) {
-          body = {
-            key:   CFG.mexcApiKey  || '',
-            sec:   CFG.mexcSecret  || '',
-            tp:    ((CFG.tp   || 0.12)*100).toFixed(1),
-            sl:    ((CFG.sl   || 0.05)*100).toFixed(1),
-            trail: ((CFG.trail|| 0.06)*100).toFixed(1),
-            score: String(CFG.minScore || 58),
-            maxp:  String(CFG.maxPos   || 4),
-            size:  String(CFG.posSize  || 15)
-          };
-          if (CFG.tgToken) { body.tg = CFG.tgToken; body.tgc = CFG.tgChat||''; }
-          startPath = '/start-live';
+          var p = new URLSearchParams();
+          p.set('auth', BOT_TOKEN);
+          p.set('key',   CFG.mexcApiKey  || '');
+          p.set('sec',   CFG.mexcSecret  || '');
+          p.set('tp',    ((CFG.tp   || 0.12)*100).toFixed(1));
+          p.set('sl',    ((CFG.sl   || 0.05)*100).toFixed(1));
+          p.set('trail', ((CFG.trail|| 0.06)*100).toFixed(1));
+          p.set('score', String(CFG.minScore || 58));
+          p.set('maxp',  String(CFG.maxPos   || 4));
+          p.set('size',  String(CFG.posSize  || 15));
+          if (CFG.tgToken) { p.set('tg', CFG.tgToken); p.set('tgc', CFG.tgChat||''); }
+          startUrl = BOT_BASE + '/start-live?' + p.toString();
         } else {
-          body = {};
-          startPath = '/start-paper';
+          startUrl = BOT_BASE + '/start-paper?auth=' + BOT_TOKEN;
         }
-        fetch(BOT_BASE + startPath, { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        fetch(startUrl)
           .then(function() {
             // Wazne: NIE ustawiamy running = true – lokalny botCycle nie ma ruszac
             if (typeof running !== 'undefined') running = false;
@@ -1976,9 +1936,7 @@ async function dashboardHTML(cfg, state, env) {
       };
 
       window.stopBot = function() {
-        var tok = _getPanelToken() || window._swingaiPromptToken();
-        if (!tok) return;
-        fetch(BOT_BASE + '/stop', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } })
+        fetch(BOT_BASE + '/stop?auth=' + BOT_TOKEN)
           .then(function() {
             if (typeof running !== 'undefined') running = false;
             if (typeof botTimer !== 'undefined' && botTimer) { clearTimeout(botTimer); botTimer = null; }
@@ -1998,9 +1956,7 @@ async function dashboardHTML(cfg, state, env) {
 
       // -- forceScan: wywolaj Worker /run zamiast lokalnego cyklu ---
       window.forceScan = function() {
-        var tok = _getPanelToken() || window._swingaiPromptToken();
-        if (!tok) return;
-        fetch(BOT_BASE + '/run', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tok } })
+        fetch(BOT_BASE + '/run?auth=' + BOT_TOKEN)
           .then(function() {
             var el = document.getElementById('scan-progress');
             if (el) el.textContent = 'Skan zlecony Worker... odswiedz za 35s';
@@ -2271,6 +2227,35 @@ async function dashboardHTML(cfg, state, env) {
   html = html.replace(
     "saveCfg();\n  gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';",
     `saveCfg();
+  // ── WORKER SYNC ──
+  (function() {
+    var BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
+    var BOT_TOKEN = 'swingai-secret-2024';
+    var params = new URLSearchParams();
+    params.set('auth', BOT_TOKEN);
+    var tgTok = (gi('cfg-tg-token').value||'').trim();
+    var tgCht = (gi('cfg-tg-chat').value||'').trim();
+    var okxK  = (gi('cfg-mexc-key') ? gi('cfg-mexc-key') : (gi('cfg-okx-key') || {value:''})).value.trim();
+    var okxS  = (gi('cfg-mexc-secret') ? gi('cfg-mexc-secret') : (gi('cfg-okx-secret') || {value:''})).value.trim();
+    var okxP  = ''; // MEXC nie uzywa passphrase
+    var hasTg = (typeof SAVED_CREDS !== 'undefined') ? SAVED_CREDS.tgTokenSet : false;
+    if (tgTok) { params.set('tg', tgTok); hasTg = true; }
+    if (tgCht) { params.set('tgc', tgCht); hasTg = true; }
+    if (okxK)  params.set('key',  okxK);
+    if (okxS)  params.set('sec',  okxS);
+    // okxP/pass - MEXC nie uzywa passphrase - pominiete
+    fetch(BOT_BASE + '/save-config?' + params.toString())
+      .then(function() {
+        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurą ✓';
+        gi('cfg-status').style.color = 'var(--green)';
+        if (hasTg) {
+          setTimeout(function() {
+            fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){});
+          }, 1200);
+        }
+      })
+      .catch(function() {});
+  })();
   gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';`
   );
 
