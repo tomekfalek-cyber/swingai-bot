@@ -295,7 +295,19 @@ async function runBotCycle(env) {
   // API. Cron i watchdog teraz odpalaja co 10 min (zamiast 5) wlasnie po to, zeby ten
   // NAJGORSZY czas mial pewny zapas przed kolejnym triggerem. Prog 8 min wciaz daje
   // bezpieczny margines nad 10-minutowym interwalem triggerow.
-  const STALE_LOCK_MS = 8 * 60 * 1000;
+  // WAZNE: od niedawna kazde zapytanie do Krakena ma wbudowany retry (do 3 prob,
+  // opoznienia 500/1500/3000ms) na wypadek rate-limitu - to dobra poprawka, ale
+  // oznacza, ze POJEDYNCZE zapytanie moze teraz trwac do ~29s w najgorszym razie
+  // (3x do 8s timeout + odczekiwanie miedzy probami), zamiast max 8s wczesniej.
+  // Przy 5 parach x 4 zapytania (Daily+4H+1H+orderbook) = 20 zapytan/cykl, jesli
+  // Kraken zacznie limitowac, najgorszy czas SAMEGO pobierania danych moze dojsc
+  // do ~10 minut, nie liczac reszty logiki (checkPositions, F&G, BTC guard, MEXC,
+  // Telegram). Poprzedni prog 8 min byl za krotki wobec tego nowego najgorszego
+  // przypadku - cykl spowolniony przez retry moglby zostac falszywie uznany za
+  // "zawieszony" i kolejny trigger (co 10 min) wystartowalby rownolegle, co
+  // objawia sie dlugotrwalym (nawet ponad godzine) chaotycznym nakladaniem sie
+  // cykli. 20 minut daje bezpieczny zapas (2 pelne interwaly triggera).
+  const STALE_LOCK_MS = 20 * 60 * 1000;
   if (state.cycleRunning && (now - (state.cycleStartedAt || 0)) < STALE_LOCK_MS) {
     return; // inny cykl juz trwa - pomijamy ten trigger, nie nadpisujemy jego pracy
   }
