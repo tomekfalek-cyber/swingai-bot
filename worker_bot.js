@@ -258,6 +258,7 @@ export default {
         liveBalance: state.liveBalance || null,
         lastFG:      state.lastFG      || { val:50, label:'Neutral' },
         lastSigs:    state.lastSigs    || [],
+        mode:        cfg.mode          || 'paper',
         log:         (state.log        || []).slice(0, 10)
       });
     }
@@ -2085,6 +2086,17 @@ async function dashboardHTML(cfg, state, env) {
           if (rbProxy)    { rbProxy.textContent = BOT_BASE; rbProxy.className = 'val up'; }
           var rbMode = document.getElementById('rb-mode');
           if (rbMode && bs.mode) { rbMode.textContent = bs.mode === 'mexc' ? 'LIVE (MEXC)' : bs.mode.toUpperCase(); rbMode.className = bs.mode === 'mexc' ? 'val up' : 'val'; }
+          // Synchronizuj tez glowny mode-badge (byl czytany tylko z lokalnego CFG.mode
+          // w localStorage przegladarki - stad ta sama strona pokazywala rozne tryby
+          // na roznych urzadzeniach, mimo ze realny tryb jest jeden, na serwerze).
+          if (bs.mode) {
+            if (typeof CFG !== 'undefined') CFG.mode = bs.mode;
+            var modeBadgeEl = document.getElementById('mode-badge');
+            if (modeBadgeEl) {
+              modeBadgeEl.textContent = bs.mode === 'mexc' ? 'LIVE' : bs.mode.toUpperCase();
+              modeBadgeEl.className   = bs.mode === 'paper' ? 'badge bwarn' : 'badge bon';
+            }
+          }
           if (bs.liveBalance != null) {
             var rbBal = document.getElementById('rb-live-bal') || document.getElementById('rb-balance');
             if (rbBal) { rbBal.textContent = '$' + Number(bs.liveBalance).toFixed(2) + ' (MEXC)'; rbBal.className = 'val up'; }
@@ -2121,6 +2133,14 @@ async function dashboardHTML(cfg, state, env) {
             var iterEl = document.getElementById('rb-iter');
             if (iterEl) iterEl.textContent = data.iter;
             _renderSigsFromServer(data.lastSigs);
+            if (data.mode) {
+              if (typeof CFG !== 'undefined') CFG.mode = data.mode;
+              var modeBadgeEl2 = document.getElementById('mode-badge');
+              if (modeBadgeEl2) {
+                modeBadgeEl2.textContent = data.mode === 'mexc' ? 'LIVE' : data.mode.toUpperCase();
+                modeBadgeEl2.className   = data.mode === 'paper' ? 'badge bwarn' : 'badge bon';
+              }
+            }
             try {
               var raw2 = localStorage.getItem('swingai_v3');
               var st2  = raw2 ? JSON.parse(raw2) : {};
