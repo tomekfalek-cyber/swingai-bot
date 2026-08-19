@@ -2166,6 +2166,10 @@ async function dashboardHTML(cfg, state, env) {
               }
               _toggleBalanceRows(data.mode);
             }
+            if (data.mode === 'mexc' && data.liveBalance != null) {
+              var rbBal2 = document.getElementById('rb-live-bal') || document.getElementById('rb-balance');
+              if (rbBal2) { rbBal2.textContent = '$' + Number(data.liveBalance).toFixed(2) + ' (MEXC)'; rbBal2.className = 'val up'; }
+            }
             try {
               var raw2 = localStorage.getItem('swingai_v3');
               var st2  = raw2 ? JSON.parse(raw2) : {};
