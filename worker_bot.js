@@ -1984,6 +1984,20 @@ async function dashboardHTML(cfg, state, env) {
       // (uzywana zarowno przy pelnym zaladowaniu strony, jak i przy kazdym
       // okresowym pollingu /status-public - bez tego lista sygnalow nigdy
       // nie odswiezala sie sama, tylko przy recznym przeladowaniu strony)
+      // Ukrywa niewlasciwe (myslace) pole salda zaleznie od trybu - wczesniej
+      // "Paper saldo" i "Saldo LIVE (MEXC)" byly widoczne jednoczesnie zawsze,
+      // co mylilo: w trybie live nadal widac bylo stara, wirtualna wartosc
+      // Paper obok prawdziwego salda MEXC, latwo bylo pomylic ktore jest realne.
+      function _toggleBalanceRows(mode) {
+        var paperRow = document.getElementById('rb-paper');
+        var liveRow  = document.getElementById('rb-live-bal');
+        paperRow = paperRow ? paperRow.closest('.r2') : null;
+        liveRow  = liveRow  ? liveRow.closest('.r2')  : null;
+        var isLive = (mode === 'mexc');
+        if (paperRow) paperRow.style.display = isLive ? 'none' : '';
+        if (liveRow)  liveRow.style.display  = isLive ? '' : 'none';
+      }
+
       function _renderSigsFromServer(rawSigs) {
         if (!rawSigs || !rawSigs.length || typeof renderSigList !== 'function') return;
         var sigs = rawSigs.map(function(s) {
@@ -2096,6 +2110,7 @@ async function dashboardHTML(cfg, state, env) {
               modeBadgeEl.textContent = bs.mode === 'mexc' ? 'LIVE' : bs.mode.toUpperCase();
               modeBadgeEl.className   = bs.mode === 'paper' ? 'badge bwarn' : 'badge bon';
             }
+            _toggleBalanceRows(bs.mode);
           }
           if (bs.liveBalance != null) {
             var rbBal = document.getElementById('rb-live-bal') || document.getElementById('rb-balance');
@@ -2140,6 +2155,7 @@ async function dashboardHTML(cfg, state, env) {
                 modeBadgeEl2.textContent = data.mode === 'mexc' ? 'LIVE' : data.mode.toUpperCase();
                 modeBadgeEl2.className   = data.mode === 'paper' ? 'badge bwarn' : 'badge bon';
               }
+              _toggleBalanceRows(data.mode);
             }
             try {
               var raw2 = localStorage.getItem('swingai_v3');
