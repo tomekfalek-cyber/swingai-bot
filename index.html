@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -4614,12 +4614,17 @@ function riskBarHtml(kellySzanse, pct) {
       .then(function(d) {
         if (d.balance === null || d.balance === undefined) return;
         var bal = d.balance;
+        var isLive = d.mode === 'live';
         var hU = document.getElementById('h-usdc');
-        var rP = document.getElementById('rb-paper');
+        // W trybie live saldo musi isc do #rb-live-bal, nie #rb-paper - ten drugi
+        // wiersz jest wtedy ukryty przez _toggleBalanceRows(), wiec swiezo pobrane
+        // realne saldo MEXC nigdzie sie nie wyswietlalo (widac bylo tylko stara,
+        // jednorazowa wartosc z chwili wczytania strony).
+        var rP = document.getElementById(isLive ? 'rb-live-bal' : 'rb-paper');
         if (hU) hU.textContent = '$' + bal.toFixed(2);
-        if (rP) rP.textContent = '$' + bal.toFixed(2);
-        if (typeof ST !== 'undefined' && d.mode !== 'live') ST.paperBal = bal;
-        if (d.mode === 'live') {
+        if (rP) rP.textContent = '$' + bal.toFixed(2) + (isLive ? ' (MEXC)' : '');
+        if (typeof ST !== 'undefined' && !isLive) ST.paperBal = bal;
+        if (isLive) {
           var mb = document.getElementById('mode-badge');
           var sm = document.getElementById('st-mode');
           var rm = document.getElementById('rb-mode');
