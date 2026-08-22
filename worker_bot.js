@@ -1,13 +1,13 @@
-// SwingAI Bot 24/7 â€“ Cloudflare Worker â€“ MEXC VERSION
+// SwingAI Bot 24/7 – Cloudflare Worker – MEXC VERSION
 // Gielda: MEXC (spot) | Dane: Binance public API (Gate.io zaczal blokowac CF Workers HTTP403)
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // KONFIGURACJA
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Bybit v5 public API jako zrodlo danych â€“ brak auth, CF Workers nie blokowane
-// Kraken public API jako zrodlo danych â€“ nie blokuje CF Workers
-// Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC â€“ mapowanie w mexcSymbol()
+// ─────────────────────────────────────────────────────────────────────
+// Bybit v5 public API jako zrodlo danych – brak auth, CF Workers nie blokowane
+// Kraken public API jako zrodlo danych – nie blokuje CF Workers
+// Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC – mapowanie w mexcSymbol()
 // Uwaga: BTC w Kraken = XBT
 const PAIRS = ['XBTUSDT','ETHUSDT','SOLUSDT','XRPUSDT','ADAUSDT'];
 const FEE   = 0.002;
@@ -28,9 +28,9 @@ const PAIR_PARAMS_DEFAULT = {
   'ADAUSDT':  { tp:0.14, sl:0.06, minScore:58 }
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// GĹĂ“WNY HANDLER
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
+// GŁÓWNY HANDLER
+// ─────────────────────────────────────────────────────────────────────
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runBotCycle(env));
@@ -41,7 +41,7 @@ export default {
     if (request.method === 'OPTIONS')
       return new Response(null, { status: 204, headers: corsHeaders() });
 
-    // â”€â”€ AUTENTYKACJA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── AUTENTYKACJA ──────────────────────────────────────────────────
     const AUTH_SECRET = env.AUTH_SECRET || 'swingai-secret-2024';
     const authHeader  = request.headers.get('Authorization') || '';
     const authParam   = url.searchParams.get('auth') || '';
@@ -57,7 +57,7 @@ export default {
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       await env.SWINGAI_KV.put('state',  JSON.stringify(defaultState()));
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('âś… Bot PAPER uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('✅ Bot PAPER uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/start-live') {
@@ -77,19 +77,19 @@ export default {
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       await env.SWINGAI_KV.put('state',  JSON.stringify(defaultState()));
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('âś… Bot LIVE uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('✅ Bot LIVE uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/save-config') {
       const p = url.searchParams;
       const cfg = await getConfig(env);
-      // Tryb handlu â€“ zmiana PAPER<->MEXC bez resetu stanu (positions/trades/log),
+      // Tryb handlu – zmiana PAPER<->MEXC bez resetu stanu (positions/trades/log),
       // w odroznieniu od /start-live i /start-paper, ktore zerowaly cala historie.
-      // Bez tego przelacznik trybu w ustawieniach na dashboardzie nic nie robil â€“
+      // Bez tego przelacznik trybu w ustawieniach na dashboardzie nic nie robil –
       // saveSettings() nigdy nie wysylal trybu do Workera, wiec KV zostawal na
       // 'paper' nawet po wybraniu MEXC live w interfejsie.
       if (p.get('mode') === 'paper' || p.get('mode') === 'mexc') cfg.mode = p.get('mode');
-      // Klucze API â€“ zapisz tylko jesli niepuste
+      // Klucze API – zapisz tylko jesli niepuste
       if (p.get('key'))  cfg.mexcApiKey = p.get('key');
       if (p.get('sec'))  cfg.mexcSecret = p.get('sec');
       if (p.get('tg'))   cfg.tgToken    = p.get('tg');
@@ -116,7 +116,7 @@ export default {
       }
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       const label = which === 'mexc' ? 'klucze MEXC' : which === 'tg' ? 'Telegram' : 'wszystkie klucze';
-      return new Response(redirectHTML('đź—‘ď¸Ź UsuniÄ™to: ' + label), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('🗑️ Usunięto: ' + label), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/test-exchange') {
@@ -137,7 +137,7 @@ export default {
       if (cfg.mode !== 'mexc' || !cfg.mexcApiKey) {
         return jsonResp({ balance: null, mode: cfg.mode });
       }
-      // Pobierz Ĺ›wieĹĽe saldo z MEXC bezpoĹ›rednio â€“ MEXC nie blokuje Cloudflare
+      // Pobierz świeże saldo z MEXC bezpośrednio – MEXC nie blokuje Cloudflare
       try {
         const fresh = await mexcGetBalance(cfg);
         return jsonResp({ balance: fresh, mode: 'live' });
@@ -150,21 +150,21 @@ export default {
       const cfg = await getConfig(env);
       cfg.active = false;
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
-      return new Response(redirectHTML('âŹą Bot zatrzymany'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('⏹ Bot zatrzymany'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/run') {
       const cfg = await getConfig(env);
       if (!cfg.active)
-        return new Response(redirectHTML('âš ď¸Ź Bot nieaktywny â€“ uruchom najpierw'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+        return new Response(redirectHTML('⚠️ Bot nieaktywny – uruchom najpierw'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('đźš€ Skan uruchomiony! WrĂłÄ‡ za 30 sekund...'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return new Response(redirectHTML('🚀 Skan uruchomiony! Wróć za 30 sekund...'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
     }
 
     if (url.pathname === '/status') {
       const cfg   = await getConfig(env);
       const state = await getState(env);
-      // UsuĹ„ klucze API z odpowiedzi â€“ nigdy nie eksponuj secretĂłw
+      // Usuń klucze API z odpowiedzi – nigdy nie eksponuj secretów
       const safeCfg = { ...cfg, mexcApiKey: cfg.mexcApiKey ? '***' : '', mexcSecret: cfg.mexcSecret ? '***' : '', tgToken: cfg.tgToken ? '***' : '' };
       return jsonResp({ config: safeCfg, state });
     }
@@ -202,7 +202,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: cfg.tgChat,
-              text: 'đź¤– Witaj! SwingAI Bot 24/7 aktywny.\n\nPoĹ‚Ä…czenie dziaĹ‚a âś…\nPary: BTC ETH SOL XRP ADA\nSkany co 10 min przez Cloudflare Worker.',
+              text: '🤖 Witaj! SwingAI Bot 24/7 aktywny.\n\nPołączenie działa ✅\nPary: BTC ETH SOL XRP ADA\nSkany co 10 min przez Cloudflare Worker.',
               parse_mode: 'HTML'
             })
           }
@@ -228,7 +228,7 @@ export default {
       }
     }
 
-    // /market â€“ publiczny proxy Kraken dla dashboard (wykresy Ĺ›wiecowe)
+    // /market – publiczny proxy Kraken dla dashboard (wykresy świecowe)
     if (url.pathname === '/market') {
       const path = url.searchParams.get('path') || '';
       const qs   = url.searchParams.get('qs')   || '';
@@ -249,7 +249,7 @@ export default {
       }
     }
 
-    // /status-public â€“ publiczny endpoint do pollingu UI (bez auth)
+    // /status-public – publiczny endpoint do pollingu UI (bez auth)
     if (url.pathname === '/status-public') {
       const state = await getState(env);
       const cfg   = await getConfig(env);
@@ -277,9 +277,9 @@ export default {
   }
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// GĹĂ“WNA LOGIKA CYKLU
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
+// GŁÓWNA LOGIKA CYKLU
+// ─────────────────────────────────────────────────────────────────────
 async function runBotCycle(env) {
   const cfg   = await getConfig(env);
   if (!cfg.active) return;
@@ -332,7 +332,7 @@ async function runBotCycle(env) {
     state.iter  = (state.iter || 0) + 1;
     addLog(state, '--- Skan #' + state.iter + ' ---');
 
-    // Daily reset: zeruj dzienny PnL i startBalance o pĂÂłĂ…nocy UTC
+    // Daily reset: zeruj dzienny PnL i startBalance o północy UTC
   const todayUTC = new Date().toISOString().slice(0, 10);
   if (state.dailyDate !== todayUTC) {
     state.dailyDate         = todayUTC;
@@ -344,12 +344,12 @@ async function runBotCycle(env) {
   const currentBalance = cfg.mode === 'mexc'
     ? (state.liveBalance > 0 ? state.liveBalance : 0)
     : (state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000));
-  // Reset peakBalance gdy przeĂ…Ă„czono z paper na live Ă˘ nie porĂÂłwnuj $19 live do $1000 paper
+  // Reset peakBalance gdy przełączono z paper na live – nie porównuj $19 live do $1000 paper
   if (cfg.mode === 'mexc' && (!state.peakBalanceMode || state.peakBalanceMode !== 'live')) {
     state.peakBalance = currentBalance > 0 ? currentBalance : 0;
     state.peakBalanceMode = 'live';
-    state.drawdownBlock = 0; // skasuj blokadĂ„ paper przy starcie live
-    addLog(state, 'Circuit breaker reset Ă˘ nowy peak live: $' + currentBalance.toFixed(2), 'ok');
+    state.drawdownBlock = 0; // skasuj blokadę paper przy starcie live
+    addLog(state, 'Circuit breaker reset – nowy peak live: $' + currentBalance.toFixed(2), 'ok');
   } else if (cfg.mode !== 'mexc' && state.peakBalanceMode === 'live') {
     state.peakBalanceMode = 'paper';
     state.peakBalance = currentBalance;
@@ -360,11 +360,11 @@ async function runBotCycle(env) {
     const drawdownBlocked = (state.drawdownBlock || 0) > Date.now();
     if (drawdown > 0.15 && !drawdownBlocked) {
       state.drawdownBlock = Date.now() + 24 * 3600000;
-      addLog(state, 'Circuit breaker: -15% drawdown ($' + state.peakBalance.toFixed(2) + ' Ă˘ $' + currentBalance.toFixed(2) + ') Ă˘ blokada BUY 24h', 'err');
+      addLog(state, 'Circuit breaker: -15% drawdown ($' + state.peakBalance.toFixed(2) + ' – $' + currentBalance.toFixed(2) + ') – blokada BUY 24h', 'err');
     }
   }
 
-  // ZaĂ…aduj modele AI z KV
+  // Załaduj modele AI z KV
   const nb  = makeNB(state.nb);
   const gbm = makeGBM(state.gbm);
   const ql  = makeQL(state.ql);
@@ -378,9 +378,9 @@ async function runBotCycle(env) {
 
     // 2. BTC Guard
     const btcDrop = await btcDropGuard();
-    if (btcDrop) addLog(state, 'BTC Guard aktywny Ă˘ brak nowych long na altcoinach', 'warn');
+    if (btcDrop) addLog(state, 'BTC Guard aktywny – brak nowych long na altcoinach', 'warn');
 
-    // 3. SprawdĂ…Âş otwarte pozycje
+    // 3. Sprawdź otwarte pozycje
     await checkPositions(cfg, state, env, ql);
 
     // 4. Skanuj pary
@@ -405,17 +405,17 @@ async function runBotCycle(env) {
       aiMethod: s.aiMethod, regime: s.regime || 'neutral'
     }));
 
-    // 5. OtwĂÂłrz pozycje
+    // 5. Otwórz pozycje
     const dailyBase = state.dailyStartBalance > 0 ? state.dailyStartBalance : (cfg.paperBalance || 1000);
     const dailyLossOk = (state.dailyPnl || 0) > -0.05 * dailyBase;
 
     if (fg.val < 15) {
-      addLog(state, 'F&G=' + fg.val + ' (ekstremalna panika) Ă˘ blokada BUY', 'warn');
-      // explicit return Ă˘ bez tego blokada byĂ…a tylko kosmetyczna (logowaĂ…a warning ale nie zatrzymywaĂ…a pĂ„tli)
+      addLog(state, 'F&G=' + fg.val + ' (ekstremalna panika) – blokada BUY', 'warn');
+      // explicit return – bez tego blokada była tylko kosmetyczna (logowała warning ale nie zatrzymywała pętli)
     } else if (!dailyLossOk) {
       addLog(state, 'Dzienny limit strat przekroczony (-5% od $' + dailyBase.toFixed(0) + ')', 'err');
     } else if ((state.drawdownBlock || 0) > Date.now()) {
-      addLog(state, 'Circuit breaker aktywny Ă˘ brak nowych pozycji', 'warn');
+      addLog(state, 'Circuit breaker aktywny – brak nowych pozycji', 'warn');
     } else {
       for (const sig of sigs) {
         if ((state.positions || []).length >= cfg.maxPos) break;
@@ -425,20 +425,20 @@ async function runBotCycle(env) {
       }
     }
 
-    // 6. Zapisz modele AI Ă˘ walk-forward retraining
+    // 6. Zapisz modele AI – walk-forward retraining
     const trades = state.trades || [];
     nb.trainFromTrades(trades);
 
-    // Walk-forward: GBM retrenuje co 50 nowych tradĂłw na oknie 200
+    // Walk-forward: GBM retrenuje co 50 nowych tradów na oknie 200
     const lastRefit = state.lastGbmRefit || 0;
     const tradesSinceRefit = trades.filter(t => { const tsN = typeof t.ts === 'string' ? new Date(t.ts).getTime() : (t.ts||0); return tsN > lastRefit; }).length;
     if ((tradesSinceRefit >= 50 && trades.length >= 20) || (!gbm.trained && trades.length >= 20)) {
       gbm.trainFromTrades(trades.slice(0, 200));
       state.lastGbmRefit = Date.now();
-      addLog(state, 'GBM walk-forward refit: ' + Math.min(trades.length,200) + ' tradĂłw, OOS=' + gbm.accuracyOOS + '%', 'ok');
+      addLog(state, 'GBM walk-forward refit: ' + Math.min(trades.length,200) + ' tradów, OOS=' + gbm.accuracyOOS + '%', 'ok');
     }
 
-    // Ensemble rebalancing: co 20 tradĂłw aktualizuj wagi na bazie accuracy
+    // Ensemble rebalancing: co 20 tradów aktualizuj wagi na bazie accuracy
     if (trades.length >= 20 && trades.length % 20 === 0) {
       const ewUpd = rebalanceEnsemble(ew, nb, gbm, trades.slice(0, 20));
       if (ewUpd) {
@@ -458,7 +458,7 @@ async function runBotCycle(env) {
     if (cfg.mode === 'mexc' && cfg.mexcApiKey && cfg.mexcSecret) {
       try {
         state.liveBalance = await mexcGetBalance(cfg);
-      } catch(e) { /* MEXC niedostĂ„pne Ă˘ zachowaj poprzedniĂ„ wartoĂ…Ă„ */ }
+      } catch(e) { /* MEXC niedostępne – zachowaj poprzednią wartość */ }
     }
 
     state.lastCycle = Date.now();
@@ -466,13 +466,13 @@ async function runBotCycle(env) {
     addLog(state, 'Skan #' + state.iter + ' OK | poz: ' + (state.positions||[]).length + '/' + cfg.maxPos + ' | F&G:' + fg.val, 'ok');
 
   } catch(e) {
-    addLog(state, 'BĹÄ„D CYKLU: ' + e.message, 'err');
+    addLog(state, 'BŁĄD CYKLU: ' + e.message, 'err');
   }
   } catch(e2) {
     // Wyjatek gdziekolwiek POZA glowna logika skanu (reset dzienny, circuit
     // breaker, ladowanie modeli AI) - wczesniej taki blad zostawialby blokade
     // zaciecionym bez zadnego wpisu w logu. Teraz jest zawsze zalogowany.
-    addLog(state, 'BĹÄ„D CYKLU (poza glowna petla): ' + e2.message, 'err');
+    addLog(state, 'BŁĄD CYKLU (poza glowna petla): ' + e2.message, 'err');
   } finally {
     // GWARANCJA: blokada zawsze zostaje zwolniona, niezaleznie od tego co
     // wyzej rzucilo wyjatek. To jest siatka bezpieczenstwa uzupelniajaca
@@ -484,10 +484,10 @@ async function runBotCycle(env) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// ANALIZA TECHNICZNA â€“ MULTI-TF
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// VWAP z ostatnich 50 Ĺ›wiec 4H
+// ─────────────────────────────────────────────────────────────────────
+// ANALIZA TECHNICZNA – MULTI-TF
+// ─────────────────────────────────────────────────────────────────────
+// VWAP z ostatnich 50 świec 4H
 function calcVWAP(highs, lows, closes, volumes) {
   const n = Math.min(50, highs.length);
   let tpVol = 0, vol = 0;
@@ -499,7 +499,7 @@ function calcVWAP(highs, lows, closes, volumes) {
   return vol > 0 ? tpVol / vol : closes.at(-1);
 }
 
-// Wykryj lokalne pivoty S/R z ostatnich 50 Ĺ›wiec Daily
+// Wykryj lokalne pivoty S/R z ostatnich 50 świec Daily
 function calcSRLevels(highs, lows, price) {
   const n = Math.min(50, highs.length);
   const start = highs.length - n;
@@ -545,7 +545,7 @@ function calcStats(trades) {
 }
 
 async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore) {
-  // Pobierz timeframe'y sekwencyjnie â€“ Kraken rate limit
+  // Pobierz timeframe'y sekwencyjnie – Kraken rate limit
   const kd      = await getKlines(sym, 'D',   200);
   await sleep(400);
   const k4h     = await getKlines(sym, '240', 100);
@@ -564,7 +564,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   const d = pk(kd), h4 = pk(k4h), h1 = pk(k1h);
   const price = d.c.at(-1);
 
-  // â”€â”€ Wskazniki Daily
+  // ── Wskazniki Daily
   const rsiD   = rsi(d.c, 14);
   const macdD  = macdFull(d.c);
   const bbD    = bband(d.c, 20);
@@ -578,35 +578,35 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // Market Regime
   const regime = detectRegime(d.c, atrD, ema50, ema200);
 
-  // â”€â”€ Wskazniki 4H
+  // ── Wskazniki 4H
   const rsi4h  = rsi(h4.c, 14);
   const macd4h = macdFull(h4.c);
 
-  // â”€â”€ Wskazniki 1H
+  // ── Wskazniki 1H
   const rsi1h  = rsi(h1.c, 14);
   const macd1h = macdFull(h1.c);
   const confirm1h = macd1h.hist > 0 && rsi1h < 55;
 
-  // â”€â”€ RSI Divergence
+  // ── RSI Divergence
   const rsiArrD  = rsiArray(d.c.slice(-40),  14);
   const rsiArr4h = rsiArray(h4.c.slice(-30), 14);
   const divD  = rsiDivergence(d.c.slice(-40),  rsiArrD,  38);
   const div4h = rsiDivergence(h4.c.slice(-30), rsiArr4h, 28);
 
-  // â”€â”€ Trend
+  // ── Trend
   const trendD = price > ema200 ? (price > ema50 ? 2 : 1) : (price > ema50 ? 0 : -1);
 
-  // â”€â”€ Volume
+  // ── Volume
   const _vSum20 = d.v.length >= 20 ? d.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
   const volR  = (_vSum20 > 0) ? d.v.at(-1) / (_vSum20/20) : 1;
   const _v4Sum20 = h4.v.length >= 20 ? h4.v.slice(-20).reduce((a,b)=>a+b,0) : 0;
   const vol4R = (_v4Sum20 > 0) ? h4.v.at(-1) / (_v4Sum20/20) : 1;
 
-  // â”€â”€ Momentum
+  // ── Momentum
   const mom5  = d.c.length > 5  ? (price / d.c.at(-6)  - 1) * 100 : 0;
   const mom10 = d.c.length > 10 ? (price / d.c.at(-11) - 1) * 100 : 0;
 
-  // â”€â”€ Scoring
+  // ── Scoring
   let score = 0;
   const why = [];
 
@@ -629,14 +629,14 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if      (bbD.pos < 0.08) { score += 18; why.push('Cena przy dolnej BB'); }
   else if (bbD.pos < 0.20) { score += 13; why.push('BB dolna strefa'); }
   else if (bbD.pos < 0.35) { score += 6; }
-  else if (bbD.pos > 0.85) { score -= 10; why.push('BB gĂłrna â€“ ryzyko'); }
+  else if (bbD.pos > 0.85) { score -= 10; why.push('BB górna – ryzyko'); }
 
-  if      (trendD === 2)  { score += 12; why.push('Ponad EMA50+200 â€“ bull'); }
+  if      (trendD === 2)  { score += 12; why.push('Ponad EMA50+200 – bull'); }
   else if (trendD === 1)  { score += 8;  why.push('Ponad EMA200'); }
   else if (trendD === 0)  { score += 3; }
-  else                    { score -= 20; why.push('Ponizej EMA200 â€“ bessa'); }
+  else                    { score -= 20; why.push('Ponizej EMA200 – bessa'); }
 
-  if      (mom5 > 0 && mom10 < 0)    { score += 8; why.push('Momentum odwrĂłcenie'); }
+  if      (mom5 > 0 && mom10 < 0)    { score += 8; why.push('Momentum odwrócenie'); }
   else if (mom5 < -5 && mom10 < -10) { score += 5; why.push('Oversold momentum'); }
   else if (mom5 > 8)                  { score -= 5; why.push('Zbyt szybki wzrost'); }
 
@@ -677,7 +677,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if (regime === 'volatile')   { score -= 8;  why.push('Rezim: volatile'); }
   score = Math.max(0, Math.min(100, score));
 
-  // â”€â”€ Candlestick Patterns
+  // ── Candlestick Patterns
   const patResult = PATTERNS.detect(d.c, d.o, d.h, d.l);
   if (patResult.bullish > 0) {
     const volOk = volR >= 1.3;
@@ -687,16 +687,16 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   }
   if (patResult.bearish > 0) {
     score = Math.max(0, score - Math.min(12, patResult.bearish * 5));
-    patResult.patterns.filter(p=>p.type==='bearish').forEach(p=>why.push('âš  ' + p.name));
+    patResult.patterns.filter(p=>p.type==='bearish').forEach(p=>why.push('⚠  ' + p.name));
   }
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // â”€â”€ OBI (Order Book Imbalance)
+  // ── OBI (Order Book Imbalance)
   const obiScore = calcOBI(obiData);
   if (obiScore > 0) { score = Math.min(100, score + obiScore); why.push('OBI bycze'); }
   if (obiScore < 0) { score = Math.max(0,   score + obiScore); why.push('OBI niedzwiedzie'); }
 
-  // â”€â”€ ML Predictions
+  // ── ML Predictions
   const nbFeatures  = nb.discretize({ rsiD, macdHist: macdD.hist, bbPos: bbD.pos, trendD, mom5, confirm1h });
   const bodyRatio  = Math.abs(d.c.at(-1) - d.o.at(-1)) / (d.h.at(-1) - d.l.at(-1) + 0.001);
   const atrPctFeat = Math.min(1, atrD / price / 0.1);
@@ -711,11 +711,11 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   let qlBonus = 0;
   if (qlSugg) {
     if (qlSugg.action === 'BUY'  && qlSugg.confidence > 0.05) { qlBonus =  8; why.push('QL: BUY'); }
-    // HOLD jest neutralny â€“ nie karamy za brak sygnalu
+    // HOLD jest neutralny – nie karamy za brak sygnalu
     score = Math.max(0, Math.min(100, score + qlBonus));
   }
 
-  // â”€â”€ Ensemble
+  // ── Ensemble
   let finalProb = score / 100;
   let aiMethod  = 'Score';
   const obiNorm = ((obiData.ratio || 0.5) - 0.3) / 0.4;
@@ -734,7 +734,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
     aiMethod  = 'Score+NB+OBI';
   }
 
-  // â”€â”€ Per-pair threshold
+  // ── Per-pair threshold
   const pp       = pairParams[sym] || PAIR_PARAMS_DEFAULT[sym] || null;
   const minScore = (pp ? pp.minScore : adaptiveMinScore) + regimeMinScoreAdj;
   const buy      = finalProb >= minScore / 100;
@@ -755,9 +755,9 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   };
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // ZARZADZANIE POZYCJAMI
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 async function checkPositions(cfg, state, env, ql) {
   const updated = [];
   for (const pos of (state.positions || [])) {
@@ -771,7 +771,7 @@ async function checkPositions(cfg, state, env, ql) {
       let reason = null;
 
       // Timeout 7 dni
-      // Po partial TP pos.sl = entry*(1+FEE*2) â€“ break-even powyzej entry dla long.
+      // Po partial TP pos.sl = entry*(1+FEE*2) – break-even powyzej entry dla long.
       // Sprawdzamy bezposrednio cene vs pos.sl zamiast liczyc pnlPct threshold (ktory bylby dodatni i nigdy nie wyzwolilby SL).
       if (Date.now() - pos.entryTs > TIMEOUT_MS) reason = 'TIMEOUT 7d';
       else if (price >= (pos.tp > 0 ? pos.tp : pos.entry * (1 + cfg.tp))) reason = 'TAKE PROFIT';
@@ -783,7 +783,7 @@ async function checkPositions(cfg, state, env, ql) {
        if (!reason && pnlPct >= _tpPct6 * 0.5 && !pos.partialClosed) {
          const halfQty = pos.qty / 2;
          const halfSize = pos.size / 2;
-         // Prowizja na czesciowym zamknieciu â€“ identycznie jak w closePosition():
+         // Prowizja na czesciowym zamknieciu – identycznie jak w closePosition():
          // FEE liczony od wejscia (halfSize) i od wyjscia (halfSize + grossPnl).
          // Bez tego paperBalance byl zawyzany o pominieta prowizje na kazdym partial TP.
          const grossPnl = (price - pos.entry) * halfQty;
@@ -806,18 +806,18 @@ async function checkPositions(cfg, state, env, ql) {
            if (cfg.mode === 'paper') {
              state.paperBalance = (state.paperBalance || 0) + halfSize + halfPnl;
            }
-           // Partial TP wplywa na dzienny wynik tak samo jak pelne zamkniecie â€“
+           // Partial TP wplywa na dzienny wynik tak samo jak pelne zamkniecie –
            // bez tego dailyLossOk (limit -5%/dzien) i circuit breaker nie widzialy
            // polowy kazdego zysku/straty zrealizowanej przez partial TP.
            state.dailyPnl = (state.dailyPnl || 0) + halfPnl;
-           addLog(state, 'PARTIAL TP ' + pos.sym + ' +$' + halfPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) â€“ reszta jedzie dalej', 'ok');
+           addLog(state, 'PARTIAL TP ' + pos.sym + ' +$' + halfPnl.toFixed(2) + ' (' + pnlPct.toFixed(1) + '%) – reszta jedzie dalej', 'ok');
          }
        }
 
       if (reason) {
         const closed = await closePosition(pos, price, reason, cfg, state, ql);
         if (closed === false) {
-          // SELL FAILED â€“ zachowaj pozycje
+          // SELL FAILED – zachowaj pozycje
           updated.push(pos);
         }
       } else {
@@ -841,8 +841,8 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     addLog(state, 'Globalna blokada aktywna', 'warn'); return;
   }
   if (isPumpDump(sig)) return;
-  if (isVolumeAnomaly(sig)) { addLog(state, 'Vol anomaly: ' + sig.sym + ' vol=' + sig.volR.toFixed(2) + 'x â€“ pomijam', 'warn'); return; }
-  if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' â€“ pomijam', 'warn'); return; }
+  if (isVolumeAnomaly(sig)) { addLog(state, 'Vol anomaly: ' + sig.sym + ' vol=' + sig.volR.toFixed(2) + 'x – pomijam', 'warn'); return; }
+  if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' – pomijam', 'warn'); return; }
 
   // BTC Guard
   if (btcDrop && sig.sym !== 'XBTUSDT') {
@@ -860,7 +860,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     const pp = (state.pairParams||{})[sig.sym] || PAIR_PARAMS_DEFAULT[sig.sym];
     const minSc = pp ? pp.minScore : (state.adaptiveMinScore || cfg.minScore);
     if (adjSig.finalProb < minSc / 100) {
-      addLog(state, 'F&G=' + fg.val + ' â€“ po karze za slaby score pomijam ' + sig.sym, 'warn'); return;
+      addLog(state, 'F&G=' + fg.val + ' – po karze za slaby score pomijam ' + sig.sym, 'warn'); return;
     }
   }
 
@@ -870,10 +870,10 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
 
   // Micro account: max 1 pozycja naraz
   if (micro && (state.positions || []).length >= 1) {
-    addLog(state, 'Micro konto â€“ czekam na zamkniecie obecnej pozycji', 'warn'); return;
+    addLog(state, 'Micro konto – czekam na zamkniecie obecnej pozycji', 'warn'); return;
   }
 
-  // Portfolio Heat check â€“ tylko dla normalnych kont (>= 100$)
+  // Portfolio Heat check – tylko dla normalnych kont (>= 100$)
   if (!micro) {
     const totalRisk     = (state.positions || []).reduce((s, p) => {
       const slPct = p.partialClosed
@@ -883,7 +883,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     }, 0);
     const portfolioHeat = totalRisk / (total > 0 ? total : 1);
     if (portfolioHeat > 0.10) {
-      addLog(state, 'Portfolio heat >10% â€“ blokada (' + (portfolioHeat*100).toFixed(1) + '%)', 'warn');
+      addLog(state, 'Portfolio heat >10% – blokada (' + (portfolioHeat*100).toFixed(1) + '%)', 'warn');
       return;
     }
   }
@@ -891,7 +891,7 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   const posSize  = kellySize(cfg, state, total);
   const minSize  = micro ? 1 : 10;
   if (posSize < minSize) {
-    addLog(state, 'Za mala pozycja (' + posSize.toFixed(2) + '$) â€“ pomijam ' + sig.sym, 'warn'); return;
+    addLog(state, 'Za mala pozycja (' + posSize.toFixed(2) + '$) – pomijam ' + sig.sym, 'warn'); return;
   }
   const levels = calcDynamicLevels(adjSig.price, adjSig.atrD, cfg);
 
@@ -936,16 +936,16 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   const _pairName = adjSig.sym.replace('XBT','BTC').replace('USDT','').replace('USDC','');
   const _modeLabel = cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER (symulacja)';
   await tgSend(cfg,
-    'đźź˘ <b>SYGNAL KUPNA â€“ ' + _pairName + '</b>\n\n' +
-    'đź’° Cena wejscia: <b>$' + adjSig.price.toFixed(4) + '</b>\n' +
-    'đź’µ Rozmiar pozycji: <b>$' + posSize.toFixed(2) + '</b> (Kelly)\n' +
-    'đźŽŻ Take Profit: <b>$' + levels.tp.toFixed(4) + '</b>\n' +
-    'đź›‘ Stop Loss: <b>$' + levels.sl.toFixed(4) + '</b>\n' +
-    'âš–ď¸Ź Zysk/Ryzyko: <b>' + levels.rr + '</b>\n\n' +
-    'đź“Š Wynik AI: <b>' + adjSig.score + '/100</b> | Pewnosc: <b>' + (adjSig.finalProb*100).toFixed(1) + '%</b>\n' +
-    'đź¤– Metoda: ' + adjSig.aiMethod + '\n' +
-    'đź“ť Powody: ' + adjSig.why.slice(0,4).join(', ') + '\n\n' +
-    'đź”§ Tryb: ' + _modeLabel);
+    '🟢 <b>SYGNAL KUPNA – ' + _pairName + '</b>\n\n' +
+    '💰 Cena wejscia: <b>$' + adjSig.price.toFixed(4) + '</b>\n' +
+    '💵 Rozmiar pozycji: <b>$' + posSize.toFixed(2) + '</b> (Kelly)\n' +
+    '🎯 Take Profit: <b>$' + levels.tp.toFixed(4) + '</b>\n' +
+    '🛑 Stop Loss: <b>$' + levels.sl.toFixed(4) + '</b>\n' +
+    '⚖️ Zysk/Ryzyko: <b>' + levels.rr + '</b>\n\n' +
+    '📊 Wynik AI: <b>' + adjSig.score + '/100</b> | Pewnosc: <b>' + (adjSig.finalProb*100).toFixed(1) + '%</b>\n' +
+    '🤖 Metoda: ' + adjSig.aiMethod + '\n' +
+    '📝 Powody: ' + adjSig.why.slice(0,4).join(', ') + '\n\n' +
+    '🔧 Tryb: ' + _modeLabel);
 }
 
 function buildPosition(sig, price, qty, levels, size, ql) {
@@ -985,13 +985,13 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
     state.cooldown[pos.sym] = Date.now() + 12 * 3600000;
     if (state.consLoss >= 4) {
       state.globalBlockUntil = Date.now() + 3 * 3600000;
-      addLog(state, '4 straty z rzedu â€“ blokada 3h', 'err');
+      addLog(state, '4 straty z rzedu – blokada 3h', 'err');
     }
   } else {
     state.consLoss = 0;
   }
 
-  // Q-Learning update â€“ nagroda normalizowana do [-1, +1]
+  // Q-Learning update – nagroda normalizowana do [-1, +1]
   if (pos.qlSig && ql) {
     const reward = Math.max(-1, Math.min(1, pnlPct / 10));
     ql.update(pos.qlSig, 'BUY', reward, null);
@@ -1007,7 +1007,7 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
   state.trades = [trade, ...(state.trades || [])].slice(0, 300);
   state.stats = calcStats(state.trades);
 
-  const _closeIcon = pnl >= 0 ? 'đźź˘' : 'đź”´';
+  const _closeIcon = pnl >= 0 ? '🟢' : '🔴';
   const _closeSym = pos.sym.replace('XBT','BTC').replace('USDT','').replace('USDC','');
   const _reasonPL = reason === 'TAKE PROFIT' ? 'REALIZACJA ZYSKU' :
     reason === 'STOP LOSS' ? 'STOP LOSS AKTYWOWANY' :
@@ -1020,16 +1020,16 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
     pnl >= 0 ? 'ok' : 'err');
 
   await tgSend(cfg,
-    _closeIcon + ' <b>' + _reasonPL + ' â€“ ' + _closeSym + '</b>\n\n' +
-    'đź’° Wynik: <b>' + (pnl>=0?'+':'') + '$' + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</b>\n' +
-    'âŹ±ď¸Ź Czas trwania: ' + durH + 'h\n' +
-    'đź“Š Score wejscia: ' + pos.score + '/100\n' +
-    'đź”§ Tryb: ' + (cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER'));
+    _closeIcon + ' <b>' + _reasonPL + ' – ' + _closeSym + '</b>\n\n' +
+    '💰 Wynik: <b>' + (pnl>=0?'+':'') + '$' + pnl.toFixed(2) + ' (' + pnlPct.toFixed(2) + '%)</b>\n' +
+    '⏱️ Czas trwania: ' + durH + 'h\n' +
+    '📊 Score wejscia: ' + pos.score + '/100\n' +
+    '🔧 Tryb: ' + (cfg.mode === 'mexc' ? 'LIVE (MEXC)' : 'PAPER'));
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// GUARDS â€“ FILTRY BEZPIECZENSTWA
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
+// GUARDS – FILTRY BEZPIECZENSTWA
+// ─────────────────────────────────────────────────────────────────────
 function isPumpDump(sig) {
   if (sig.vol4R > 4.0) { return true; }
   if (sig.mom5  > 15)  { return true; }
@@ -1076,10 +1076,10 @@ function corrBlocked(sym, state) {
   return openInGroup >= 1;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // RISK MANAGEMENT
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Micro account mode: balance < 100 â€“ 1 pozycja, 90% kapitalu, brak Kelly cap
+// ─────────────────────────────────────────────────────────────────────
+// Micro account mode: balance < 100 – 1 pozycja, 90% kapitalu, brak Kelly cap
 function isMicroAccount(total) { return (isFinite(total) && total > 0 && total < 100); }
 
 function kellySize(cfg, state, total) {
@@ -1135,9 +1135,9 @@ function computeAdaptiveMinScore(trades, baseMin) {
   return baseMin;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // FORMACJE SWIECOWE
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 const PATTERNS = {
   detect(closes, opens, highs, lows) {
     const n = closes.length;
@@ -1197,9 +1197,9 @@ const PATTERNS = {
   }
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // MODULY AI/ML
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 function rebalanceEnsemble(ew, nb, gbm, recentTrades) {
   if (!recentTrades || recentTrades.length < 10) return null;
   const newEw = { score: ew.score, nb: ew.nb, gbm: ew.gbm, obi: ew.obi, ql: ew.ql };
@@ -1407,9 +1407,9 @@ function makeQL(saved) {
   return ql;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // WSKAZNIKI TECHNICZNE
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 function emaArr(arr, p) {
   if (!arr||!arr.length) return [0];
   const k=2/(p+1);
@@ -1514,9 +1514,9 @@ function atr(h, l, c, p=14) {
   return trs.slice(-p).reduce((a,b)=>a+b,0)/p;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// MARKET DATA â€“ KRAKEN (z retry + backoff na rate limit)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
+// MARKET DATA – KRAKEN (z retry + backoff na rate limit)
+// ─────────────────────────────────────────────────────────────────────
 function fetchWithTimeout(url, ms, opts) {
   ms = ms || 8000;
   const ctrl = new AbortController();
@@ -1529,8 +1529,8 @@ function fetchWithTimeout(url, ms, opts) {
 // dlatego retry musi sprawdzac d.error, nie tylko r.ok. Bez tego kazdy rate-limit
 // hit na BTC (najczesciej odpytywana para) po prostu wywalal cala analize tej
 // pary z cyklu (catch w petli PAIRS logowal warning i szedl dalej) - bot regularnie
-// "nie widzial" sygnalow na BTC. 3 prĂłby z rosnacym opĂłznieniem (500/1500/3000ms)
-// dajÄ… Krakenowi czas na odblokowanie limitu zanim poddamy sie calkowicie.
+// "nie widzial" sygnalow na BTC. 3 próby z rosnacym opóźnieniem (500/1500/3000ms)
+// dają Krakenowi czas na odblokowanie limitu zanim poddamy sie calkowicie.
 async function fetchKrakenWithRetry(url, tries) {
   tries = tries || 3;
   const delays = [500, 1500, 3000];
@@ -1554,7 +1554,7 @@ async function fetchKrakenWithRetry(url, tries) {
 }
 
 async function getKlines(sym, interval, limit) {
-  // Kraken public API â€“ nie blokuje CF Workers
+  // Kraken public API – nie blokuje CF Workers
   // Interwaly: 1440=Daily, 240=4H, 60=1H, 30=30m, 15=15m (minuty)
   const ivMap = { 'D':'1440', '240':'240', '60':'60', '30':'30', '15':'15' };
   const iv = ivMap[interval] || '1440';
@@ -1615,9 +1615,9 @@ async function getFearGreed(state) {
   } catch(e) { return cache; }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // MEXC TRADING
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 async function mexcSign(params, cfg) {
   const ts = String(Date.now());
   const qs = params + '&timestamp=' + ts;
@@ -1632,7 +1632,7 @@ async function mexcSign(params, cfg) {
 function mexcSymbol(sym) { return sym.replace('_','').replace('XBT','BTC').replace('USDT','USDC'); }
 
 // MEXC wymaga roznej precyzji ilosci dla kazdej pary
-// sym moze byc XBTUSDT (Kraken) lub BTCUSDC (MEXC) â€“ obslugujemy oba
+// sym moze byc XBTUSDT (Kraken) lub BTCUSDC (MEXC) – obslugujemy oba
 function mexcQtyPrecision(sym) {
   if (sym.includes('DOGE') || sym.includes('SHIB') || sym.includes('XRP') || sym.includes('ADA')) return 0;
   if (sym.includes('BTC') || sym.includes('XBT')) return 5;
@@ -1683,9 +1683,9 @@ async function mexcGetBalance(cfg) {
   return usdc ? +usdc.free : 0;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // TELEGRAM
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 async function tgSend(cfg, msg) {
   if (!cfg.tgToken || !cfg.tgChat) return;
   try {
@@ -1697,9 +1697,9 @@ async function tgSend(cfg, msg) {
   } catch(e) {}
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 // KV HELPERS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
 async function getConfig(env) {
   try { const c=await env.SWINGAI_KV.get('config'); return c?JSON.parse(c):defaultConfig(); }
   catch(e) { return defaultConfig(); }
@@ -1725,18 +1725,18 @@ function addLog(state, msg, type='info') {
 }
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// DASHBOARD HTML â€“ SERVER-SIDE RENDER
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────
+// DASHBOARD HTML – SERVER-SIDE RENDER
+// ─────────────────────────────────────────────────────────────────────
 async function dashboardHTML(cfg, state, env) {
   // Pobierz HTML z GitHub, z cache w Cache API Workera (TTL 5 minut).
-  // WAZNE: uzywamy Cache API (caches.default), NIE KV â€“ Cache API nie liczy sie
+  // WAZNE: uzywamy Cache API (caches.default), NIE KV – Cache API nie liczy sie
   // do dziennego limitu 1000 zapisow KV na darmowym planie Cloudflare. Poprzednio
   // ten cache pisal do KV (2 zapisy za kazdym razem gdy wygasal, co przy czestym
-  // odswiezaniu strony moglo dawac do ~576 zapisow/dobe SAMEGO cache'a HTML â€“
+  // odswiezaniu strony moglo dawac do ~576 zapisow/dobe SAMEGO cache'a HTML –
   // razem z cyklem handlowym (~576/dobe) to przekraczalo limit 1000/dobe i
   // powodowalo, ze KV zaczynalo odrzucac zapisy do konca dnia (do resetu o
-  // 00:00 UTC) â€“ obserwowane jako "bot przerywa prace raz na dobe".
+  // 00:00 UTC) – obserwowane jako "bot przerywa prace raz na dobe".
   let html;
   const CACHE_URL = 'https://swingai-internal-cache/dashboard-html-v1';
   const CACHE_TTL_S = 300; // 5 minut
@@ -1802,7 +1802,7 @@ async function dashboardHTML(cfg, state, env) {
     const SAVED_CREDS = ${savedCreds.replace(/<\/script>/gi, '<\\/script>')};
 
     // -- KROK 0: Synchronizacja iter PRZED loadAll() ----------------
-    // loadAll() wczytuje swingai_v3 z localStorage â€“ wpisujemy iter z KV
+    // loadAll() wczytuje swingai_v3 z localStorage – wpisujemy iter z KV
     // zanim loadAll() sie wykona, zeby kazde urzadzenie widzialo ten sam numer.
     if (BOT_STATE.active && BOT_STATE.iter) {
       try {
@@ -1834,7 +1834,7 @@ async function dashboardHTML(cfg, state, env) {
         }
       } catch(e) {}
 
-      // -- Przepisz linki /start-*/stop/run â€“ dodaj token -----------
+      // -- Przepisz linki /start-*/stop/run – dodaj token -----------
       document.querySelectorAll('a[href]').forEach(function(a) {
         var href = a.getAttribute('href');
         if (href && (href.startsWith('/start') || href === '/stop' || href === '/run' || href.startsWith('/delete'))) {
@@ -1894,7 +1894,7 @@ async function dashboardHTML(cfg, state, env) {
           var okxK  = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
           var okxS  = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
           var anyNew = false;
-          // Tryb (PAPER/MEXC) zawsze synchronizujemy â€“ bez tego przelacznik w UI
+          // Tryb (PAPER/MEXC) zawsze synchronizujemy – bez tego przelacznik w UI
           // nigdy nie docieral do KV Workera i po powrocie znowu widac bylo PAPER.
           if (typeof CFG !== 'undefined' && CFG.mode) { params.set('mode', CFG.mode === 'mexc' ? 'mexc' : 'paper'); anyNew = true; }
           if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { params.set('tg', tgTok.value.trim()); anyNew = true; }
@@ -1939,7 +1939,7 @@ async function dashboardHTML(cfg, state, env) {
         }
         fetch(startUrl)
           .then(function() {
-            // Wazne: NIE ustawiamy running = true â€“ lokalny botCycle nie ma ruszac
+            // Wazne: NIE ustawiamy running = true – lokalny botCycle nie ma ruszac
             if (typeof running !== 'undefined') running = false;
             var btnRun = document.getElementById('btn-run');
             var btnStop = document.getElementById('btn-stop');
@@ -2060,7 +2060,7 @@ async function dashboardHTML(cfg, state, env) {
 
           _renderSigsFromServer(bs.lastSigs);
 
-          // Zatrzymaj lokalny bot â€“ nie duplikuj skanow
+          // Zatrzymaj lokalny bot – nie duplikuj skanow
           if (typeof running !== 'undefined') running = false;
           if (typeof botTimer !== 'undefined' && botTimer) { clearTimeout(botTimer); botTimer = null; }
 
@@ -2127,7 +2127,7 @@ async function dashboardHTML(cfg, state, env) {
           }
           if (bs.lastFG) {
             var rbFg = document.getElementById('rb-fg');
-            if (rbFg) { rbFg.textContent = bs.lastFG.val + ' â€“ ' + bs.lastFG.label; rbFg.className = 'val ' + (bs.lastFG.val < 25 ? 'dn' : bs.lastFG.val < 40 ? 'gold' : 'up'); }
+            if (rbFg) { rbFg.textContent = bs.lastFG.val + ' – ' + bs.lastFG.label; rbFg.className = 'val ' + (bs.lastFG.val < 25 ? 'dn' : bs.lastFG.val < 40 ? 'gold' : 'up'); }
           }
 
           var logArea = document.getElementById('log-area');
@@ -2148,7 +2148,7 @@ async function dashboardHTML(cfg, state, env) {
       }
 
       // -- Auto-poll /status-public co 60s -------------------------
-      // Pobiera aktualny iter z KV â€“ jednakowy numer na wszystkich urzadzeniach
+      // Pobiera aktualny iter z KV – jednakowy numer na wszystkich urzadzeniach
       function _workerPoll() {
         fetch(BOT_BASE + '/status-public')
           .then(function(r){ return r.json(); })
@@ -2204,7 +2204,7 @@ async function dashboardHTML(cfg, state, env) {
             }
             if (data.lastFG) {
               var rbFg2 = document.getElementById('rb-fg');
-              if (rbFg2) { rbFg2.textContent = data.lastFG.val + ' â€“ ' + data.lastFG.label; rbFg2.className = 'val ' + (data.lastFG.val < 25 ? 'dn' : data.lastFG.val < 40 ? 'gold' : 'up'); }
+              if (rbFg2) { rbFg2.textContent = data.lastFG.val + ' – ' + data.lastFG.label; rbFg2.className = 'val ' + (data.lastFG.val < 25 ? 'dn' : data.lastFG.val < 40 ? 'gold' : 'up'); }
             }
             if (data.log && data.log.length > 0) {
               var logArea3 = document.getElementById('log-area');
@@ -2224,7 +2224,7 @@ async function dashboardHTML(cfg, state, env) {
           .catch(function(){});
       }
 
-      // Uruchom polling zawsze â€“ niezaleznie od BOT_STATE.active (dziala tez po restarcie w nowej przegladarce)
+      // Uruchom polling zawsze – niezaleznie od BOT_STATE.active (dziala tez po restarcie w nowej przegladarce)
       setTimeout(function() { _applyWorkerState(BOT_STATE); }, 600);
       setInterval(_workerPoll, 60000);
       setTimeout(_workerPoll, 1500);
@@ -2239,13 +2239,13 @@ async function dashboardHTML(cfg, state, env) {
   // -- END INJECTION -----------------------------------------------
 `;
 
-  // Wstrzyknij tuz po "let CFG = {" â€“ uzywamy funkcji zamiast stringa aby replace() nie interpretowal znakow specjalnych
+  // Wstrzyknij tuz po "let CFG = {" – uzywamy funkcji zamiast stringa aby replace() nie interpretowal znakow specjalnych
   html = html.replace(
     "let CFG = {",
     function() { return injection + "\nlet CFG = {"; }
   );
 
-  // Podmien conn-badge bezposrednio w HTML â€“ zanim przegladarka wyrenderuje strone
+  // Podmien conn-badge bezposrednio w HTML – zanim przegladarka wyrenderuje strone
   if (cfg.active) {
     html = html.replace(
       '<span id="conn-badge" class="badge boff">OFFLINE</span>',
@@ -2257,7 +2257,7 @@ async function dashboardHTML(cfg, state, env) {
     );
   }
 
-  // Podmien openSettings â€“ pola z kluczami w KV pokazuja zielony placeholder
+  // Podmien openSettings – pola z kluczami w KV pokazuja zielony placeholder
   html = html.replace(
     "function openSettings() {\n  gi('cfg-key').value      = CFG.apiKey||'';\n  gi('cfg-secret').value   = CFG.secret||'';\n  gi('cfg-worker').value   = CFG.workerUrl||'';\n  gi('cfg-mode').value     = CFG.mode;\n  gi('cfg-byb-key').value    = CFG.bybApiKey||'';\n  gi('cfg-byb-secret').value = CFG.bybSecret||'';\n  gi('cfg-byb-worker').value = CFG.bybWorker||'';\n  gi('cfg-mexc-key').value     = CFG.mexcApiKey||CFG.okxApiKey||'';\n  gi('cfg-mexc-secret').value  = CFG.mexcSecret||CFG.okxSecret||'';\n  gi('cfg-mexc-worker').value  = CFG.mexcWorker||CFG.workerUrl||'';",
     `function openSettings() {
@@ -2280,23 +2280,23 @@ async function dashboardHTML(cfg, state, env) {
   // (okxPassSet usuniete)
   // (okxPassphrase usuniete)
   // MEXC nie uzywa okxWorker - pominiete
-  // TG â€“ analogicznie
+  // TG – analogicznie
   if (sc.tgTokenSet) {
-    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = 'âś“ Token zapisany w chmurze (wpisz nowy aby zmienic)'; gi('cfg-tg-token').style.borderColor='var(--green)';
+    gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = '✓ Token zapisany w chmurze (wpisz nowy aby zmienic)'; gi('cfg-tg-token').style.borderColor='var(--green)';
   } else { gi('cfg-tg-token').value = CFG.tgToken||''; gi('cfg-tg-token').style.borderColor=''; }`
   );
 
-  // Podmien saveCfg() w saveSettings â€“ dodaj sync do Workera i wysylke powitania
+  // Podmien saveCfg() w saveSettings – dodaj sync do Workera i wysylke powitania
   html = html.replace(
     "saveCfg();\n  gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';",
     `saveCfg();
-  // â”€â”€ WORKER SYNC â”€â”€
+  // ── WORKER SYNC ──
   (function() {
     var BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
     var BOT_TOKEN = 'swingai-secret-2024';
     var params = new URLSearchParams();
     params.set('auth', BOT_TOKEN);
-    // Tryb (PAPER/MEXC) zawsze synchronizujemy â€“ bez tego przelacznik w UI
+    // Tryb (PAPER/MEXC) zawsze synchronizujemy – bez tego przelacznik w UI
     // nigdy nie docieral do KV Workera i po powrocie znowu widac bylo PAPER.
     if (typeof CFG !== 'undefined' && CFG.mode) params.set('mode', CFG.mode === 'mexc' ? 'mexc' : 'paper');
     var tgTok = (gi('cfg-tg-token').value||'').trim();
@@ -2312,7 +2312,7 @@ async function dashboardHTML(cfg, state, env) {
     // okxP/pass - MEXC nie uzywa passphrase - pominiete
     fetch(BOT_BASE + '/save-config?' + params.toString())
       .then(function() {
-        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurÄ… âś“';
+        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurą ✓';
         gi('cfg-status').style.color = 'var(--green)';
         if (hasTg) {
           setTimeout(function() {
