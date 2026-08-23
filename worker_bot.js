@@ -2286,44 +2286,12 @@ async function dashboardHTML(cfg, state, env) {
   } else { gi('cfg-tg-token').value = CFG.tgToken||''; gi('cfg-tg-token').style.borderColor=''; }`
   );
 
-  // Podmien saveCfg() w saveSettings – dodaj sync do Workera i wysylke powitania
-  html = html.replace(
-    "saveCfg();\n  gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';",
-    `saveCfg();
-  // ── WORKER SYNC ──
-  (function() {
-    var BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
-    var BOT_TOKEN = 'swingai-secret-2024';
-    var params = new URLSearchParams();
-    params.set('auth', BOT_TOKEN);
-    // Tryb (PAPER/MEXC) zawsze synchronizujemy – bez tego przelacznik w UI
-    // nigdy nie docieral do KV Workera i po powrocie znowu widac bylo PAPER.
-    if (typeof CFG !== 'undefined' && CFG.mode) params.set('mode', CFG.mode === 'mexc' ? 'mexc' : 'paper');
-    var tgTok = (gi('cfg-tg-token').value||'').trim();
-    var tgCht = (gi('cfg-tg-chat').value||'').trim();
-    var okxK  = (gi('cfg-mexc-key') ? gi('cfg-mexc-key') : (gi('cfg-okx-key') || {value:''})).value.trim();
-    var okxS  = (gi('cfg-mexc-secret') ? gi('cfg-mexc-secret') : (gi('cfg-okx-secret') || {value:''})).value.trim();
-    var okxP  = ''; // MEXC nie uzywa passphrase
-    var hasTg = (typeof SAVED_CREDS !== 'undefined') ? SAVED_CREDS.tgTokenSet : false;
-    if (tgTok) { params.set('tg', tgTok); hasTg = true; }
-    if (tgCht) { params.set('tgc', tgCht); hasTg = true; }
-    if (okxK)  params.set('key',  okxK);
-    if (okxS)  params.set('sec',  okxS);
-    // okxP/pass - MEXC nie uzywa passphrase - pominiete
-    fetch(BOT_BASE + '/save-config?' + params.toString())
-      .then(function() {
-        gi('cfg-status').textContent = 'Zapisano + synchronizacja z chmurą ✓';
-        gi('cfg-status').style.color = 'var(--green)';
-        if (hasTg) {
-          setTimeout(function() {
-            fetch(BOT_BASE + '/send-welcome?auth=' + BOT_TOKEN).catch(function(){});
-          }, 1200);
-        }
-      })
-      .catch(function() {});
-  })();
-  gi('cfg-status').textContent='Zapisano'; gi('cfg-status').style.color='var(--green)';`
-  );
+  // Uwaga: synchronizacja saveSettings->/save-config (tryb, klucze, Telegram) jest
+  // realizowana WYLACZNIE przez runtime override window.saveSettings (patrz nizej,
+  // "-- saveSettings: sync do Workera --"). Wczesniej istnial tu DRUGI, rownolegly
+  // mechanizm (string-injection prosto w kod saveSettings) robiacy to samo - efekt:
+  // kazde kliknięcie "Zapisz" wysylalo DWA niezalezne zapytania /save-config (2x
+  // zapis KV) i mogło wyslac powitalna wiadomosc Telegram dwukrotnie. Usuniete.
 
   // Dodaj badge bota w naglowku (tuz przed </div> zamykajacym #hdr-stats)
   const botBadgeHtml = `<div id="bot-status-badge" style="font-size:7.5pt;padding:2px 9px;border-radius:6px;background:rgba(0,229,160,.12);color:var(--green);font-weight:700;white-space:nowrap;margin-left:4px">${cfg.active ? '24h BOT: AKTYWNY' : '24h BOT: OFF'}</div>`;
