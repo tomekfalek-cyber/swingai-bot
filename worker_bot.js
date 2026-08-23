@@ -1634,15 +1634,40 @@ function mexcSymbol(sym) { return sym.replace('_','').replace('XBT','BTC').repla
 // MEXC wymaga roznej precyzji ilosci dla kazdej pary
 // sym moze byc XBTUSDT (Kraken) lub BTCUSDC (MEXC) – obslugujemy oba
 function mexcQtyPrecision(sym) {
+  // UWAGA: to jest tabela awaryjna (fallback) - uzywana TYLKO jesli zywe zapytanie
+  // do MEXC exchangeInfo (mexcGetQtyPrecision) sie nie powiedzie. Sprawdzone realne
+  // dane MEXC (dokumentacja) pokazuja np. BTC baseSizePrecision "0.000001" (6 miejsc),
+  // podczas gdy ta tabela mowi 5 - hardkodowane zgadywanie moze byc niezgodne z
+  // rzeczywistymi regulami gieldy per para i powodowac odrzucenie zlecenia SELL
+  // (blad precyzji ilosci), co blokowaloby zamkniecie pozycji. Stad priorytet ma
+  // zywe zapytanie, a to jest tylko siatka bezpieczenstwa gdyby ono zawiodlo.
   if (sym.includes('DOGE') || sym.includes('SHIB') || sym.includes('XRP') || sym.includes('ADA')) return 0;
   if (sym.includes('BTC') || sym.includes('XBT')) return 5;
   if (sym.includes('ETH'))  return 4;
   if (sym.includes('SOL') || sym.includes('AVAX') || sym.includes('LINK')) return 3;
   return 4;
 }
-function mexcFmtQty(sym, qty) {
-  const prec = mexcQtyPrecision(sym);
-  return prec === 0 ? Math.floor(qty).toString() : qty.toFixed(prec);
+function mexcFmtQty(sym, qty, prec) {
+  const p = (prec != null) ? prec : mexcQtyPrecision(sym);
+  return p === 0 ? Math.floor(qty).toString() : qty.toFixed(p);
+}
+// Pobiera prawdziwa precyzje ilosci dla danego symbolu MEXC (baseSizePrecision z
+// exchangeInfo) zamiast polegac wylacznie na zgadywaniu w mexcQtyPrecision. Jeden
+// dodatkowy request TYLKO przy faktycznej sprzedazy (nie w petli skanowania), wiec
+// nie obciaza limitu 50 zapytan/cykl. Przy bledzie/timeoutcie wraca do fallbacku.
+async function mexcGetQtyPrecision(msym, fallbackPrec) {
+  try {
+    const r = await fetchWithTimeout('https://api.mexc.com/api/v3/exchangeInfo?symbol=' + msym, 6000);
+    if (!r.ok) return fallbackPrec;
+    const d = await r.json();
+    const info = d.symbols && d.symbols[0];
+    const bsp = info && info.baseSizePrecision;
+    if (bsp) {
+      const dot = String(bsp).indexOf('.');
+      return dot === -1 ? 0 : (String(bsp).length - dot - 1);
+    }
+  } catch(_) { /* fallback nizej */ }
+  return fallbackPrec;
 }
 
 async function mexcMarketBuy(sym, quoteQty, cfg) {
@@ -1661,7 +1686,8 @@ async function mexcMarketBuy(sym, quoteQty, cfg) {
 
 async function mexcMarketSell(sym, qty, cfg) {
   const msym = mexcSymbol(sym);
-  const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + mexcFmtQty(sym, qty), cfg);
+  const prec = await mexcGetQtyPrecision(msym, mexcQtyPrecision(sym));
+  const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + mexcFmtQty(sym, qty, prec), cfg);
   const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
   const d = await r.json();
   if (!d.orderId) throw new Error('MEXC sell: ' + (d.msg || JSON.stringify(d)));
