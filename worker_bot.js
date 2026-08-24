@@ -1321,9 +1321,18 @@ function makeGBM(saved) {
 
     trainFromTrades(trades) {
       if (trades.length < 20) return false;
+      // UWAGA: 'trades' jest w kolejnosci od najnowszej do najstarszej (state.trades
+      // przechowuje najnowsza transakcje na indeksie 0). Dla poprawnej walidacji
+      // walk-forward trzeba trenowac na STARSZYCH danych i testowac (OOS) na
+      // NOWSZYCH - odwrotnie niz w kolejnosci przechowywania. Bez tego .reverse()
+      // trening lapal najnowsze dane, a "OOS" test wypadal na najstarszych - czyli
+      // odwrotnosc poprawnego walk-forward (sprawdzalo czy model wytrenowany na
+      // niedawnych warunkach rynkowych tlumaczy STARE dane, a nie czy generalizuje
+      // na NOWE, niewidziane wczesniej dane - co jest realnym celem OOS accuracy).
       const X=[], y=[];
       trades.forEach(t => { if (t.gbmFeatures&&t.gbmFeatures.length===12) { X.push(t.gbmFeatures); y.push(t.pnl>0?1:0); } });
       if (X.length < 20) return false;
+      X.reverse(); y.reverse(); // teraz: index 0 = najstarsza, ostatni = najnowsza
       const si = Math.floor(X.length*0.7);
       const Xt=X.slice(0,si), yt=y.slice(0,si);
       this.trees=[];
@@ -1501,7 +1510,10 @@ function bband(c, p=20) {
   if (!c||!c.length) return {upper:0,mid:0,lower:0,pos:0.5};
   if (c.length<p) {const v=c.at(-1)||0;return{upper:v*1.02,mid:v,lower:v*0.98,pos:0.5};}
   const sl=c.slice(-p), m=sl.reduce((a,b)=>a+b,0)/p;
-  const std=Math.sqrt(sl.reduce((a,b)=>a+(b-m)**2,0)/(p-1));
+  // Standardowa definicja Bollinger Bands uzywa odchylenia POPULACYJNEGO (dzielenie
+  // przez p), nie probkowego (p-1, poprawka Bessela). Wczesniej uzywano p-1, co
+  // systematycznie poszerzalo wstegi wzgledem podrecznikowej definicji Bollingera.
+  const std=Math.sqrt(sl.reduce((a,b)=>a+(b-m)**2,0)/p);
   const up=m+2*std, lo=m-2*std;
   const pos=up===lo?0.5:Math.max(0,Math.min(1,(c.at(-1)-lo)/(up-lo)));
   return {upper:up,mid:m,lower:lo,pos,range:up-lo};
@@ -1511,7 +1523,14 @@ function atr(h, l, c, p=14) {
   if (h.length<p+1) return 0;
   const trs=[];
   for (let i=1;i<h.length;i++) trs.push(Math.max(h[i]-l[i],Math.abs(h[i]-c[i-1]),Math.abs(l[i]-c[i-1])));
-  return trs.slice(-p).reduce((a,b)=>a+b,0)/p;
+  if (trs.length<p) return trs.reduce((a,b)=>a+b,0)/(trs.length||1);
+  // Kanoniczna definicja ATR (Wilder) uzywa wygladzania analogicznego do RSI w tym
+  // pliku, nie prostej sredniej kroczacej ostatnich p wartosci. Prosta SMA (jak
+  // bylo wczesniej) daje inna (bardziej "skacząca") wartosc zmiennosci niz
+  // standardowy ATR, a to bezposrednio wplywa na obliczane odleglosci TP/SL/trailing.
+  let a = trs.slice(0,p).reduce((x,y)=>x+y,0)/p;
+  for (let i=p;i<trs.length;i++) a = (a*(p-1)+trs[i])/p;
+  return a;
 }
 
 // ─────────────────────────────────────────────────────────────────────
