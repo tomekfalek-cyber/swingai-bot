@@ -1,4 +1,4 @@
-// SwingAI Bot 24/7 – Cloudflare Worker – MEXC VERSION
+﻿// SwingAI Bot 24/7 – Cloudflare Worker – MEXC VERSION
 // Gielda: MEXC (spot) | Dane: Binance public API (Gate.io zaczal blokowac CF Workers HTTP403)
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
@@ -19,6 +19,7 @@ const CORR_GROUPS = [
   ['SOLUSDT'],
   ['XRPUSDT','ADAUSDT']
 ];
+
 
 const PAIR_PARAMS_DEFAULT = {
   'XBTUSDT':  { tp:0.10, sl:0.04, minScore:62 },
@@ -46,9 +47,61 @@ export default {
     const authHeader  = request.headers.get('Authorization') || '';
     const authParam   = url.searchParams.get('auth') || '';
     const isAuth = authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET;
-    const publicPaths = ['/', '/status-public', '/market'];
+    const publicPaths = ['/', '/status-public', '/market', '/verify-pin', '/change-pin'];
     if (!isAuth && !publicPaths.includes(url.pathname)) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders() });
+    }
+
+    // ── PIN GATE (dostep do dashboardu na '/') ─────────────────────────
+    // PIN (hash SHA-256) trzymany w KV pod 'pinHash' - nigdy nie trafia do
+    // kodu ani do przegladarki. Po poprawnym PIN-ie Worker ustawia cookie
+    // sesji (HttpOnly, 30 dni), ktore przegladarka wysyla automatycznie
+    // przy kazdym kolejnym wejsciu na '/'. Limit 5 nieudanych prob / 15 min
+    // na IP (CF-Connecting-IP) chroni przed brute-force 8-cyfrowego PIN-u.
+    if (url.pathname === '/verify-pin' && request.method === 'POST') {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const rl = await checkPinRateLimit(env, ip);
+      if (rl.blocked) {
+        return jsonResp({ ok:false, error:'Za wiele nieudanych prob. Sprobuj za 15 minut.' }, 429);
+      }
+      let pin = '';
+      try { const body = await request.json(); pin = String(body.pin || ''); } catch(e) {}
+      const storedHash = await env.SWINGAI_KV.get('pinHash');
+      const inputHash  = await sha256Hex(pin);
+      if (!storedHash || inputHash !== storedHash) {
+        await recordPinFail(env, rl.key);
+        return jsonResp({ ok:false, error:'Nieprawidlowy PIN' }, 401);
+      }
+      await clearPinFail(env, rl.key);
+      const sid = randomToken(32);
+      await env.SWINGAI_KV.put('sess_' + sid, '1', { expirationTtl: 30 * 24 * 3600 });
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, corsHeaders());
+      headers['Set-Cookie'] = 'swingai_sess=' + sid + '; Path=/; Max-Age=' + (30*24*3600) + '; HttpOnly; Secure; SameSite=Lax';
+      return new Response(JSON.stringify({ ok:true }), { headers });
+    }
+
+    // Zmiana PIN-u z panelu konfiguracji – wymaga aktywnej sesji (juz zalogowany
+    // PIN-em) ORAZ znajomosci aktualnego PIN-u. Ten sam limiter co /verify-pin
+    // (per IP), zeby nie dalo sie brute-force'owac aktualnego PIN-u przez ten endpoint.
+    if (url.pathname === '/change-pin' && request.method === 'POST') {
+      const sessionOk = await isValidSession(env, request);
+      if (!sessionOk) return jsonResp({ ok:false, error:'Sesja wygasla – zaloguj sie ponownie' }, 401);
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const rl = await checkPinRateLimit(env, ip);
+      if (rl.blocked) return jsonResp({ ok:false, error:'Za wiele nieudanych prob. Sprobuj za 15 minut.' }, 429);
+      let oldPin = '', newPin = '';
+      try { const body = await request.json(); oldPin = String(body.oldPin || ''); newPin = String(body.newPin || ''); } catch(e) {}
+      if (!/^\d{8}$/.test(newPin)) return jsonResp({ ok:false, error:'Nowy PIN musi miec 8 cyfr' }, 400);
+      const storedHash = await env.SWINGAI_KV.get('pinHash');
+      const oldHash    = await sha256Hex(oldPin);
+      if (!storedHash || oldHash !== storedHash) {
+        await recordPinFail(env, rl.key);
+        return jsonResp({ ok:false, error:'Aktualny PIN nieprawidlowy' }, 401);
+      }
+      await clearPinFail(env, rl.key);
+      const newHash = await sha256Hex(newPin);
+      await env.SWINGAI_KV.put('pinHash', newHash);
+      return jsonResp({ ok:true });
     }
 
     if (url.pathname === '/start-paper') {
@@ -269,6 +322,10 @@ export default {
       });
     }
 
+    const sessionOk = await isValidSession(env, request);
+    if (!sessionOk) {
+      return new Response(pinPageHTML(), { headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders() } });
+    }
     const cfg   = await getConfig(env);
     const state = await getState(env);
     return new Response(await dashboardHTML(cfg, state, env), {
@@ -840,7 +897,8 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
   if ((state.globalBlockUntil||0) > Date.now()) {
     addLog(state, 'Globalna blokada aktywna', 'warn'); return;
   }
-  if (isPumpDump(sig)) return;
+  const pumpReason = isPumpDump(sig);
+  if (pumpReason) { addLog(state, 'Pump/dump guard (' + pumpReason + '): ' + sig.sym + ' – pomijam', 'warn'); return; }
   if (isVolumeAnomaly(sig)) { addLog(state, 'Vol anomaly: ' + sig.sym + ' vol=' + sig.volR.toFixed(2) + 'x – pomijam', 'warn'); return; }
   if (isDeadHour()) { addLog(state, 'Dead hour (01-05 UTC): ' + sig.sym + ' – pomijam', 'warn'); return; }
 
@@ -1031,9 +1089,15 @@ async function closePosition(pos, price, reason, cfg, state, ql) {
 // GUARDS – FILTRY BEZPIECZENSTWA
 // ─────────────────────────────────────────────────────────────────────
 function isPumpDump(sig) {
-  if (sig.vol4R > 4.0) { return true; }
-  if (sig.mom5  > 15)  { return true; }
-  return false;
+  if (sig.vol4R > 4.0)  return 'vol4R=' + sig.vol4R.toFixed(1) + 'x';
+  if (sig.mom5  > 15)   return 'mom5=' + sig.mom5.toFixed(1) + '%/5d';
+  // Blokada "kupowania na gorce": jesli cena urosla juz >22% w ciagu ostatnich
+  // 10 dni (mom10), traktujemy to jak rozciagniety ruch - nawet jesli mom5
+  // (ostatnie 5 dni) jest umiarkowane, sygnal moze wypadac na koncu, nie na
+  // starcie wielodniowego rajdu. Pozostale gwardy (RSI>=70, BB>0.85, itd.)
+  // lapia tylko czesc takich przypadkow, bo strefa RSI 49-69 jest neutralna.
+  if (sig.mom10 > 22)   return 'mom10=' + sig.mom10.toFixed(1) + '%/10d';
+  return null;
 }
 
 function isVolumeAnomaly(sig) {
@@ -1743,6 +1807,91 @@ async function tgSend(cfg, msg) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// PIN GATE – HELPERY (sesje, hash, rate-limit)
+// ─────────────────────────────────────────────────────────────────────
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function randomToken(len) {
+  const bytes = new Uint8Array(len || 32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function getCookie(request, name) {
+  const cookie = request.headers.get('Cookie') || '';
+  for (const part of cookie.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    if (part.slice(0, idx).trim() === name) return part.slice(idx + 1).trim();
+  }
+  return null;
+}
+async function isValidSession(env, request) {
+  const sid = getCookie(request, 'swingai_sess');
+  if (!sid) return false;
+  const v = await env.SWINGAI_KV.get('sess_' + sid);
+  return !!v;
+}
+async function checkPinRateLimit(env, ip) {
+  const key = 'pinfail_' + ip;
+  const raw = await env.SWINGAI_KV.get(key);
+  const count = raw ? (parseInt(raw, 10) || 0) : 0;
+  return { blocked: count >= 5, key };
+}
+async function recordPinFail(env, key) {
+  const raw = await env.SWINGAI_KV.get(key);
+  const count = (raw ? (parseInt(raw, 10) || 0) : 0) + 1;
+  await env.SWINGAI_KV.put(key, String(count), { expirationTtl: 900 });
+}
+async function clearPinFail(env, key) {
+  try { await env.SWINGAI_KV.delete(key); } catch(e) {}
+}
+function pinPageHTML() {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SwingAI Bot - logowanie</title>
+<style>
+  body{background:#020810;color:#e8f0ff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+  .box{background:#0b1526;padding:32px 28px;border-radius:14px;box-shadow:0 0 40px rgba(0,0,0,.5);text-align:center;width:280px}
+  h1{font-size:1.1em;margin:0 0 18px;color:#00e5a0}
+  input{width:100%;box-sizing:border-box;font-size:1.6em;letter-spacing:6px;text-align:center;padding:10px;border-radius:8px;border:1px solid #223;background:#050c18;color:#fff;margin-bottom:14px}
+  button{width:100%;padding:10px;border-radius:8px;border:none;background:#00e5a0;color:#020810;font-weight:700;font-size:1em;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  #err{color:#ff3d5a;font-size:.85em;margin-top:10px;min-height:1.2em}
+</style></head>
+<body>
+  <div class="box">
+    <h1>SwingAI Bot 24/7</h1>
+    <form id="pinForm" autocomplete="off">
+      <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="********" autofocus>
+      <button type="submit">Wejdz</button>
+    </form>
+    <div id="err"></div>
+  </div>
+  <script>
+    var form = document.getElementById('pinForm');
+    var input = document.getElementById('pinInput');
+    var err = document.getElementById('err');
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var pin = input.value.trim();
+      if (pin.length !== 8) { err.textContent = 'PIN musi miec 8 cyfr'; return; }
+      err.textContent = '';
+      var btn = form.querySelector('button');
+      btn.disabled = true;
+      fetch('/verify-pin', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pin: pin }) })
+        .then(function(r){ return r.json().then(function(d){ return d; }); })
+        .then(function(d) {
+          if (d && d.ok) { location.reload(); }
+          else { err.textContent = (d && d.error) || 'Blad'; input.value=''; btn.disabled = false; }
+        })
+        .catch(function() { err.textContent = 'Blad polaczenia'; btn.disabled = false; });
+    });
+  </script>
+</body></html>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // KV HELPERS
 // ─────────────────────────────────────────────────────────────────────
 async function getConfig(env) {
@@ -1957,6 +2106,40 @@ async function dashboardHTML(cfg, state, env) {
               .catch(function(e) { console.warn('Sync z Workerem nieudana:', e); });
           }
         } catch(e) { console.warn('saveSettings injection error:', e); }
+      };
+
+      // -- changePinBot: zmiana PIN dostepu z panelu ustawien ---------
+      window.changePinBot = function() {
+        var oldEl = document.getElementById('cfg-pin-old');
+        var newEl = document.getElementById('cfg-pin-new');
+        var statusEl = document.getElementById('pin-change-status');
+        var oldPin = oldEl ? oldEl.value.trim() : '';
+        var newPin = newEl ? newEl.value.trim() : '';
+        if (!/^\\d{8}$/.test(oldPin)) {
+          if (statusEl) { statusEl.textContent = 'Podaj aktualny PIN (8 cyfr)'; statusEl.style.color = 'var(--red)'; }
+          return;
+        }
+        if (!/^\\d{8}$/.test(newPin)) {
+          if (statusEl) { statusEl.textContent = 'Nowy PIN musi miec 8 cyfr'; statusEl.style.color = 'var(--red)'; }
+          return;
+        }
+        if (statusEl) { statusEl.textContent = 'Zapisywanie...'; statusEl.style.color = 'var(--text2)'; }
+        fetch(BOT_BASE + '/change-pin', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldPin: oldPin, newPin: newPin })
+        })
+          .then(function(r){ return r.json().then(function(d){ return d; }); })
+          .then(function(d) {
+            if (d && d.ok) {
+              if (statusEl) { statusEl.textContent = 'PIN zmieniony'; statusEl.style.color = 'var(--green)'; }
+              if (oldEl) oldEl.value = '';
+              if (newEl) newEl.value = '';
+            } else {
+              if (statusEl) { statusEl.textContent = (d && d.error) || 'Blad zmiany PIN'; statusEl.style.color = 'var(--red)'; }
+            }
+          })
+          .catch(function(e) { if (statusEl) { statusEl.textContent = 'Blad polaczenia: ' + e.message; statusEl.style.color = 'var(--red)'; } });
       };
 
       // -- startBot: deleguj do Workera, NIE startuj lokalnego timera --
@@ -2329,6 +2512,21 @@ async function dashboardHTML(cfg, state, env) {
   if (sc.tgTokenSet) {
     gi('cfg-tg-token').value = ''; gi('cfg-tg-token').placeholder = '✓ Token zapisany w chmurze (wpisz nowy aby zmienic)'; gi('cfg-tg-token').style.borderColor='var(--green)';
   } else { gi('cfg-tg-token').value = CFG.tgToken||''; gi('cfg-tg-token').style.borderColor=''; }`
+  );
+
+  // Dodaj sekcje "Zmiana PIN dostepu" w modalu ustawien – wlasny formularz
+  // (aktualny PIN + nowy PIN + przycisk), niezalezny od saveSettings/Zapisz,
+  // bo wysyla dane do wlasnego endpointu /change-pin z osobna walidacja.
+  html = html.replace(
+    '  <div class="form-row"><label>Telegram Chat ID</label><input id="cfg-tg-chat" type="text" placeholder="Twój chat_id (np. -100123456)"></div>\n  <div class="modal-btns">',
+    '  <div class="form-row"><label>Telegram Chat ID</label><input id="cfg-tg-chat" type="text" placeholder="Twój chat_id (np. -100123456)"></div>\n' +
+    '  <hr style="border-color:var(--border);margin:12px 0;">\n' +
+    '  <div style="font-size:8.5pt;color:var(--text2);margin-bottom:8px">🔒 <b>PIN dostępu do panelu</b></div>\n' +
+    '  <div class="form-row"><label>Aktualny PIN</label><input id="cfg-pin-old" type="password" inputmode="numeric" maxlength="8" placeholder="8 cyfr"></div>\n' +
+    '  <div class="form-row"><label>Nowy PIN</label><input id="cfg-pin-new" type="password" inputmode="numeric" maxlength="8" placeholder="8 cyfr"></div>\n' +
+    '  <div class="modal-btns"><button onclick="window.changePinBot()">🔑 Zmień PIN</button></div>\n' +
+    '  <div id="pin-change-status" style="font-size:8.5pt;min-height:16px;margin-bottom:4px"></div>\n' +
+    '  <div class="modal-btns">'
   );
 
   // Uwaga: synchronizacja saveSettings->/save-config (tryb, klucze, Telegram) jest
