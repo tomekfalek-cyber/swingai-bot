@@ -1,11 +1,10 @@
 ﻿// SwingAI Bot 24/7 – Cloudflare Worker – MEXC VERSION
-// Gielda: MEXC (spot) | Dane: Binance public API (Gate.io zaczal blokowac CF Workers HTTP403)
+// Gielda (egzekucja zlecen): MEXC (spot) | Dane rynkowe (klines/ticker/orderbook): Kraken public API
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
 // ─────────────────────────────────────────────────────────────────────
 // KONFIGURACJA
 // ─────────────────────────────────────────────────────────────────────
-// Bybit v5 public API jako zrodlo danych – brak auth, CF Workers nie blokowane
 // Kraken public API jako zrodlo danych – nie blokuje CF Workers
 // Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC – mapowanie w mexcSymbol()
 // Uwaga: BTC w Kraken = XBT
@@ -43,10 +42,16 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders() });
 
     // ── AUTENTYKACJA ──────────────────────────────────────────────────
-    const AUTH_SECRET = env.AUTH_SECRET || 'swingai-secret-2024';
+    // WAZNE: brak domyslnej (hardkodowanej) wartosci - jesli AUTH_SECRET nie jest
+    // ustawiony jako Cloudflare secret, isAuth jest ZAWSZE false (nie porownujemy
+    // pustych stringow ze soba). Wczesniej fallback 'swingai-secret-2024' byl
+    // publicznie znany (m.in. z publicznego repo GitHub), co dawalo kazdemu w
+    // internecie pelna kontrole nad botem (zmiana kluczy MEXC, TP/SL, start/stop)
+    // mimo PIN-u na '/', bo PIN chronil tylko widok dashboardu, nie te endpointy.
+    const AUTH_SECRET = env.AUTH_SECRET || '';
     const authHeader  = request.headers.get('Authorization') || '';
     const authParam   = url.searchParams.get('auth') || '';
-    const isAuth = authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET;
+    const isAuth = !!AUTH_SECRET && (authHeader === 'Bearer ' + AUTH_SECRET || authParam === AUTH_SECRET);
     const publicPaths = ['/', '/status-public', '/market', '/verify-pin', '/change-pin'];
     if (!isAuth && !publicPaths.includes(url.pathname)) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders() });
@@ -302,8 +307,15 @@ export default {
       }
     }
 
-    // /status-public – publiczny endpoint do pollingu UI (bez auth)
+    // /status-public – polling UI dashboardu. Mimo nazwy WYMAGA sesji PIN (cookie
+    // swingai_sess) - wczesniej byl faktycznie publiczny (kazdy w internecie widzial
+    // realne saldo MEXC, dzienny PnL i pozycje bez logowania). Dashboard jest tego
+    // samego originu co Worker, wiec przegladarka i tak wysyla cookie sesji automatycznie -
+    // ta zmiana nie wymaga zadnej modyfikacji frontendu.
     if (url.pathname === '/status-public') {
+      if (!(await isValidSession(env, request))) {
+        return new Response('Unauthorized', { status: 401, headers: corsHeaders() });
+      }
       const state = await getState(env);
       const cfg   = await getConfig(env);
       const nextCycle = state.nextCycle || (state.lastCycle ? state.lastCycle + 10 * 60 * 1000 : null);
@@ -932,8 +944,17 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     }
   }
 
+  // W trybie MEXC nigdy nie licz rozmiaru pozycji od paperBalance (fikcyjne $1000) -
+  // jesli saldo live jeszcze nie zostalo pobrane / jest niewiarygodne, bezpieczniej
+  // pominac otwarcie pozycji w tym cyklu niz zlozyc realne zlecenie na kwote
+  // wyliczona z nieprawdziwego salda. Kolejny cykl (za 10 min) sproboje pobrac
+  // saldo ponownie.
+  if (cfg.mode === 'mexc' && !(state.liveBalance > 0)) {
+    addLog(state, 'Brak wiarygodnego salda MEXC – pomijam otwieranie pozycji dla ' + sig.sym, 'warn');
+    return;
+  }
   const paperBal = state.paperBalance > 0 ? state.paperBalance : (cfg.paperBalance || 1000);
-  const total    = cfg.mode === 'mexc' ? (state.liveBalance > 0 ? state.liveBalance : paperBal) : paperBal;
+  const total    = cfg.mode === 'mexc' ? state.liveBalance : paperBal;
   const micro    = isMicroAccount(total);
 
   // Micro account: max 1 pozycja naraz
@@ -1963,6 +1984,20 @@ async function dashboardHTML(cfg, state, env) {
     if (!html) return '<html><body style="background:#020810;color:#ff3d5a;font-family:sans-serif;padding:40px"><h2>Blad pobierania frontendu</h2><p>' + e.message + '</p><p><a href="/" style="color:#2d8fff">Odswiez</a></p></body></html>';
   }
 
+  // index.html (fetched z GitHub Pages) ma jeszcze DWA wlasne, niezalezne od
+  // powyzszego BOT_TOKEN, hardkodowane wystapienia starego tokenu (funkcja
+  // testConn() i cykliczny updater salda) - uzywane do wywolan /balance?auth=...
+  // Zamiast edytowac plik na GitHub (osobne repo, osobny deploy), podmieniamy
+  // KAZDE wystapienie starego literalu na prawdziwy sekret tutaj, po stronie
+  // Workera, przy kazdym zadaniu (nie jest cache'owane - patrz kod fetch wyzej,
+  // cache przechowuje surowy szablon PRZED tym podstawieniem). Bez tej podmiany
+  // rotacja AUTH_SECRET (usuniecie hardkodowanego fallbacku wyzej w tym pliku)
+  // zepsulaby wyswietlanie zywego salda w dashboardzie (przycisk "Test polaczenia"
+  // i cykliczny odczyt salda zaczelyby dostawac 401 od /balance).
+  if (env.AUTH_SECRET) {
+    html = html.split('swingai-secret-2024').join(env.AUTH_SECRET);
+  }
+
   // Dane bota do wstrzykniecia
   const botState = JSON.stringify({
     active:       cfg.active || false,
@@ -2002,7 +2037,7 @@ async function dashboardHTML(cfg, state, env) {
   // -- CLOUDFLARE WORKER INJECTION ----------------------------------
   (function() {
     const BOT_BASE  = 'https://swingai-bot-24h.tomek-falek.workers.dev';
-    const BOT_TOKEN = 'swingai-secret-2024';
+    const BOT_TOKEN = '${(env.AUTH_SECRET || '').replace(/'/g, "\\'")}';
     const BOT_STATE = ${botState.replace(/<\/script>/gi, '<\\/script>')};
     const SAVED_CREDS = ${savedCreds.replace(/<\/script>/gi, '<\\/script>')};
 
@@ -2029,13 +2064,12 @@ async function dashboardHTML(cfg, state, env) {
         var stored = localStorage.getItem('swingai_cfg_v3');
         var c = stored ? JSON.parse(stored) : {};
         if (!c.workerUrl || !c.workerUrl.startsWith('https://')) c.workerUrl = BOT_BASE;
-        if (c.mode === 'okx') { c.mode = 'mexc'; c.exchange = 'mexc'; }
-        if (c.exchange === 'binance' || c.exchange === 'okx' || !c.exchange) c.exchange = 'mexc';
+        c.exchange = 'mexc';
         localStorage.setItem('swingai_cfg_v3', JSON.stringify(c));
         // Zaktualizuj zywy obiekt CFG (loadAll() juz sie wykonal)
         if (typeof CFG !== 'undefined') {
           CFG.workerUrl = c.workerUrl;
-          if (CFG.exchange === 'binance' || CFG.exchange === 'okx' || !CFG.exchange) CFG.exchange = 'mexc';
+          CFG.exchange = 'mexc';
         }
       } catch(e) {}
 
@@ -2078,8 +2112,8 @@ async function dashboardHTML(cfg, state, env) {
             tgTokenInput.style.borderColor = 'var(--green)';
           }
           if (tgChatInput && SAVED_CREDS.tgChat) tgChatInput.value = SAVED_CREDS.tgChat;
-          var okxKeyInput = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
-          var okxSecInput = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
+          var okxKeyInput = document.getElementById('cfg-mexc-key');
+          var okxSecInput = document.getElementById('cfg-mexc-secret');
           if (okxKeyInput && SAVED_CREDS.mexcApiKeySet) { okxKeyInput.placeholder = 'Klucz MEXC API zapisany w chmurze (wpisz nowy aby zmienic)'; okxKeyInput.style.borderColor = 'var(--green)'; }
           if (okxSecInput && SAVED_CREDS.mexcSecretSet) { okxSecInput.placeholder = 'MEXC Secret zapisany w chmurze (wpisz nowy aby zmienic)'; okxSecInput.style.borderColor = 'var(--green)'; }
           var rbTg = document.getElementById('rb-tg');
@@ -2096,8 +2130,8 @@ async function dashboardHTML(cfg, state, env) {
           params.set('auth', BOT_TOKEN);
           var tgTok = document.getElementById('cfg-tg-token');
           var tgCht = document.getElementById('cfg-tg-chat');
-          var okxK  = document.getElementById('cfg-mexc-key') || document.getElementById('cfg-okx-key');
-          var okxS  = document.getElementById('cfg-mexc-secret') || document.getElementById('cfg-okx-secret');
+          var okxK  = document.getElementById('cfg-mexc-key');
+          var okxS  = document.getElementById('cfg-mexc-secret');
           var anyNew = false;
           // Tryb (PAPER/MEXC) zawsze synchronizujemy – bez tego przelacznik w UI
           // nigdy nie docieral do KV Workera i po powrocie znowu widac bylo PAPER.
@@ -2585,3 +2619,4 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
+
