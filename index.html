@@ -524,7 +524,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
         <div>
           <div class="sec-t" style="margin-bottom:8px">Optymalizacja wag (Decision Tree)</div>
           <div style="font-size:8.5pt;color:var(--text2);margin-bottom:10px;line-height:1.7">
-            Algorytm analizuje dane historyczne z Binance i oblicza optymalne wagi dla każdego wskaźnika.<br>
+            Algorytm analizuje dane historyczne (Kraken) i oblicza optymalne wagi dla każdego wskaźnika.<br>
             Wyniki zastępują hardkodowane wagi w silniku scoringu.
           </div>
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Para treningowa</span>
@@ -656,39 +656,24 @@ tr:hover td{background:rgba(45,143,255,.04);}
     <select id="cfg-mode" onchange="onModeChange(this.value)">
       <option value="paper">📝 PAPER — symulacja (bezpieczny start)</option>
       <option value="mexc">💰 LIVE — MEXC (realne transakcje)</option>
-      <option value="bybit">💰 LIVE — Bybit EU (realne transakcje)</option>
-      <option value="live">💰 LIVE — Binance (realne transakcje)</option>
     </select>
   </div>
 
-  <!-- Binance + Bybit EU — 2 kolumny -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-
-    <div style="background:rgba(88,166,255,.05);border:1px solid rgba(88,166,255,.25);border-radius:6px;padding:10px 12px;">
-      <div style="font-size:8pt;color:var(--accent);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟡 Binance</div>
-      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">API Key</div>
-        <input id="cfg-key" type="password" placeholder="Binance API Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
-      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Secret</div>
-        <input id="cfg-secret" type="password" placeholder="Binance Secret" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
-      <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Worker URL (CORS proxy)</div>
-        <input id="cfg-worker" type="text" placeholder="https://swingai.xxx.workers.dev" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
-      <div style="font-size:7.5pt;color:var(--text3);margin-top:5px;line-height:1.5">Worker wymagany do LIVE.<br>dash.cloudflare.com → Workers → Create</div>
-    </div>
-
-    <div style="background:rgba(240,165,0,.05);border:2px solid rgba(240,165,0,.4);border-radius:6px;padding:10px 12px;">
-      <div style="font-size:8pt;color:var(--gold);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟠 Bybit EU</div>
-      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">API Key</div>
-        <input id="cfg-byb-key" type="password" placeholder="Bybit API Key" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
-      <div style="margin-bottom:5px"><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Secret</div>
-        <input id="cfg-byb-secret" type="password" placeholder="Bybit Secret" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
-      <div><div style="font-size:7.5pt;color:var(--text2);margin-bottom:2px">Worker URL (Bybit proxy)</div>
-        <input id="cfg-byb-worker" type="text" placeholder="https://swingai-byb.xxx.workers.dev" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
-      <div style="font-size:7.5pt;color:var(--text3);margin-top:5px;line-height:1.5">Klucz: Unified Trading → Read+Trade Spot.<br>Świece i ticker bez proxy.</div>
-    </div>
-
+  <!-- Binance + Bybit EU - nieuzywane (bot dziala wylacznie na MEXC), pola zostaja
+       w DOM (ukryte) bo openSettings()/saveSettings() nadal je czytaja/zapisuja -
+       usuniecie elementow bez przepisania tych funkcji (w 2 plikach - tu i w
+       worker_bot.js, ktory patchuje openSettings() server-side) wywalaloby caly
+       modal Ustawien wyjatkiem przy pierwszym gi('cfg-key') na nieistniejacy element. -->
+  <div style="display:none">
+    <input id="cfg-key" type="password">
+    <input id="cfg-secret" type="password">
+    <input id="cfg-worker" type="text">
+    <input id="cfg-byb-key" type="password">
+    <input id="cfg-byb-secret" type="password">
+    <input id="cfg-byb-worker" type="text">
   </div>
 
-  <!-- OKX — osobna sekcja -->
+  <!-- MEXC — jedyna uzywana gielda -->
   <div style="background:rgba(63,185,80,.05);border:1px solid rgba(63,185,80,.3);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
     <div style="font-size:8pt;color:var(--green);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🟢 MEXC</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -705,9 +690,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
           <input id="cfg-mexc-worker" type="text" placeholder="(nieużywane)" style="width:100%;box-sizing:border-box;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 7px;font-size:8.5pt;outline:none"></div>
         <div style="font-size:7.5pt;color:var(--text3);margin-top:8px;line-height:1.6">
           Klucz: Trade Spot → Read+Trade.<br>
-          Bez Worker: dane rynkowe działają (brak CORS).<br>
-          Worker wymagany do zleceń LIVE.<br>
-          Działa z EU IP — brak blokad Binance.
+          Handel LIVE dzieje się w chmurze (Cloudflare Worker swingai-bot-24h) - pola Passphrase/Worker URL powyżej są nieużywane.
         </div>
       </div>
     </div>
@@ -777,8 +760,7 @@ let CFG = {
   apiKey:'', secret:'', mode:'paper', workerUrl:'', tgToken:'', tgChat:'',
   tp:0.12, sl:0.05, trail:0.06, maxPos:4, riskPct:2, posSize:15,
   intervalMin:5, paperBal:1000, minScore:58, fgMin:20,
-  exchange:'mexc', bybApiKey:'', bybSecret:'', bybWorker:'',
-  okxApiKey:'', okxSecret:'', okxPassphrase:'', okxWorker:''
+  exchange:'mexc'
 };
 const PAIRS = ['BTCUSDC','ETHUSDC','BNBUSDC','SOLUSDC','XRPUSDC','DOGEUSDC',
                'ADAUSDC','AVAXUSDC','DOTUSDC','LINKUSDC','LTCUSDC','NEARUSDC',
@@ -798,15 +780,11 @@ let running=false, botTimer=null, nextScanAt=0, lastSigs=[], lastSignalData=null
 function loadAll() {
   try { const s=localStorage.getItem('swingai_v3'); if(s) ST={...ST,...JSON.parse(s)}; } catch(e){}
   try { const c=localStorage.getItem('swingai_cfg_v3'); if(c) CFG={...CFG,...JSON.parse(c)}; } catch(e){}
-  if (CFG.exchange==='binance'||CFG.exchange==='okx'||!CFG.exchange) CFG.exchange='mexc';
+  // Bot dziala wylacznie na MEXC - kazda inna/stara wartosc (binance/okx/bybit/live) migrowana
+  CFG.exchange = 'mexc';
+  if (CFG.mode !== 'paper' && CFG.mode !== 'mexc') CFG.mode = 'mexc';
   // Migracja: stary domyslny interwal 30min → nowy 2min
   if (!CFG.intervalMin || CFG.intervalMin < 5) CFG.intervalMin = 5;
-  // Migracja: stara giełda Binance → MEXC
-  if (CFG.exchange === 'binance' && CFG.mode !== 'live') CFG.exchange = 'mexc';
-  // Migracja: stara giełda OKX → MEXC
-  if (CFG.exchange === 'okx') CFG.exchange = 'mexc';
-  // Migracja: stary tryb OKX → live
-  if (CFG.mode === 'okx') CFG.mode = 'live';
   const today = new Date().toDateString();
   if (ST.dailyDate !== today) {
     ST.dailyPnl=0; ST.dailyDate=today;
@@ -982,281 +960,7 @@ async function btcDropGuard() {
   return false;
 }
 
-// ── BYBIT EU API ───────────────────────────────────────────────────
-const BYBIT_BASE = 'https://api.bybit.com';
-
-async function bybHmac(msg) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(CFG.bybSecret), {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
-  return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-function bybWorkerReady() { return !!(CFG.bybWorker && CFG.bybWorker.startsWith('https://')); }
-
-async function bybSignedReq(method, path, params={}) {
-  if (!bybWorkerReady()) throw new Error('Brak Bybit Worker URL');
-  if (!CFG.bybApiKey) throw new Error('Brak Bybit API Key');
-  const ts = Date.now().toString();
-  const recv = '5000';
-  const qs = new URLSearchParams(params).toString();
-  const toSign = ts + CFG.bybApiKey + recv + (method==='GET' ? qs : JSON.stringify(params));
-  const signature = await bybHmac(toSign);
-  const headers = {
-    'X-BAPI-API-KEY':   CFG.bybApiKey,
-    'X-BAPI-TIMESTAMP': ts,
-    'X-BAPI-RECV-WINDOW': recv,
-    'X-BAPI-SIGN':      signature,
-    'Content-Type':     'application/json'
-  };
-  const proxyBase = CFG.bybWorker + '/proxy';
-  const url = method==='GET'
-    ? proxyBase + path + (qs ? '?'+qs : '')
-    : proxyBase + path;
-  const r = await fetchWithTimeout(url, {
-    method,
-    headers,
-    body: method!=='GET' ? JSON.stringify(params) : undefined
-  });
-  if (!r.ok) throw new Error('Bybit HTTP ' + r.status);
-  const d = await r.json();
-  if (d.retCode !== 0) throw new Error('Bybit: ' + d.retMsg);
-  return d.result;
-}
-
-// Publiczne dane z Bybit (świece, ticker) — bez proxy
-async function bybPub(path, params={}) {
-  const qs = Object.keys(params).length ? '?'+new URLSearchParams(params) : '';
-  const r = await fetchWithTimeout(BYBIT_BASE + path + qs);
-  if (!r.ok) throw new Error('Bybit pub ' + r.status);
-  const d = await r.json();
-  if (d.retCode !== 0) throw new Error('Bybit: ' + d.retMsg);
-  return d.result;
-}
-
-// Adapter: pobierz świece z Bybit w formacie Binance [ts,o,h,l,c,v]
-async function bybGetKlines(sym, tf, limit) {
-  const tfMap = {'1d':'D','4h':'240','1h':'60','15m':'15'};
-  const bybTf = tfMap[tf] || 'D';
-  const d = await bybPub('/v5/market/kline', {category:'spot', symbol:sym, interval:bybTf, limit:limit||200});
-  // Bybit zwraca [startTime, openPrice, highPrice, lowPrice, closePrice, volume, turnover]
-  return (d.list || []).reverse().map(function(k){
-    return [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5]];
-  });
-}
-
-async function bybGetTicker(sym) {
-  const d = await bybPub('/v5/market/tickers', {category:'spot', symbol:sym});
-  const t = (d.list||[])[0] || {};
-  return { lastPrice: t.lastPrice, priceChangePercent: t.price24hPcnt ? (+t.price24hPcnt*100).toFixed(2) : '0' };
-}
-
-async function bybGetOrderbook(sym) {
-  try {
-    const d = await bybPub('/v5/market/orderbook', {category:'spot', symbol:sym, limit:20});
-    var bidVol = (d.b||[]).reduce(function(s,b){ var v=(parseFloat(b[0])||0)*(parseFloat(b[1])||0); return s+(isFinite(v)?v:0); }, 0);
-    var askVol = (d.a||[]).reduce(function(s,a){ var v=(parseFloat(a[0])||0)*(parseFloat(a[1])||0); return s+(isFinite(v)?v:0); }, 0);
-    var total  = bidVol + askVol;
-    return { ratio: total > 0 ? +(bidVol/total).toFixed(3) : 0.5, bidVol:bidVol, askVol:askVol, spread:0, ts:Date.now() };
-  } catch(e) { return { ratio:0.5, bidVol:0, askVol:0, spread:0, ts:Date.now() }; }
-}
-
-async function bybGetUSDC() {
-  if (CFG.mode === 'paper') return ST.paperBal;
-  const d = await bybSignedReq('GET', '/v5/account/wallet-balance', {accountType:'UNIFIED'});
-  const coin = ((d.list||[])[0]?.coin||[]).find(function(c){ return c.coin==='USDC'; });
-  // availableBalance używane dla Spot Unified Account
-  return coin ? +(coin.availableBalance || coin.availableToWithdraw || 0) : 0;
-}
-
-// Poll Bybit order history po złożeniu zlecenia — Bybit nie zwraca fill w response create
-async function bybFetchFill(sym, orderId, fallbackPrice, fallbackQuote) {
-  await new Promise(function(r){ setTimeout(r, 700); }); // czekaj na wypełnienie
-  try {
-    const h = await bybSignedReq('GET', '/v5/order/history', {category:'spot', symbol:sym, orderId:orderId, limit:1});
-    const o = (h.list||[])[0] || {};
-    const price = +o.avgPrice || fallbackPrice;
-    const qty   = +o.cumExecQty || (price > 0 ? fallbackQuote / price : 0);
-    return {price:price, qty:qty};
-  } catch(e) {
-    // Fallback: oszacuj z ceny rynkowej
-    const price = fallbackPrice || 0;
-    return {price:price, qty: price > 0 ? fallbackQuote / price : 0};
-  }
-}
-
-async function bybExecBuy(sym, quoteQty) {
-  if (CFG.mode === 'paper') {
-    const t = await bybGetTicker(sym); const p = +t.lastPrice;
-    if (!p || p <= 0) throw new Error('bybExecBuy: niepoprawna cena '+sym);
-    ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
-  }
-  // Pobierz aktualną cenę jako fallback przed zleceniem
-  const tickerBefore = await bybGetTicker(sym).catch(function(){ return {lastPrice:'0'}; });
-  const fallbackPrice = +tickerBefore.lastPrice;
-  const d = await bybSignedReq('POST', '/v5/order/create', {
-    category:'spot', symbol:sym, side:'Buy', orderType:'Market',
-    qty:quoteQty.toFixed(2), marketUnit:'quoteCoin'
-  });
-  return bybFetchFill(sym, d.orderId, fallbackPrice, quoteQty);
-}
-
-async function bybExecSell(sym, qty) {
-  if (CFG.mode === 'paper') {
-    const t = await bybGetTicker(sym); const p = +t.lastPrice;
-    ST.paperBal += p * qty; return {price:p, qty};
-  }
-  const tickerBefore = await bybGetTicker(sym).catch(function(){ return {lastPrice:'0'}; });
-  const fallbackPrice = +tickerBefore.lastPrice;
-  // Bybit wymaga qty jako string z dokładnością do 6 miejsc, ale minimalna wartość notional to $1
-  // Zaokrągl w dół żeby uniknąć odrzucenia przez LOT_SIZE (Bybit używa basePrecision)
-  const safeQty = Math.floor(qty * 1e6) / 1e6;
-  if (safeQty <= 0) throw new Error('bybExecSell: qty=0 po zaokrągleniu ('+sym+')');
-  const d = await bybSignedReq('POST', '/v5/order/create', {
-    category:'spot', symbol:sym, side:'Sell', orderType:'Market', qty:safeQty.toFixed(6)
-  });
-  return bybFetchFill(sym, d.orderId, fallbackPrice, safeQty * fallbackPrice);
-}
-
-// ── OKX API ────────────────────────────────────────────────────────
-const OKX_BASE = 'https://swingai-okx.tomek-falek.workers.dev/proxy';
-
-async function okxHmac(msg) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(CFG.okxSecret), {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)));
-}
-function okxWorkerReady() { return !!(CFG.okxWorker && CFG.okxWorker.startsWith('https://')); }
-
-async function okxSignedReq(method, path, body) {
-  if (!okxWorkerReady()) throw new Error('Brak OKX Worker URL');
-  if (!CFG.okxApiKey)    throw new Error('Brak OKX API Key');
-  const ts  = new Date().toISOString();
-  const bodyStr = body ? JSON.stringify(body) : '';
-  const toSign  = ts + method.toUpperCase() + path + bodyStr;
-  const signature = await okxHmac(toSign);
-  const headers = {
-    'OK-ACCESS-KEY':        CFG.okxApiKey,
-    'OK-ACCESS-SIGN':       signature,
-    'OK-ACCESS-TIMESTAMP':  ts,
-    'OK-ACCESS-PASSPHRASE': CFG.okxPassphrase,
-    'Content-Type': 'application/json'
-  };
-  const proxyUrl = CFG.okxWorker.replace(/\/+$/,'') + '/proxy' + path;
-  const r = await fetchWithTimeout(proxyUrl, {
-    method,
-    headers,
-    body: bodyStr || undefined
-  });
-  if (!r.ok) throw new Error('OKX HTTP ' + r.status);
-  const d = await r.json();
-  if (d.code !== '0') throw new Error('OKX: ' + (d.msg || d.code));
-  return d.data;
-}
-
-// Publiczne dane OKX — bez proxy (OKX nie blokuje EU CORS dla /market)
-async function okxPub(path, params) {
-  const qs = params ? '?' + new URLSearchParams(params) : '';
-  const r = await fetchWithTimeout(OKX_BASE + path + qs);
-  if (!r.ok) throw new Error('OKX pub ' + r.status);
-  const d = await r.json();
-  if (d.code !== '0') throw new Error('OKX pub: ' + (d.msg || d.code));
-  return d.data;
-}
-
-// Adapter: OKX instId = BTC-USDC (ze slash) zamiast BTCUSDC
-function okxInstId(sym) { return sym.replace('USDC', '-USDC'); }
-
-// Adapter: pobierz świece OKX w formacie [ts,o,h,l,c,v]
-async function okxGetKlines(sym, tf, limit) {
-  const tfMap = {'1d':'1D','4h':'4H','1h':'1H','15m':'15m'};
-  const okxTf = tfMap[tf] || '1D';
-  const d = await okxPub('/api/v5/market/candles', {instId:okxInstId(sym), bar:okxTf, limit:limit||200});
-  // OKX: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
-  return (d || []).reverse().map(function(k){
-    return [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5]];
-  });
-}
-
-async function okxGetTicker(sym) {
-  const d = await okxPub('/api/v5/market/ticker', {instId:okxInstId(sym)});
-  const t = (d || [])[0] || {};
-  const last = +t.last || 0;
-  const open24 = +t.open24h || last;
-  const chgPct = open24 > 0 ? ((last - open24) / open24 * 100).toFixed(2) : '0';
-  return { lastPrice: String(last), priceChangePercent: chgPct };
-}
-
-async function okxGetOrderbook(sym) {
-  try {
-    const d = await okxPub('/api/v5/market/books', {instId:okxInstId(sym), sz:'20'});
-    const book = (d || [])[0] || {};
-    var bidVol = (book.bids||[]).reduce(function(s,b){ var v=(parseFloat(b[0])||0)*(parseFloat(b[1])||0); return s+(isFinite(v)?v:0); }, 0);
-    var askVol = (book.asks||[]).reduce(function(s,a){ var v=(parseFloat(a[0])||0)*(parseFloat(a[1])||0); return s+(isFinite(v)?v:0); }, 0);
-    var total  = bidVol + askVol;
-    return { ratio: total > 0 ? +(bidVol/total).toFixed(3) : 0.5, bidVol:bidVol, askVol:askVol, spread:0, ts:Date.now() };
-  } catch(e) { return { ratio:0.5, bidVol:0, askVol:0, spread:0, ts:Date.now() }; }
-}
-
-async function okxGetUSDC() {
-  if (CFG.mode === 'paper') return ST.paperBal;
-  const d = await okxSignedReq('GET', '/api/v5/account/balance?ccy=USDC');
-  const detail = ((d || [])[0]?.details || []).find(function(c){ return c.ccy === 'USDC'; });
-  return detail ? +(detail.availBal || 0) : 0;
-}
-
-async function okxExecBuy(sym, quoteQty) {
-  if (CFG.mode === 'paper') {
-    const t = await okxGetTicker(sym); const p = +t.lastPrice;
-    if (!p || p <= 0) throw new Error('okxExecBuy: niepoprawna cena ' + sym);
-    ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
-  }
-  const tickerBefore = await okxGetTicker(sym).catch(function(){ return {lastPrice:'0'}; });
-  const fallbackPrice = +tickerBefore.lastPrice;
-  const d = await okxSignedReq('POST', '/api/v5/trade/order', {
-    instId: okxInstId(sym), tdMode:'cash', side:'buy',
-    ordType:'market', sz: quoteQty.toFixed(4), tgtCcy:'quote_ccy'
-  });
-  const ordId = (d || [])[0]?.ordId;
-  if (!ordId) throw new Error('OKX buy: brak ordId');
-  // Poll status zlecenia
-  await new Promise(function(r){ setTimeout(r, 700); });
-  try {
-    const od = await okxSignedReq('GET', '/api/v5/trade/order?instId='+okxInstId(sym)+'&ordId='+ordId);
-    const o = (od || [])[0] || {};
-    const price = +o.avgPx || fallbackPrice;
-    const qty   = +o.fillSz || (price > 0 ? quoteQty / price : 0);
-    return {price:price, qty:qty};
-  } catch(e) {
-    return {price:fallbackPrice, qty: fallbackPrice > 0 ? quoteQty / fallbackPrice : 0};
-  }
-}
-
-async function okxExecSell(sym, qty) {
-  if (CFG.mode === 'paper') {
-    const t = await okxGetTicker(sym); const p = +t.lastPrice;
-    ST.paperBal += p * qty; return {price:p, qty};
-  }
-  const tickerBefore = await okxGetTicker(sym).catch(function(){ return {lastPrice:'0'}; });
-  const fallbackPrice = +tickerBefore.lastPrice;
-  const safeQty = Math.floor(qty * 1e6) / 1e6;
-  if (safeQty <= 0) throw new Error('okxExecSell: qty=0 po zaokrągleniu ('+sym+')');
-  const d = await okxSignedReq('POST', '/api/v5/trade/order', {
-    instId: okxInstId(sym), tdMode:'cash', side:'sell',
-    ordType:'market', sz: safeQty.toFixed(6), tgtCcy:'base_ccy'
-  });
-  const ordId = (d || [])[0]?.ordId;
-  if (!ordId) throw new Error('OKX sell: brak ordId');
-  await new Promise(function(r){ setTimeout(r, 700); });
-  try {
-    const od = await okxSignedReq('GET', '/api/v5/trade/order?instId='+okxInstId(sym)+'&ordId='+ordId);
-    const o = (od || [])[0] || {};
-    const price = +o.avgPx || fallbackPrice;
-    return {price:price, qty:+o.fillSz||safeQty};
-  } catch(e) {
-    return {price:fallbackPrice, qty:safeQty};
-  }
-}
+// Bybit EU i OKX zostaly usuniete z kodu 2026-09-11 - bot dziala wylacznie na MEXC (egzekucja) + Kraken (dane). Historia w git.
 
 // ── BINANCE API ────────────────────────────────────────────────────
 async function hmac(msg) {
@@ -1413,13 +1117,11 @@ async function krakenGetTicker(s){
   }
   throw new Error('Kraken ticker: zaden kod pary nie zadzialal dla '+s+' ('+(lastErr?lastErr.message:'?')+')');
 }
-const getKlines = (s,tf,n=200) => CFG.exchange==='bybit' ? bybGetKlines(s,tf,n) : CFG.exchange==='okx' ? okxGetKlines(s,tf,n) : krakenGetKlines(s,tf,n);
-const getTicker = (s) => CFG.exchange==='bybit' ? bybGetTicker(s) : CFG.exchange==='okx' ? okxGetTicker(s) : krakenGetTicker(s);
+const getKlines = (s,tf,n=200) => krakenGetKlines(s,tf,n);
+const getTicker = (s) => krakenGetTicker(s);
 
 async function getUSDC() {
   if (CFG.mode === 'paper') return ST.paperBal;
-  if (CFG.exchange === 'bybit') return bybGetUSDC();
-  if (CFG.exchange === 'okx')   return okxGetUSDC();
   const d = await signedReq('GET', '/api/v3/account');
   const b = (d.balances||[]).find(x => x.asset==='USDC');
   return b ? +b.free : 0;
@@ -1430,9 +1132,7 @@ async function execBuy(sym, quoteQty) {
     if (!p || p <= 0) throw new Error('execBuy: niepoprawna cena '+sym);
     ST.paperBal -= quoteQty; return {price:p, qty:quoteQty/p};
   }
-  if (CFG.exchange === 'bybit') return bybExecBuy(sym, quoteQty);
-  if (CFG.exchange === 'okx')   return okxExecBuy(sym, quoteQty);
-  // Zaokrąglij quoteQty do 2 miejsc (wymóg Binance minNotional)
+  // Zaokrąglij quoteQty do 2 miejsc (wymóg minNotional)
   const safeQty = Math.floor(quoteQty * 100) / 100;
   if (safeQty < 1) throw new Error('execBuy: quoteQty za małe: $'+safeQty);
   const d = await signedReq('POST', '/api/v3/order',
@@ -1446,8 +1146,6 @@ async function execSell(sym, qty) {
     const t = await getTicker(sym); const p = +t.lastPrice;
     ST.paperBal += p * qty; return {price:p, qty};
   }
-  if (CFG.exchange === 'bybit') return bybExecSell(sym, qty);
-  if (CFG.exchange === 'okx')   return okxExecSell(sym, qty);
   // qty musi być zaokrąglone do stepSize pary — pobierz z cache lub użyj bezpiecznego zaokrąglenia
   const roundedQty = roundQty(sym, qty);
   if (roundedQty <= 0) throw new Error('execSell: qty=0 po zaokrągleniu ('+sym+')');
@@ -2428,20 +2126,12 @@ setInterval(function() { var t = new Date().toLocaleTimeString('pl-PL'); gi('st-
 
 // ── BOT CONTROL ────────────────────────────────────────────────────
 async function startBot() {
-  if (CFG.mode === 'live') {
-    if (!CFG.apiKey || !CFG.secret) { alert('Tryb LIVE wymaga kluczy Binance API. Otworz Konfiguracja.'); return; }
-    if (!workerReady()) {
-      alert('UWAGA: Tryb LIVE wymaga Cloudflare Worker URL.\n\nBinance blokuje bezpośrednie wywołania REST z przeglądarki (CORS) dla endpointów signed. Bez Worker URL wszystkie zlecenia BUY/SELL zakończą się błędem CORS.\n\nOtworz Konfiguracja i ustaw Worker URL.');
-      return;
-    }
-  }
-  if (CFG.mode === 'bybit') {
-    if (!CFG.bybApiKey || !CFG.bybSecret) { alert('Tryb Bybit EU wymaga kluczy Bybit API. Otworz Konfiguracja.'); return; }
-    if (!bybWorkerReady()) { alert('Tryb Bybit EU wymaga Cloudflare Worker URL (pole Bybit). Otworz Konfiguracja.'); return; }
-  }
-  if (CFG.mode === 'okx') {
-    if (!CFG.okxApiKey || !CFG.okxSecret || !CFG.okxPassphrase) { alert('Tryb OKX wymaga API Key, Secret i Passphrase. Otworz Konfiguracja.'); return; }
-    if (!okxWorkerReady()) { alert('Tryb OKX LIVE wymaga Cloudflare Worker URL (pole OKX). Otworz Konfiguracja.'); return; }
+  // UWAGA: ta funkcja jest w praktyce nieuzywana dla swingai-bot-24h - Worker
+  // (worker_bot.js, wstrzykniety skrypt) nadpisuje window.startBot tak, by
+  // klikniecie "START BOT" wywolywalo /start-live w chmurze, a NIE ta lokalna
+  // petle. Zostaje jako fallback/dla starszych, lokalnych trybow PAPER.
+  if (CFG.mode === 'mexc') {
+    if (!CFG.mexcApiKey || !CFG.mexcSecret) { alert('Tryb LIVE (MEXC) wymaga kluczy API. Otworz Konfiguracja.'); return; }
   }
   running = true;
   gi('btn-run').style.display  = 'none';
@@ -2455,7 +2145,7 @@ async function startBot() {
   if (!ST.dailyStartBalance || ST.dailyDate !== new Date().toDateString()) {
     getTotal().then(function(t){ if (t>0 && !ST.dailyStartBalance) { ST.dailyStartBalance=t; saveAll(); } }).catch(function(){});
   }
-  // Pobierz LOT_SIZE/stepSize dla wszystkich par (Binance LIVE) — unikamy odrzuceń zleceń
+  // Pobierz LOT_SIZE/stepSize dla wszystkich par — unikamy odrzuceń zleceń
   prefetchStepSizes();
   // Uruchom WebSocket
   WS.connect();
@@ -2559,9 +2249,9 @@ async function updateHeader() {
     gi('mode-badge').className   = CFG.mode==='paper' ? 'badge bwarn' : 'badge bon';
     gi('st-mode').textContent = CFG.mode.toUpperCase();
     const rw = gi('rb-proxy');
-    if (rw) { rw.textContent=CFG.mode==='paper'?'(PAPER)':workerReady()||bybWorkerReady()?'OK':'brak'; rw.className=CFG.mode==='paper'?'val neu':workerReady()||bybWorkerReady()?'val up':'val dn'; }
+    if (rw) { rw.textContent=CFG.mode==='paper'?'(PAPER)':workerReady()?'OK':'brak'; rw.className=CFG.mode==='paper'?'val neu':workerReady()?'val up':'val dn'; }
     const re = gi('rb-exchange');
-    if (re) { re.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='okx'||CFG.exchange==='mexc'?'MEXC':CFG.exchange==='binance'?'Binance':'MEXC'; re.className='val acc'; }
+    if (re) { re.textContent='MEXC'; re.className='val acc'; }
   } catch(e) {}
 }
 
@@ -2821,7 +2511,7 @@ function saveSettings() {
   CFG.secret     = gi('cfg-secret').value.trim();
   CFG.workerUrl  = gi('cfg-worker').value.trim().replace(/\/+$/,'');
   CFG.mode       = gi('cfg-mode').value;
-  CFG.exchange   = CFG.mode==='bybit' ? 'bybit' : 'mexc';
+  CFG.exchange   = 'mexc';
   CFG.bybApiKey  = gi('cfg-byb-key').value.trim();
   CFG.bybSecret  = gi('cfg-byb-secret').value.trim();
   CFG.bybWorker  = gi('cfg-byb-worker').value.trim().replace(/\/+$/,'');
@@ -2876,30 +2566,14 @@ function saveSettings() {
   gi('lim-score').textContent  = CFG.minScore+'/100';
   gi('ai-minscore').textContent= CFG.minScore+'/100';
   const tge=gi('rb-tg'); if(tge){ tge.textContent=CFG.tgToken?'OK':'-'; tge.className=CFG.tgToken?'val up':'val neu'; }
-  const rxe=gi('rb-exchange'); if(rxe){ rxe.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='binance'?'Binance':'MEXC'; rxe.className='val acc'; }
+  const rxe=gi('rb-exchange'); if(rxe){ rxe.textContent='MEXC'; rxe.className='val acc'; }
   log('Konfiguracja zapisana','ok');
   if (running&&botTimer) { clearTimeout(botTimer); botTimer=null; const scheduleNextCfg=async function(){ if(!running)return; gi('ai-dot').className='ai-dot scan'; await botCycle(); gi('ai-dot').className='ai-dot'; if(running)botTimer=setTimeout(scheduleNextCfg,CFG.intervalMin*60000); }; botTimer=setTimeout(scheduleNextCfg,CFG.intervalMin*60000); }
 }
 async function testConn() {
   const s=gi('cfg-status'); s.textContent='Testuje...'; s.style.color='var(--gold)'; saveSettings();
   const lines=[];
-  if (CFG.exchange === 'bybit') {
-    try { const t=await bybGetTicker('BTCUSDC'); lines.push('Bybit EU OK | BTC: $'+(+t.lastPrice).toFixed(0)); } catch(e){ lines.push('Bybit ERR: '+e.message); }
-    if (CFG.bybApiKey && bybWorkerReady()) {
-      try { const u=await bybGetUSDC(); lines.push('Bybit konto OK | USDC: $'+u.toFixed(2)); } catch(e){ lines.push('Bybit konto ERR: '+e.message); }
-    }
-    if (CFG.bybWorker) {
-      try { const r=await fetchWithTimeout(CFG.bybWorker+'/proxy/v5/market/tickers?category=spot&symbol=BTCUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('Bybit Worker OK'); } catch(e){ lines.push('Bybit Worker ERR: '+e.message); }
-    } else if (CFG.mode==='bybit') { lines.push('Brak Bybit Worker URL — wymagany do LIVE'); }
-  } else if (CFG.exchange === 'okx') {
-    try { const t=await okxGetTicker('BTCUSDC'); lines.push('OKX OK | BTC: $'+(+t.lastPrice).toFixed(0)); } catch(e){ lines.push('OKX ERR: '+e.message); }
-    if (CFG.okxApiKey && CFG.okxSecret && CFG.okxPassphrase && okxWorkerReady()) {
-      try { const u=await okxGetUSDC(); lines.push('OKX konto OK | USDC: $'+u.toFixed(2)); } catch(e){ lines.push('OKX konto ERR: '+e.message); }
-    }
-    if (CFG.okxWorker) {
-      try { const r=await fetchWithTimeout(CFG.okxWorker+'/proxy/api/v5/market/ticker?instId=BTC-USDC'); if(!r.ok) throw new Error('HTTP '+r.status); lines.push('OKX Worker OK'); } catch(e){ lines.push('OKX Worker ERR: '+e.message); }
-    } else if (CFG.mode==='okx') { lines.push('Brak OKX Worker URL — wymagany do LIVE'); }
-  } else if (CFG.exchange === 'mexc') {
+  {
     const BOT = 'https://swingai-bot-24h.tomek-falek.workers.dev';
     const AUTH = 'swingai-secret-2024';
     try {
@@ -2914,14 +2588,6 @@ async function testConn() {
         lines.push('ℹ️ Tryb: ' + (d.mode||'paper').toUpperCase() + ' — brak kluczy API MEXC lub tryb paper');
       }
     } catch(e) { lines.push('MEXC Worker ERR: ' + e.message); }
-  } else {
-    try { const t=await pub('/api/v3/ticker/price',{symbol:'BTCUSDC'}); lines.push('Binance OK | BTC: $'+(+t.price).toFixed(0)); } catch(e){ lines.push('Binance ERR: '+e.message); }
-    if (CFG.workerUrl) {
-      try { const r=await fetchWithTimeout(CFG.workerUrl+'/proxy/api/v3/ticker/price?symbol=ETHUSDC'); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); lines.push('Binance Worker OK | ETH: $'+(+d.price).toFixed(2)); } catch(e){ lines.push('Binance Worker ERR: '+e.message); }
-    } else if (CFG.mode==='live') { lines.push('Brak Binance Worker URL — wymagany do LIVE'); }
-    if (CFG.mode==='live'&&CFG.apiKey&&workerReady()) {
-      try { const a=await signedReq('GET','/api/v3/account'); const u=(a.balances||[]).find(function(b){ return b.asset==='USDC'; }); lines.push('Binance Konto OK | USDC: $'+(u?parseFloat(u.free).toFixed(2):'0')); } catch(e){ lines.push('Binance Konto ERR: '+e.message); }
-    }
   }
   s.innerHTML=lines.join('<br>'); s.style.color='var(--green)';
   gi('conn-badge').className='badge bon'; gi('conn-badge').textContent='ONLINE';
@@ -2969,14 +2635,7 @@ var OBI = {
     }
     try {
       var result;
-      if (CFG.exchange === 'bybit') {
-        result = await bybGetOrderbook(sym);
-        result.ts = now;
-      } else if (CFG.exchange === 'okx') {
-        result = await okxGetOrderbook(sym);
-        result.ts = now;
-      } else {
-        // Binance orderbook
+      {
         var d = await pub('/api/v3/depth', {symbol:sym, limit:20});
         var bidVol = (d.bids||[]).reduce(function(s,b){ var v=(parseFloat(b[0])||0)*(parseFloat(b[1])||0); return s+(isFinite(v)?v:0); }, 0);
         var askVol = (d.asks||[]).reduce(function(s,a){ var v=(parseFloat(a[0])||0)*(parseFloat(a[1])||0); return s+(isFinite(v)?v:0); }, 0);
@@ -3763,10 +3422,10 @@ async function runBacktest() {
   var slPct   = parseFloat(gi('bt-sl').value)/100;
   var btn     = gi('bt-btn');
   btn.disabled=true; btn.textContent='Pobieranie danych...';
-  gi('bt-progress').textContent = 'Pobieranie '+days+' dni danych z Binance...';
+  gi('bt-progress').textContent = 'Pobieranie '+days+' dni danych (Kraken)...';
 
   try {
-    // Używa aktywnej giełdy (Binance lub Bybit) zgodnie z konfiguracją
+    // Dane historyczne z Kraken (getKlines dispatcher)
     var klines = await getKlines(sym, '1d', Math.min(days, 1000));
     var closes = klines.map(function(k){ return +k[4]; });
     var highs  = klines.map(function(k){ return +k[2]; });
@@ -4114,7 +3773,7 @@ function drawMLChart(result) {
   ctx.fillText('Information Gain per wskaznik (wiekszy = wazniejszy)', 10, 12);
 }
 
-// Trenuj NB + GBM na danych historycznych Binance (bez historii transakcji)
+// Trenuj NB + GBM na danych historycznych (Kraken, bez historii transakcji)
 async function trainAllAI() {
   var sym  = gi('ml-sym').value;
   var days = parseInt(gi('ml-days').value);
@@ -4494,7 +4153,7 @@ gi('rb-fg').textContent      = '– (po starcie)';
 var _mb=gi('mode-badge'); _mb.textContent=CFG.mode.toUpperCase(); _mb.className=CFG.mode==='paper'?'badge bwarn':'badge bon';
 gi('st-mode').textContent = CFG.mode.toUpperCase();
 var _tge=gi('rb-tg'); if(_tge){ _tge.textContent=CFG.tgToken?'OK':'-'; _tge.className=CFG.tgToken?'val up':'val neu'; }
-var _rxe=gi('rb-exchange'); if(_rxe){ _rxe.textContent=CFG.exchange==='bybit'?'Bybit EU':CFG.exchange==='binance'?'Binance':'MEXC'; _rxe.className='val acc'; }
+var _rxe=gi('rb-exchange'); if(_rxe){ _rxe.textContent='MEXC'; _rxe.className='val acc'; }
 renderPositions(); renderHistory(); renderStats(); renderCooldowns();
 if (ST.iter) gi('rb-iter').textContent = ST.iter;
 updateAIStatusPanel();
