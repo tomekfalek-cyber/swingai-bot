@@ -315,6 +315,7 @@ export default {
         active:      cfg.active        || false,
         dailyPnl:    state.dailyPnl    || 0,
         liveBalance: state.liveBalance || null,
+        liveBalanceErr: state.liveBalanceErr || null,
         lastFG:      state.lastFG      || { val:50, label:'Neutral' },
         lastSigs:    state.lastSigs    || [],
         mode:        cfg.mode          || 'paper',
@@ -511,11 +512,20 @@ async function runBotCycle(env) {
     state.pairParams = pairParams;
     state.adaptiveMinScore = computeAdaptiveMinScore(trades, cfg.minScore);
 
-    // Pobierz realne saldo z Gate.io i zapisz do cache
+    // Pobierz realne saldo z MEXC i zapisz do cache. WAZNE: kazdy blad jest
+    // teraz logowany widocznie - wczesniej byl calkowicie cichy (pusty catch),
+    // wiec nieudane pobranie salda (limit API, chwilowa niedostepnosc MEXC,
+    // blad podpisu/czasu) moglo powtarzac sie cyklicznie bez zadnego sladu,
+    // a dashboard mimo to wygladal normalnie - saldo po prostu nie bylo
+    // aktualizowane, bez ostrzezenia.
     if (cfg.mode === 'mexc' && cfg.mexcApiKey && cfg.mexcSecret) {
       try {
         state.liveBalance = await mexcGetBalance(cfg);
-      } catch(e) { /* MEXC niedostępne – zachowaj poprzednią wartość */ }
+        state.liveBalanceErr = null;
+      } catch(e) {
+        state.liveBalanceErr = e.message;
+        addLog(state, 'BŁĄD pobierania salda MEXC: ' + e.message + ' — wyświetlane saldo może być nieaktualne', 'err');
+      }
     }
 
     state.lastCycle = Date.now();
@@ -1974,6 +1984,7 @@ async function dashboardHTML(cfg, state, env) {
     gbmAccuracyOOS: (state.gbm && state.gbm.accuracyOOS) || null,
     regime:       (state.lastSigs && state.lastSigs[0] && state.lastSigs[0].regime) || null,
     liveBalance:  state.liveBalance || null,
+    liveBalanceErr: state.liveBalanceErr || null,
     exchange:     'MEXC'
   });
 
@@ -2351,7 +2362,12 @@ async function dashboardHTML(cfg, state, env) {
           }
           if (bs.liveBalance != null) {
             var rbBal = document.getElementById('rb-live-bal') || document.getElementById('rb-balance');
-            if (rbBal) { rbBal.textContent = '$' + Number(bs.liveBalance).toFixed(2) + ' (MEXC)'; rbBal.className = 'val up'; }
+            if (rbBal) {
+              var errSuffix = bs.liveBalanceErr ? ' ⚠️' : '';
+              rbBal.textContent = '$' + Number(bs.liveBalance).toFixed(2) + ' (MEXC)' + errSuffix;
+              rbBal.className = bs.liveBalanceErr ? 'val gold' : 'val up';
+              rbBal.title = bs.liveBalanceErr ? 'Ostatnia próba pobrania świeżego salda z MEXC nie powiodła się — ta wartość może być nieaktualna. Błąd: ' + bs.liveBalanceErr : 'Saldo aktualne z ostatniego udanego skanu';
+            }
           }
           if (bs.lastFG) {
             var rbFg = document.getElementById('rb-fg');
@@ -2396,7 +2412,12 @@ async function dashboardHTML(cfg, state, env) {
             }
             if (data.mode === 'mexc' && data.liveBalance != null) {
               var rbBal2 = document.getElementById('rb-live-bal') || document.getElementById('rb-balance');
-              if (rbBal2) { rbBal2.textContent = '$' + Number(data.liveBalance).toFixed(2) + ' (MEXC)'; rbBal2.className = 'val up'; }
+              if (rbBal2) {
+                var errSuffix2 = data.liveBalanceErr ? ' ⚠️' : '';
+                rbBal2.textContent = '$' + Number(data.liveBalance).toFixed(2) + ' (MEXC)' + errSuffix2;
+                rbBal2.className = data.liveBalanceErr ? 'val gold' : 'val up';
+                rbBal2.title = data.liveBalanceErr ? 'Ostatnia próba pobrania świeżego salda z MEXC nie powiodła się — ta wartość może być nieaktualna. Błąd: ' + data.liveBalanceErr : 'Saldo aktualne z ostatniego udanego skanu';
+              }
             }
             try {
               var raw2 = localStorage.getItem('swingai_v3');
