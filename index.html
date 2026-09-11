@@ -4014,100 +4014,32 @@ var CHART = {
       ctx.fillText(lbl, candleX(i)+candleW/2, H-PAD.b+12);
     });
 
-    // ── Formacje świecowe — RYSOWANE NA WIERZCHU wszystkich warstw ───
-    var detectedPat = PATTERNS.detectAll(klines);
-    var patByIdx = {};
-    detectedPat.forEach(function(p) {
-      if (!patByIdx[p.idx]) patByIdx[p.idx] = [];
-      patByIdx[p.idx].push(p);
-    });
-    ctx.save();
-    Object.keys(patByIdx).forEach(function(idxStr) {
-      var idx    = +idxStr;
-      var pats   = patByIdx[idxStr];
-      var kl     = klines[idx];
-      var cx     = candleX(idx) + candleW / 2;
-      var bullPats = pats.filter(function(p){ return p.type==='bullish'; });
-      var bearPats = pats.filter(function(p){ return p.type==='bearish'; });
-      var neutPats = pats.filter(function(p){ return p.type==='neutral'; });
-
-      // ── Bycze — duży trójkąt ▲ pod świecą + etykieta ──────────────
-      if (bullPats.length) {
-        var yBot = toY(kl.l) + 6;
-        var label = bullPats[0].name;
-        // Trójkąt 16px
-        ctx.fillStyle = '#3fb950';
-        ctx.shadowColor = '#3fb950'; ctx.shadowBlur = 14;
-        ctx.beginPath();
-        ctx.moveTo(cx,      yBot);
-        ctx.lineTo(cx - 14, yBot + 20);
-        ctx.lineTo(cx + 14, yBot + 20);
-        ctx.closePath(); ctx.fill();
-        ctx.shadowBlur = 0;
-        // Etykieta bold 11px z tłem
-        ctx.font = 'bold 11px Segoe UI';
-        ctx.textAlign = 'center';
-        var lw = ctx.measureText(label).width + 10;
-        var ly = yBot + 36;
-        ctx.fillStyle = 'rgba(0,40,15,0.92)';
-        ctx.beginPath();
-        ctx.roundRect ? ctx.roundRect(cx - lw/2, ly - 12, lw, 15, 3) : ctx.rect(cx - lw/2, ly - 12, lw, 15);
-        ctx.fill();
-        ctx.fillStyle = '#3fb950';
-        ctx.fillText(label, cx, ly);
-      }
-
-      // ── Niedźwiedzie — duży trójkąt ▼ nad świecą + etykieta ────────
-      if (bearPats.length) {
-        var yTop = toY(kl.h) - 6;
-        var labelB = bearPats[0].name;
-        // Trójkąt 16px
-        ctx.fillStyle = '#f85149';
-        ctx.shadowColor = '#f85149'; ctx.shadowBlur = 14;
-        ctx.beginPath();
-        ctx.moveTo(cx,      yTop);
-        ctx.lineTo(cx - 14, yTop - 20);
-        ctx.lineTo(cx + 14, yTop - 20);
-        ctx.closePath(); ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.font = 'bold 11px Segoe UI';
-        ctx.textAlign = 'center';
-        var lwB = ctx.measureText(labelB).width + 10;
-        var lyB = yTop - 26;
-        ctx.fillStyle = 'rgba(50,0,0,0.92)';
-        ctx.beginPath();
-        ctx.roundRect ? ctx.roundRect(cx - lwB/2, lyB - 12, lwB, 15, 3) : ctx.rect(cx - lwB/2, lyB - 12, lwB, 15);
-        ctx.fill();
-        ctx.fillStyle = '#f85149';
-        ctx.fillText(labelB, cx, lyB);
-      }
-
-      // ── Doji — duży diament + etykieta ─────────────────────────────
-      if (neutPats.length && !bullPats.length && !bearPats.length) {
-        var yD = toY((kl.h + kl.l) / 2) - 18;
-        ctx.fillStyle = 'rgba(220,220,220,0.9)';
-        ctx.shadowColor = '#ddd'; ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.moveTo(cx,      yD - 10);
-        ctx.lineTo(cx + 8,  yD);
-        ctx.lineTo(cx,      yD + 10);
-        ctx.lineTo(cx - 8,  yD);
-        ctx.closePath(); ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(30,30,30,0.9)';
-        ctx.fillRect(cx - 14, yD - 23, 28, 13);
-        ctx.fillStyle = '#ddd';
-        ctx.fillText('Doji', cx, yD - 13);
-      }
-    });
-    ctx.restore();
+    // ── Wsparcie / Opór (S/R) — precyzyjna linia 1px, pixel-snapped ───
+    // Zamiast formacji świecowych (usunięte) - poziomy pivotów S/R liczone
+    // na TYM SAMYM timeframie co wykres (calcSRLevels na danych klines D/4H/1H),
+    // ten sam mechanizm co w silniku analyzeSwing() (scoring 'S/R support'/'Pod oporem').
+    var srLevels = calcSRLevels(
+      klines.map(function(k){ return k.h; }),
+      klines.map(function(k){ return k.l; }),
+      lastClose
+    );
+    function drawSRLine(price, color, label) {
+      var y = Math.round(toY(price)) + 0.5; // snap do pikselowej sieci — ostra, nie rozmyta linia
+      ctx.setLineDash([]);
+      ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W-PAD.r, y); ctx.stroke();
+      ctx.fillStyle = color; ctx.font = 'bold 8.5px Segoe UI'; ctx.textAlign = 'right';
+      ctx.fillText(label+' '+fp(price), W-PAD.r-4, y-4);
+    }
+    (srLevels.above||[]).forEach(function(lvl){ drawSRLine(lvl, 'rgba(179,136,255,0.9)', 'OPÓR'); });
+    (srLevels.below||[]).forEach(function(lvl){ drawSRLine(lvl, 'rgba(80,200,255,0.9)', 'WSPARCIE'); });
 
     // ── Legenda ──────────────────────────────────────────────────────
     var last = klines[n-1];
     var chg  = klines[0].o > 0 ? ((last.c - klines[0].o)/klines[0].o*100).toFixed(2) : '0.00';
     var legend = gi('chart-legend');
     if (legend) {
+      var srCount = (srLevels.above||[]).length + (srLevels.below||[]).length;
       legend.innerHTML =
         '<span style="color:var(--text2)">O: <b>'+fp(last.o)+'</b></span>'+
         '<span style="color:var(--green)">H: <b>'+fp(last.h)+'</b></span>'+
@@ -4117,11 +4049,10 @@ var CHART = {
           (chg>=0?'+':'')+chg+'% ('+CHART.tf+')</span>'+
         '<span style="color:var(--accent)">── EMA20</span>'+
         '<span style="color:var(--gold)">── EMA50</span>'+
-        (detectedPat.length ?
-          '<span style="color:var(--green)">▲ bycze: '+detectedPat.filter(function(p){return p.type==='bullish';}).length+'</span>'+
-          (detectedPat.filter(function(p){return p.type==='bearish';}).length ?
-            '<span style="color:var(--red)">▼ niedźwiedzie: '+detectedPat.filter(function(p){return p.type==='bearish';}).length+'</span>' : '')
-        : '<span style="color:var(--text3)">brak formacji</span>');
+        (srCount ?
+          '<span style="color:rgba(179,136,255,1)">— opór: '+(srLevels.above||[]).length+'</span>'+
+          '<span style="color:rgba(80,200,255,1)">— wsparcie: '+(srLevels.below||[]).length+'</span>'
+        : '<span style="color:var(--text3)">brak poziomów S/R</span>');
     }
   }
 };
