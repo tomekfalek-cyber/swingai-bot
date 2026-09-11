@@ -1902,7 +1902,7 @@ var WS = {
 
   connect: function() {
     if (this.blocked) return;                              // siec blokuje — nie probuj
-    if (CFG.exchange === 'bybit' || CFG.exchange === 'okx') return; // nie-Binance — polling REST
+    if (CFG.exchange === 'bybit' || CFG.exchange === 'okx' || CFG.exchange === 'mexc') return; // nie-Binance — polling REST
     if (this.socket && this.socket.readyState < 2) return; // juz podlaczony
     try {
       this.socket = new WebSocket(this.buildStreamUrl());
@@ -4643,6 +4643,7 @@ function riskBarHtml(kellySzanse, pct) {
 </body>
 
 </html>
+
 
 
 
