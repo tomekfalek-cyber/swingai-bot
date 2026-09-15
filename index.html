@@ -1465,7 +1465,7 @@ async function analyzeSwing(sym) {
     macdHist:macdD.hist, macdLine:macdD.line,
     bbPos:bbD.pos, bbUpper:bbD.upper, bbLower:bbD.lower,
     trendD, ema50, ema200, ema21, atrD,
-    score, finalProb:+finalProb.toFixed(3), buy,
+    score, finalProb:+finalProb.toFixed(3), buy, effectiveMinScore,
     nbPred, gbmProb:+gbmProb.toFixed(3), qlSugg, aiMethod,
     obiRatio:obiData.ratio, obiScore, obiLabel:OBI.label(obiData.ratio),
     patterns:patResult.patterns, patScore,
@@ -1997,7 +1997,7 @@ async function openTrade(sig, fg, btcDrop, cachedTotal, cachedUSDC) {
       cp:execP, sl:execLevels.sl, tp:execLevels.tp,
       trailDist:execLevels.trail,
       highP:execP, entryTs:Date.now(), score:sig.score,
-      finalProb:sig.finalProb, aiMethod:sig.aiMethod,
+      finalProb:sig.finalProb, entryThreshold:sig.effectiveMinScore, aiMethod:sig.aiMethod,
       nbFeatures:sig.nbFeatures, gbmFeatures:sig.gbmFeatures,
       qlSig:{ rsiD:sig.rsiD, macdHist:sig.macdHist, trendD:sig.trendD, bbPos:sig.bbPos, obiRatio:sig.obiRatio },
       gbmProb:sig.gbmProb, obiRatio:sig.obiRatio,
@@ -2756,8 +2756,13 @@ var ENSEMBLE_W = {
   // Po zamknieciu transakcji zaktualizuj history i przelicz wagi
   record: function(pos, won) {
     var h = this._hist;
-    // Score: przewidywal BUY (finalProb >= threshold) — uznajemy ze ok jesli pos.finalProb >= 0.60
-    h.score.n++; if (won && pos.finalProb >= 0.60) h.score.c++; else if (!won && pos.finalProb < 0.60) h.score.c++;
+    // Score: przewidywal BUY (finalProb >= threshold). NAPRAWIONE: uzywamy realnego
+    // progu, ktory obowiazywal w chwili wejscia w te pozycje (pos.entryThreshold,
+    // per-para/adaptacyjny), zamiast sztywnego 0.60 - inaczej zmiana minScore w
+    // konfiguracji przez uzytkownika psula sens tej statystyki (liczylaby "trafnosc"
+    // wzgledem punktu odniesienia, ktory nigdy realnie nie byl uzyty przy wejsciu).
+    var scoreThresh = (pos.entryThreshold != null ? pos.entryThreshold : 60) / 100;
+    h.score.n++; if (won && pos.finalProb >= scoreThresh) h.score.c++; else if (!won && pos.finalProb < scoreThresh) h.score.c++;
     // NB: pos.nbPred.label === 'BUY' -> przewidywal wzrost
     if (pos.nbFeatures) {
       h.nb.n++;
@@ -3447,6 +3452,12 @@ async function runBacktest() {
 
     for (var i=35; i<n; i++) {
       if (inPos) {
+        // NAPRAWIONE (look-ahead bias): entryPrice = closes[entryBar], wiec pierwsze
+        // sprawdzenie SL/TP MUSI zaczac sie od bara PO entryBar, nie od entryBar
+        // samego - inaczej sprawdzalibysmy high/low tej samej swiecy, z ktorej close
+        // wziety zostal jako cena wejscia (dane "z przyszlosci" wzgledem wejscia),
+        // co sztucznie zawyzalo/zanizalo win-rate, Sharpe i drawdown w wynikach.
+        if (i === entryBar) continue;
         // Sprawdz SL/TP na high/low NASTEPNEJ swieci (wejscie na open[i], wyjscie na [i+1])
         // Eliminuje look-ahead bias: sygnał na close[i], egzekucja od open[i+1]
         var checkBar = Math.min(i, n-1);
