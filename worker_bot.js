@@ -119,46 +119,58 @@ export default {
     }
 
     if (url.pathname === '/start-live') {
-      const p = url.searchParams;
+      // Wymagane POST + JSON body - klucze API MEXC i AUTH_SECRET nie moga trafiac
+      // do URL (query string), bo koncza w historii przegladarki, logach Cloudflare
+      // i logach firmowych proxy z TLS inspection (np. Zscaler).
+      if (request.method !== 'POST') {
+        return jsonResp({ ok:false, error:'Wymagana metoda POST - klucze API nie moga byc w URL' }, 405);
+      }
+      let b = {};
+      try { b = await request.json(); } catch(e) {}
       const cfg = defaultConfig();
       cfg.active = true; cfg.mode = 'mexc'; cfg.startedAt = Date.now();
-      cfg.mexcApiKey = p.get('key')  || '';
-      cfg.mexcSecret = p.get('sec')  || '';
-      cfg.tp    = parseFloat(p.get('tp')   || '12') / 100;
-      cfg.sl    = parseFloat(p.get('sl')   || '5')  / 100;
-      cfg.trail = parseFloat(p.get('trail')|| '6')  / 100;
-      cfg.minScore = parseInt(p.get('score')|| '58');
-      cfg.maxPos   = parseInt(p.get('maxp') || '4');
-      cfg.posSize  = parseFloat(p.get('size')|| '15');
-      cfg.tgToken  = p.get('tg')   || '';
-      cfg.tgChat   = p.get('tgc')  || '';
+      cfg.mexcApiKey = b.key  || '';
+      cfg.mexcSecret = b.sec  || '';
+      cfg.tp    = parseFloat(b.tp    ?? 12) / 100;
+      cfg.sl    = parseFloat(b.sl    ?? 5)  / 100;
+      cfg.trail = parseFloat(b.trail ?? 6)  / 100;
+      cfg.minScore = parseInt(b.score ?? 58);
+      cfg.maxPos   = parseInt(b.maxp  ?? 4);
+      cfg.posSize  = parseFloat(b.size ?? 15);
+      cfg.tgToken  = b.tg   || '';
+      cfg.tgChat   = b.tgc  || '';
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       await env.SWINGAI_KV.put('state',  JSON.stringify(defaultState()));
       ctx.waitUntil(runBotCycle(env));
-      return new Response(redirectHTML('✅ Bot LIVE uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
+      return jsonResp({ ok:true, msg:'Bot LIVE uruchomiony!' });
     }
 
     if (url.pathname === '/save-config') {
-      const p = url.searchParams;
+      // Wymagane POST + JSON body - patrz uzasadnienie w /start-live wyzej.
+      if (request.method !== 'POST') {
+        return jsonResp({ ok:false, error:'Wymagana metoda POST - klucze API nie moga byc w URL' }, 405);
+      }
+      let b = {};
+      try { b = await request.json(); } catch(e) {}
       const cfg = await getConfig(env);
       // Tryb handlu – zmiana PAPER<->MEXC bez resetu stanu (positions/trades/log),
       // w odroznieniu od /start-live i /start-paper, ktore zerowaly cala historie.
       // Bez tego przelacznik trybu w ustawieniach na dashboardzie nic nie robil –
       // saveSettings() nigdy nie wysylal trybu do Workera, wiec KV zostawal na
       // 'paper' nawet po wybraniu MEXC live w interfejsie.
-      if (p.get('mode') === 'paper' || p.get('mode') === 'mexc') cfg.mode = p.get('mode');
+      if (b.mode === 'paper' || b.mode === 'mexc') cfg.mode = b.mode;
       // Klucze API – zapisz tylko jesli niepuste
-      if (p.get('key'))  cfg.mexcApiKey = p.get('key');
-      if (p.get('sec'))  cfg.mexcSecret = p.get('sec');
-      if (p.get('tg'))   cfg.tgToken    = p.get('tg');
-      if (p.get('tgc'))  cfg.tgChat     = p.get('tgc');
+      if (b.key)  cfg.mexcApiKey = b.key;
+      if (b.sec)  cfg.mexcSecret = b.sec;
+      if (b.tg)   cfg.tgToken    = b.tg;
+      if (b.tgc)  cfg.tgChat     = b.tgc;
       // Parametry handlowe
-      if (p.get('tp'))    cfg.tp       = parseFloat(p.get('tp'))    / 100;
-      if (p.get('sl'))    cfg.sl       = parseFloat(p.get('sl'))    / 100;
-      if (p.get('trail')) cfg.trail    = parseFloat(p.get('trail')) / 100;
-      if (p.get('score')) cfg.minScore = parseInt(p.get('score'));
-      if (p.get('maxp'))  cfg.maxPos   = parseInt(p.get('maxp'));
-      if (p.get('size'))  cfg.posSize  = parseFloat(p.get('size'));
+      if (b.tp    != null) cfg.tp       = parseFloat(b.tp)    / 100;
+      if (b.sl    != null) cfg.sl       = parseFloat(b.sl)    / 100;
+      if (b.trail != null) cfg.trail    = parseFloat(b.trail) / 100;
+      if (b.score != null) cfg.minScore = parseInt(b.score);
+      if (b.maxp  != null) cfg.maxPos   = parseInt(b.maxp);
+      if (b.size  != null) cfg.posSize  = parseFloat(b.size);
       await env.SWINGAI_KV.put('config', JSON.stringify(cfg));
       return jsonResp({ok:true, msg:'Konfiguracja zapisana'});
     }
@@ -388,6 +400,14 @@ async function runBotCycle(env) {
   if (state.cycleRunning && (now - (state.cycleStartedAt || 0)) < STALE_LOCK_MS) {
     return; // inny cykl juz trwa - pomijamy ten trigger, nie nadpisujemy jego pracy
   }
+  // ZNANE OGRANICZENIE (swiadomie zaakceptowane, nie naprawiane): odczyt stanu
+  // (getState wyzej) + ten warunek + poniższy zapis 'cycleRunning=true' NIE sa
+  // atomowe (Workers KV nie ma compare-and-swap). Przy bardzo waskim oknie (dwa
+  // triggery - cron + recznie /run - trafiajace w te sama milisekunde) obie moglyby
+  // przejsc warunek zanim ktorykolwiek zapisze blokade, i odpalic dwa rownolegle
+  // cykle nadpisujace ten sam stan. Realne ryzyko jest bardzo niskie (potrzeba
+  // dwoch triggerow w tym samym ~10-50ms oknie), a pelne rozwiazanie wymagaloby
+  // Durable Objects (plan platny Cloudflare) - poza zakresem obecnej architektury.
   state.cycleRunning   = true;
   state.cycleStartedAt = now;
   await env.SWINGAI_KV.put('state', JSON.stringify(state));
@@ -837,6 +857,12 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
 // ─────────────────────────────────────────────────────────────────────
 // ZARZADZANIE POZYCJAMI
 // ─────────────────────────────────────────────────────────────────────
+// ZNANE OGRANICZENIE (swiadomie zaakceptowane, nie naprawiane): SL/TP/trailing sa
+// sprawdzane tylko raz na cykl (cron co ~10 min), nie w czasie rzeczywistym. Przy
+// duzym ruchu ceny miedzy cyklami realna strata/zysk moze przekroczyc zalozony
+// poziom SL/TP, bo bot zobaczy cene dopiero na nastepnym skanie. Pelne rozwiazanie
+// (WS + ciagly monitoring) wymagaloby Durable Objects (plan platny Cloudflare) -
+// poza zakresem obecnej architektury (Cron Triggers, free tier).
 async function checkPositions(cfg, state, env, ql) {
   const updated = [];
   for (const pos of (state.positions || [])) {
@@ -1786,29 +1812,88 @@ async function mexcGetQtyPrecision(msym, fallbackPrec) {
 
 async function mexcMarketBuy(sym, quoteQty, cfg) {
   const msym = mexcSymbol(sym);
-  const s = await mexcSign('symbol=' + msym + '&side=BUY&type=MARKET&quoteOrderQty=' + quoteQty.toFixed(2), cfg);
-  const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
-  const d = await r.json();
+  let d;
+  try {
+    const s = await mexcSign('symbol=' + msym + '&side=BUY&type=MARKET&quoteOrderQty=' + quoteQty.toFixed(2), cfg);
+    const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
+    d = await r.json();
+  } catch(e) {
+    // Blad sieci/timeout PO wyslaniu zlecenia - MOGLO sie ono wykonac na gieldzie
+    // mimo braku odpowiedzi. Sprawdz rzeczywisty stan konta zamiast zakladac porazke
+    // (inaczej: pieniadze wydane, bot nie wie o pozycji, brak SL/TP na niej).
+    const rec = await mexcReconcileBuy(msym, cfg).catch(() => null);
+    if (rec) return rec;
+    throw new Error('MEXC buy (blad sieci, brak potwierdzenia): ' + e.message);
+  }
   if (!d.orderId) throw new Error('MEXC buy: ' + (d.msg || JSON.stringify(d)));
-  await sleep(1000);
-  const s2 = await mexcSign('symbol=' + msym + '&orderId=' + d.orderId, cfg);
-  const det = await (await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s2.qs, 10000, { headers: { 'X-MEXC-APIKEY': s2.apiKey } })).json();
+  // Odpytaj status zlecenia z krotkim retry (do 3x), bo przy slabej plynnosci
+  // MARKET order moze nie byc jeszcze w pelni wypelniony po samym 1s.
+  let det = {};
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await sleep(1000 * (attempt + 1));
+    try {
+      const s2 = await mexcSign('symbol=' + msym + '&orderId=' + d.orderId, cfg);
+      det = await (await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s2.qs, 10000, { headers: { 'X-MEXC-APIKEY': s2.apiKey } })).json();
+    } catch(_) { continue; }
+    if (det.status === 'FILLED') break;
+  }
   const avgPrice = det.avgPrice ? +det.avgPrice : (det.price ? +det.price : 0);
   const qty = det.executedQty ? +det.executedQty : (quoteQty / (avgPrice || 1));
+  return { price: avgPrice, qty };
+}
+
+// Po nieudanym (siec/timeout) zapytaniu BUY - sprawdza w historii zlecen MEXC, czy
+// mimo bledu polaczenia zlecenie faktycznie sie wypelnilo w ostatnich 2 minutach.
+// Zwraca {price, qty} jesli znajdzie takie zlecenie, inaczej null (realna porazka).
+async function mexcReconcileBuy(msym, cfg) {
+  const ts = String(Date.now());
+  const qs = 'symbol=' + msym + '&limit=5&timestamp=' + ts;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(cfg.mexcSecret),
+    { name:'HMAC', hash:'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(qs));
+  const sigHex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
+  const r = await fetchWithTimeout('https://api.mexc.com/api/v3/allOrders?' + qs + '&signature=' + sigHex,
+    10000, { headers: { 'X-MEXC-APIKEY': cfg.mexcApiKey } });
+  const orders = await r.json();
+  if (!Array.isArray(orders)) return null;
+  const fresh = orders.find(o => o.side === 'BUY' && o.status === 'FILLED' && (Date.now() - (+o.updateTime || 0)) < 120000);
+  if (!fresh) return null;
+  const qty = +fresh.executedQty || 0;
+  if (qty <= 0) return null;
+  const avgPrice = (fresh.cummulativeQuoteQty && qty) ? (+fresh.cummulativeQuoteQty / qty) : (+fresh.price || 0);
   return { price: avgPrice, qty };
 }
 
 async function mexcMarketSell(sym, qty, cfg) {
   const msym = mexcSymbol(sym);
   const prec = await mexcGetQtyPrecision(msym, mexcQtyPrecision(sym));
-  const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + mexcFmtQty(sym, qty, prec), cfg);
-  const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
-  const d = await r.json();
+  let d;
+  try {
+    const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + mexcFmtQty(sym, qty, prec), cfg);
+    const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
+    d = await r.json();
+  } catch(e) {
+    // Blad sieci/timeout PO wyslaniu zlecenia - sprzedaz MOGLA sie wykonac mimo
+    // braku odpowiedzi. Sprawdz rzeczywisty balans bazowego assetu - jesli jest
+    // prawie zerowy, sprzedaz faktycznie sie wykonala (inaczej kolejne cykle w
+    // kolko probowalyby sprzedac cos, czego juz nie ma - "insufficient balance").
+    const stillHeld = await mexcAssetBalance(msym, cfg).catch(() => null);
+    if (stillHeld !== null && stillHeld < qty * 0.05) return true;
+    throw new Error('MEXC sell (blad sieci, brak potwierdzenia): ' + e.message);
+  }
   if (!d.orderId) throw new Error('MEXC sell: ' + (d.msg || JSON.stringify(d)));
   return true;
 }
 
-async function mexcGetBalance(cfg) {
+// Zwraca aktualny wolny balans bazowego assetu danej pary MEXC (np. BTCUSDC -> BTC)
+async function mexcAssetBalance(msym, cfg) {
+  const asset = msym.replace('USDC','').replace('USDT','');
+  const d = await mexcAccount(cfg);
+  const bal = d.balances && d.balances.find(b => b.asset === asset);
+  return bal ? +bal.free : null;
+}
+
+async function mexcAccount(cfg) {
   const ts = String(Date.now());
   const qs = 'timestamp=' + ts;
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(cfg.mexcSecret),
@@ -1819,6 +1904,11 @@ async function mexcGetBalance(cfg) {
     10000, { headers: { 'X-MEXC-APIKEY': cfg.mexcApiKey } });
   const d = await r.json();
   if (!d.balances) throw new Error('MEXC balance: ' + JSON.stringify(d));
+  return d;
+}
+
+async function mexcGetBalance(cfg) {
+  const d = await mexcAccount(cfg);
   const usdc = d.balances.find(b => b.asset === 'USDC');
   return usdc ? +usdc.free : 0;
 }
@@ -2126,8 +2216,7 @@ async function dashboardHTML(cfg, state, env) {
       window.saveSettings = function() {
         if (_origSaveSettings) _origSaveSettings.apply(this, arguments);
         try {
-          var params = new URLSearchParams();
-          params.set('auth', BOT_TOKEN);
+          var body = {};
           var tgTok = document.getElementById('cfg-tg-token');
           var tgCht = document.getElementById('cfg-tg-chat');
           var okxK  = document.getElementById('cfg-mexc-key');
@@ -2135,14 +2224,20 @@ async function dashboardHTML(cfg, state, env) {
           var anyNew = false;
           // Tryb (PAPER/MEXC) zawsze synchronizujemy – bez tego przelacznik w UI
           // nigdy nie docieral do KV Workera i po powrocie znowu widac bylo PAPER.
-          if (typeof CFG !== 'undefined' && CFG.mode) { params.set('mode', CFG.mode === 'mexc' ? 'mexc' : 'paper'); anyNew = true; }
-          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { params.set('tg', tgTok.value.trim()); anyNew = true; }
-          if (tgCht && tgCht.value.trim()) { params.set('tgc', tgCht.value.trim()); anyNew = true; }
-          if (okxK  && okxK.value.trim())  { params.set('key', okxK.value.trim());  anyNew = true; }
-          if (okxS  && okxS.value.trim())  { params.set('sec', okxS.value.trim());  anyNew = true; }
+          if (typeof CFG !== 'undefined' && CFG.mode) { body.mode = CFG.mode === 'mexc' ? 'mexc' : 'paper'; anyNew = true; }
+          if (tgTok && tgTok.value.trim() && tgTok.value.trim() !== '***SAVED***') { body.tg = tgTok.value.trim(); anyNew = true; }
+          if (tgCht && tgCht.value.trim()) { body.tgc = tgCht.value.trim(); anyNew = true; }
+          if (okxK  && okxK.value.trim())  { body.key = okxK.value.trim();  anyNew = true; }
+          if (okxS  && okxS.value.trim())  { body.sec = okxS.value.trim();  anyNew = true; }
           if (anyNew) {
-            var hasTg = params.has('tg') || (tgCht && tgCht.value.trim());
-            fetch(BOT_BASE + '/save-config?' + params.toString())
+            // Klucze API i AUTH_SECRET ida teraz w JSON body + naglowku Authorization,
+            // NIE w query string (bezpieczenstwo - patrz worker_bot.js /save-config).
+            var hasTg = !!body.tg || (tgCht && tgCht.value.trim());
+            fetch(BOT_BASE + '/save-config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + BOT_TOKEN },
+              body: JSON.stringify(body)
+            })
               .then(function() {
                 var stEl = document.getElementById('cfg-status');
                 if (stEl) { stEl.textContent = 'Zapisano + synchronizacja z chmura OK'; stEl.style.color = 'var(--green)'; }
@@ -2193,24 +2288,32 @@ async function dashboardHTML(cfg, state, env) {
 
       window.startBot = function() {
         var isLive = typeof CFG !== 'undefined' && CFG.mode === 'mexc' && CFG.mexcApiKey;
-        var startUrl;
+        var startUrl, fetchOpts;
         if (isLive) {
-          var p = new URLSearchParams();
-          p.set('auth', BOT_TOKEN);
-          p.set('key',   CFG.mexcApiKey  || '');
-          p.set('sec',   CFG.mexcSecret  || '');
-          p.set('tp',    ((CFG.tp   || 0.12)*100).toFixed(1));
-          p.set('sl',    ((CFG.sl   || 0.05)*100).toFixed(1));
-          p.set('trail', ((CFG.trail|| 0.06)*100).toFixed(1));
-          p.set('score', String(CFG.minScore || 58));
-          p.set('maxp',  String(CFG.maxPos   || 4));
-          p.set('size',  String(CFG.posSize  || 15));
-          if (CFG.tgToken) { p.set('tg', CFG.tgToken); p.set('tgc', CFG.tgChat||''); }
-          startUrl = BOT_BASE + '/start-live?' + p.toString();
+          // Klucze API MEXC ida w JSON body + naglowku Authorization, NIE w URL
+          // (bezpieczenstwo - patrz worker_bot.js /start-live).
+          var body = {
+            key:   CFG.mexcApiKey  || '',
+            sec:   CFG.mexcSecret  || '',
+            tp:    ((CFG.tp   || 0.12)*100).toFixed(1),
+            sl:    ((CFG.sl   || 0.05)*100).toFixed(1),
+            trail: ((CFG.trail|| 0.06)*100).toFixed(1),
+            score: String(CFG.minScore || 58),
+            maxp:  String(CFG.maxPos   || 4),
+            size:  String(CFG.posSize  || 15)
+          };
+          if (CFG.tgToken) { body.tg = CFG.tgToken; body.tgc = CFG.tgChat || ''; }
+          startUrl = BOT_BASE + '/start-live';
+          fetchOpts = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + BOT_TOKEN },
+            body: JSON.stringify(body)
+          };
         } else {
           startUrl = BOT_BASE + '/start-paper?auth=' + BOT_TOKEN;
+          fetchOpts = undefined;
         }
-        fetch(startUrl)
+        fetch(startUrl, fetchOpts)
           .then(function() {
             // Wazne: NIE ustawiamy running = true – lokalny botCycle nie ma ruszac
             if (typeof running !== 'undefined') running = false;
