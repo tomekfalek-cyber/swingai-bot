@@ -444,9 +444,9 @@ async function runBotCycle(env) {
     state.peakBalanceMode = 'paper';
     state.peakBalance = currentBalance;
   }
-  if (currentBalance > 0) {
+   if (currentBalance > 0) {
     if (!state.peakBalance || state.peakBalance < currentBalance) state.peakBalance = currentBalance;
-    const drawdown = (state.peakBalance - currentBalance) / state.peakBalance;
+    const drawdown = state.peakBalance > 0 ? (state.peakBalance - currentBalance) / state.peakBalance : 0;
     const drawdownBlocked = (state.drawdownBlock || 0) > Date.now();
     if (drawdown > 0.15 && !drawdownBlocked) {
       state.drawdownBlock = Date.now() + 24 * 3600000;
@@ -495,8 +495,9 @@ async function runBotCycle(env) {
       aiMethod: s.aiMethod, regime: s.regime || 'neutral'
     }));
 
-    // 5. Otwórz pozycje
-    const dailyBase = state.dailyStartBalance > 0 ? state.dailyStartBalance : (cfg.paperBalance || 1000);
+       // 5. Otwórz pozycje
+    const fallbackBalance = cfg.mode === 'mexc' ? (state.liveBalance > 0 ? state.liveBalance : 1000) : (cfg.paperBalance || 1000);
+    const dailyBase = state.dailyStartBalance > 0 ? state.dailyStartBalance : fallbackBalance;
     const dailyLossOk = (state.dailyPnl || 0) > -0.05 * dailyBase;
 
     if (fg.val < 15) {
@@ -907,9 +908,9 @@ async function checkPositions(cfg, state, env, ql) {
       else if (price <= (pos.partialClosed ? pos.sl : (pos.sl > 0 ? pos.sl : pos.entry * (1 - cfg.sl)))) reason = 'STOP LOSS';
       else if (price <= trail && pnlPct > 1.5)     reason = 'TRAILING STOP';
 
-      // Partial TP (50% pozycji przy polowie TP)
-      const _tpPct6 = pos.tp > 0 ? (pos.tp - pos.entry) / pos.entry * 100 : cfg.tp * 100;
-       if (!reason && pnlPct >= _tpPct6 * 0.5 && !pos.partialClosed) {
+            // Partial TP (50% pozycji przy polowie TP)
+      const targetTpPct = pos.tp > 0 ? (pos.tp - pos.entry) / pos.entry * 100 : cfg.tp * 100;
+       if (!reason && pnlPct >= targetTpPct * 0.5 && !pos.partialClosed) {
          const halfQty = pos.qty / 2;
          const halfSize = pos.size / 2;
          // Prowizja na czesciowym zamknieciu – identycznie jak w closePosition():
@@ -1042,19 +1043,22 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
     ' | ' + adjSig.aiMethod + ' | ' + cfg.mode.toUpperCase(), 'ok');
   if (!Array.isArray(state.positions)) state.positions = [];
 
-  if (cfg.mode === 'mexc' && cfg.mexcApiKey) {
+    if (cfg.mode === 'mexc' && cfg.mexcApiKey) {
     try {
-      const res = await mexcMarketBuy(adjSig.sym, posSize, cfg);
+      const qty = posSize / adjSig.price;
+      const res = await mexcMarketBuy(adjSig.sym, qty, cfg);
+      const execQty = res.qty || qty;
       const execP = res.price || adjSig.price;
+      const execSize = execQty * execP;
       const el    = calcDynamicLevels(execP, adjSig.atrD, cfg);
-      state.positions.push(buildPosition(adjSig, execP, res.qty, el, posSize, ql));
+      state.positions.push(buildPosition(adjSig, execP, execQty, el, execSize, ql));
       // Ustaw dailyStartBalance przy pierwszej transakcji live w danym dniu
       if (!state.dailyStartBalance || state.dailyStartBalance <= 0) {
         try {
           const liveBal = await mexcGetBalance(cfg);
-          state.dailyStartBalance = (typeof liveBal === 'number' && liveBal > 0) ? liveBal : posSize * (cfg.maxPos || 4);
+          state.dailyStartBalance = (typeof liveBal === 'number' && liveBal > 0) ? liveBal : execSize * (cfg.maxPos || 4);
         } catch(_) {
-          state.dailyStartBalance = posSize * (cfg.maxPos || 4);
+          state.dailyStartBalance = execSize * (cfg.maxPos || 4);
         }
       }
     } catch(e) {
@@ -1235,12 +1239,11 @@ function kellySize(cfg, state, total) {
     return Math.max(1, Math.round(safeTotal * 0.90 * 100) / 100);
   }
 
-  // Auto-skalowanie: gdy saldo >= 500$ uzyj 3% kapitalu (nie staly cfg.posSize)
-  // Pozwala botowi inwestowac proporcjonalnie do wzrostu portfela
+    // Auto-skalowanie: gdy saldo >= 500$ uzyj 3% kapitalu
   const autoScale = safeTotal >= 500;
   const fixedSize = autoScale
-    ? Math.min(safeTotal * 0.03, safeTotal * 0.20)  // 3% kapitalu, max 20% per pozycja
-    : (cfg.posSize || 15);
+    ? Math.min(safeTotal * 0.03, safeTotal * 0.20)
+    : (safeTotal * (cfg.posSize || 15) / 100);
 
   const trades    = (state.trades || []).slice(0, 30);
   if (trades.length < 5) {
