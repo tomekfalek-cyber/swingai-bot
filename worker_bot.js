@@ -473,19 +473,22 @@ async function runBotCycle(env) {
     // 3. Sprawdź otwarte pozycje
     await checkPositions(cfg, state, env, ql);
 
-    // 4. Skanuj pary
+        // 4. Skanuj pary - DIAGNOSTYKA
     const sigs = [];
     for (const sym of PAIRS) {
       try {
-        const s = await analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore);
+        // UWAGA: na końcu dodano parametr 'total'
+        const s = await analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore, total);
         sigs.push(s);
         state.lastSigs = state.lastSigs || [];
       } catch(e) {
         addLog(state, sym + ': ' + e.message, 'warn');
       }
-      await sleep(700);
+      // UWAGA: zwiększono opóźnienie z 700 na 2000, aby uniknąć blokady Krakena
+      await sleep(2000);
     }
-        sigs.sort((a, b) => b.finalProb - a.finalProb);
+    
+    sigs.sort((a, b) => b.finalProb - a.finalProb);
     state.lastSigs = sigs.map(s => ({
       sym: s.sym, score: s.score, finalProb: s.finalProb,
       price: s.price, rsiD: s.rsiD, rsi4h: s.rsi4h,
@@ -503,7 +506,6 @@ async function runBotCycle(env) {
     } else {
       addLog(state, `❌ Brak sygnałów BUY. Najlepszy score: ${bestScore}% | Sprawdź minScore w ustawieniach`, 'warn');
     }
-
        // 5. Otwórz pozycje
     const fallbackBalance = cfg.mode === 'mexc' ? (state.liveBalance > 0 ? state.liveBalance : 1000) : (cfg.paperBalance || 1000);
     const dailyBase = state.dailyStartBalance > 0 ? state.dailyStartBalance : fallbackBalance;
@@ -653,14 +655,14 @@ function calcStats(trades) {
   return { sharpe, sortino, maxDD: +(maxDD * 100).toFixed(1), winRate };
 }
 
-async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore) {
+async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore, total) {
   // Pobierz timeframe'y sekwencyjnie – Kraken rate limit
   const kd      = await getKlines(sym, 'D',   200);
-  await sleep(400);
+  await sleep(1000); // Zwiększono z 400ms na 1000ms
   const k4h     = await getKlines(sym, '240', 100);
-  await sleep(400);
+  await sleep(1000); // Zwiększono z 400ms na 1000ms
   const k1h     = await getKlines(sym, '60',  50);
-  await sleep(400);
+  await sleep(1000); // Zwiększono z 400ms na 1000ms
   const obiData = await getOrderbook(sym);
 
   const pk = k => ({
