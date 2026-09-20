@@ -478,7 +478,8 @@ async function runBotCycle(env) {
     for (const sym of PAIRS) {
       try {
         // UWAGA: na końcu dodano parametr 'total'
-        const s = await analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore, total);
+        const s = await analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore);
+// Tutaj 'total' to zmienna z runBotCycle, która jest przekazywana do parametru 'accountTotal' w funkcji
         sigs.push(s);
         state.lastSigs = state.lastSigs || [];
       } catch(e) {
@@ -655,7 +656,7 @@ function calcStats(trades) {
   return { sharpe, sortino, maxDD: +(maxDD * 100).toFixed(1), winRate };
 }
 
-async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore, total) {
+async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore, accountTotal) {
   // Pobierz timeframe'y sekwencyjnie – Kraken rate limit
   const kd      = await getKlines(sym, 'D',   200);
   await sleep(1000); // Zwiększono z 400ms na 1000ms
@@ -873,10 +874,14 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   const pp       = pairParams[sym] || PAIR_PARAMS_DEFAULT[sym] || null;
   let minScore = (pp ? pp.minScore : adaptiveMinScore) + regimeMinScoreAdj;
   
-  // Dla małych kont obniż próg, aby bot w ogóle handlował
-  const total = cfg.mode === 'mexc' ? (state.liveBalance || 0) : (state.paperBalance || 1000);
-  if (total < 100) {
-    minScore = Math.max(45, minScore - 15); // Obniż o 15 punktów, minimum 45
+    // Dla małych kont obniż próg, aby bot w ogóle handlował
+  // Używamy 'currentAccountBalance' aby uniknąć konfliktu nazw ze zmienną 'total'
+  const currentAccountBalance = cfg.mode === 'mexc' 
+    ? (state.liveBalance || 0) 
+    : (state.paperBalance || 1000);
+    
+  if (currentAccountBalance < 100) {
+    minScore = Math.max(45, minScore - 10); // Obniż o 10 punktów, ale nigdy poniżej 45
   }
   
   const buy      = finalProb >= minScore / 100;
