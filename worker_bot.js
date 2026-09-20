@@ -684,7 +684,11 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // ── Wskazniki 1H
   const rsi1h  = rsi(h1.c, 14);
   const macd1h = macdFull(h1.c);
-  const confirm1h = macd1h.hist > 0 && rsi1h < 55;
+  // confirm1h wymagal RSI(1H) < 55 - warunek KUPOWANIA DOLKA. W trendzie
+  // wzrostowym RSI(1H) niemal zawsze jest wyzsze, wiec bot dostawal -3 zamiast
+  // +5 (8 pkt roznicy PRZECIW wejsciu) dokladnie wtedy, gdy trend byl zdrowy.
+  const confirm1h    = macd1h.hist > 0 && rsi1h < 55;            // cofka na 1H
+  const confirm1hMom = macd1h.hist > 0 && rsi1h >= 55 && rsi1h <= 72; // zdrowe momentum
 
   // ── RSI Divergence
   const rsiArrD  = rsiArray(d.c.slice(-40),  14);
@@ -743,7 +747,8 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   else if (volR < 0.4)            { score -= 8; why.push('Niski wolumen'); }
 
   if (macd4h.hist > 0 && macdD.hist > 0) { score += 5; why.push('MACD 4H+D zgodnosc'); }
-  if (confirm1h)  { score += 5; why.push('1H potwierdza'); }
+  if      (confirm1h)    { score += 5; why.push('1H potwierdza (cofka)'); }
+  else if (confirm1hMom) { score += 3; why.push('1H potwierdza (momentum)'); }
   else            { score -= 3; }
 
   // RSI Divergence
@@ -760,6 +765,25 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if (price > vwap4h) { score += 8;  why.push('Ponad VWAP'); }
   else                { score -= 5;  why.push('Ponizej VWAP'); }
   score = Math.max(0, Math.min(100, score));
+
+  // ── KONTYNUACJA TRENDU ──────────────────────────────────────────────
+  // Caly scoring powyzej to czysty powrot do sredniej: najwieksze premie ida
+  // za wyprzedanie (RSI<=25 +30, BB<0.08 +18), a wzrost ceny jest KARANY
+  // (RSI>=70 -15, BB>0.85 -10, mom5>8 -5). Efekt: im mocniej rynek rosnie, tym
+  // NIZSZY score - bot nie mial zadnej sciezki, zeby wejsc w trwajacy trend
+  // wzrostowy, tylko czekal na glebokie cofki. Przy miesiacu wzrostow oznaczalo
+  // to zero transakcji. Ten blok daje drugie, kontrolowane wejscie: zdrowy trend
+  // (nie skrajnie wykupiony), potwierdzony MACD i VWAP.
+  const healthyUptrend = trendD === 2 && rsiD >= 50 && rsiD < 70
+                      && macdD.hist > 0 && price > vwap4h;
+  if (healthyUptrend) {
+    // Nie na samej gornej wstędze BB = jest jeszcze przestrzen do TP, a nie
+    // kupujemy dokladnie na szczycie wybicia.
+    const roomToRun = bbD.pos < 0.75;
+    score += roomToRun ? 18 : 10;
+    why.push('Kontynuacja trendu wzrostowego' + (roomToRun ? ' (jest przestrzen do TP)' : ' (blisko gornej BB)'));
+    score = Math.max(0, Math.min(100, score));
+  }
 
   // S/R scoring
   const srSupport    = srLevels.below.find(s => Math.abs(price/s - 1) <= 0.015);

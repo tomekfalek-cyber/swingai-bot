@@ -1306,7 +1306,8 @@ async function analyzeSwing(sym) {
   const regime = detectRegime(d.c, atrD, ema50, ema200);
   const rsi4h = rsi(h4.c,14), macd4h=macd(h4.c);
   const rsi1h = rsi(h1.c,14), macd1h=macd(h1.c);
-  const confirm1h = (rsi1h<50 && macd1h.hist>0) || rsi1h<40;
+  const confirm1h    = (rsi1h<50 && macd1h.hist>0) || rsi1h<40;      // cofka na 1H
+  const confirm1hMom = macd1h.hist>0 && rsi1h>=55 && rsi1h<=72;      // zdrowe momentum (parytet z worker_bot.js)
   // Dywergencja RSI — oblicz na ostatnich 40 świecach Daily i 4H
   const rsiArrD  = rsiArray(d.c.slice(-40), 14);
   const rsiArr4h = rsiArray(h4.c.slice(-30), 14);
@@ -1348,7 +1349,8 @@ async function analyzeSwing(sym) {
   if (volR>1.8||vol4R>2.0) { score+=5; why.push('Vol spike x'+Math.max(volR,vol4R).toFixed(1)); }
   else if (volR<0.4)       { score-=8; why.push('Bardzo niski wolumen'); }
   if (macd4h.hist>0 && macdD.hist>0) { score+=5; why.push('MACD 4H+D zgodnosc'); }
-  if (confirm1h)  { score+=5; why.push('1H potwierdza'); }
+  if      (confirm1h)    { score+=5; why.push('1H potwierdza (cofka)'); }
+  else if (confirm1hMom) { score+=3; why.push('1H potwierdza (momentum)'); }
   else            { score-=3; }
   // Dywergencja RSI — jeden z najsilniejszych sygnałów odwrócenia
   if (divD.bull && div4h.bull) {
@@ -1366,6 +1368,16 @@ async function analyzeSwing(sym) {
   // VWAP scoring
   if (price > vwap4h) { score += 8;  why.push('Ponad VWAP'); }
   else                { score -= 5;  why.push('Ponizej VWAP'); }
+
+  // KONTYNUACJA TRENDU - parytet z worker_bot.js. Bez tego bloku scoring byl
+  // czystym powrotem do sredniej i przy rosnacych cenach score SPADAL.
+  var _healthyUptrend = trendD === 2 && rsiD >= 50 && rsiD < 70 && macdD.hist > 0 && price > vwap4h;
+  if (_healthyUptrend) {
+    var _roomToRun = bbD.pos < 0.75;
+    score += _roomToRun ? 18 : 10;
+    why.push('Kontynuacja trendu wzrostowego' + (_roomToRun ? ' (jest przestrzen do TP)' : ' (blisko gornej BB)'));
+    score = Math.max(0, Math.min(100, score));
+  }
 
   // S/R scoring
   const srSupport    = srLevels.below.find(function(s){ return Math.abs(price/s - 1) <= 0.015; });
