@@ -485,7 +485,7 @@ async function runBotCycle(env) {
       }
       await sleep(700);
     }
-    sigs.sort((a, b) => b.finalProb - a.finalProb);
+        sigs.sort((a, b) => b.finalProb - a.finalProb);
     state.lastSigs = sigs.map(s => ({
       sym: s.sym, score: s.score, finalProb: s.finalProb,
       price: s.price, rsiD: s.rsiD, rsi4h: s.rsi4h,
@@ -494,6 +494,15 @@ async function runBotCycle(env) {
       patterns: (s.patterns||[]).map(p => p.name),
       aiMethod: s.aiMethod, regime: s.regime || 'neutral'
     }));
+    
+    // DIAGNOSTYKA: Pokaż dlaczego bot nie otwiera pozycji
+    const buySignals = sigs.filter(s => s.buy).length;
+    const bestScore = sigs[0] ? (sigs[0].finalProb*100).toFixed(1) : '0';
+    if (buySignals > 0) {
+      addLog(state, `✅ Sygnały BUY: ${buySignals}/${sigs.length} (najlepszy: ${bestScore}%)`, 'ok');
+    } else {
+      addLog(state, `❌ Brak sygnałów BUY. Najlepszy score: ${bestScore}% | Sprawdź minScore w ustawieniach`, 'warn');
+    }
 
        // 5. Otwórz pozycje
     const fallbackBalance = cfg.mode === 'mexc' ? (state.liveBalance > 0 ? state.liveBalance : 1000) : (cfg.paperBalance || 1000);
@@ -858,9 +867,16 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
     aiMethod  = 'Score+NB+OBI';
   }
 
-  // ── Per-pair threshold
+    // ── Per-pair threshold
   const pp       = pairParams[sym] || PAIR_PARAMS_DEFAULT[sym] || null;
-  const minScore = (pp ? pp.minScore : adaptiveMinScore) + regimeMinScoreAdj;
+  let minScore = (pp ? pp.minScore : adaptiveMinScore) + regimeMinScoreAdj;
+  
+  // Dla małych kont obniż próg, aby bot w ogóle handlował
+  const total = cfg.mode === 'mexc' ? (state.liveBalance || 0) : (state.paperBalance || 1000);
+  if (total < 100) {
+    minScore = Math.max(45, minScore - 15); // Obniż o 15 punktów, minimum 45
+  }
+  
   const buy      = finalProb >= minScore / 100;
 
   return {
@@ -1234,9 +1250,10 @@ function isMicroAccount(total) { return (isFinite(total) && total > 0 && total <
 function kellySize(cfg, state, total) {
   const safeTotal = (isFinite(total) && total > 0) ? total : 100;
 
-  // Micro account: inwestuj 90% salda, min 1$
+    // Micro account: inwestuj 40% salda lub max $8 (zostawia bufor na opłaty)
   if (isMicroAccount(safeTotal)) {
-    return Math.max(1, Math.round(safeTotal * 0.90 * 100) / 100);
+    const microSize = Math.min(safeTotal * 0.40, 8);
+    return Math.max(5, Math.round(microSize * 100) / 100); // minimum $5 dla MEXC
   }
 
     // Auto-skalowanie: gdy saldo >= 500$ uzyj 3% kapitalu
