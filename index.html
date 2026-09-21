@@ -458,6 +458,15 @@ tr:hover td{background:rgba(45,143,255,.04);}
           <tbody id="pair-body"></tbody>
         </table>
       </div>
+      <div style="padding:0 12px 12px;">
+        <div class="sec-t" style="margin-bottom:6px">📜 Dziennik transakcji - dlaczego bot wyszedl z pozycji</div>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Czas</th><th>Para</th><th>Wejscie</th><th>Wyjscie</th><th>P/L %</th><th>P/L $</th><th>Powod wyjscia</th></tr></thead>
+          <tbody id="trade-journal-body"></tbody>
+        </table>
+        </div>
+      </div>
     </div>
 
     <!-- MARKET -->
@@ -2385,6 +2394,41 @@ function renderHistory() {
   }).join('');
 }
 
+// Czytelne wyjasnienie KAZDEGO powodu, dla ktorego bot zamknal pozycje.
+function reasonExplain(reason) {
+  var r = (reason||'').toUpperCase();
+  if (r.indexOf('TAKE PROFIT')>=0)
+    return { label:'Take Profit', text:'Cena osiagnela zaplanowany poziom zysku - pozycja zamknieta zgodnie z planem.' };
+  if (r.indexOf('TRAILING')>=0)
+    return { label:'Trailing Stop', text:'Cena cofnela sie od szczytu o ustalona odleglosc - bot zabezpieczyl czesc wypracowanego zysku.' };
+  if (r.indexOf('STOP LOSS')>=0)
+    return { label:'Stop Loss', text:'Cena spadla do poziomu stop-loss - pozycja zamknieta, by ograniczyc strate do zaplanowanego limitu.' };
+  if (r.indexOf('EMERGENCY')>=0)
+    return { label:'Stop awaryjny', text:'Wykryto nietypowa sytuacje (np. blad danych/API) - bot zamknal pozycje ostroznosciowo.' };
+  if (r.indexOf('TIMEOUT')>=0)
+    return { label:'Timeout', text:'Pozycja przekroczyla maksymalny czas trzymania bez osiagniecia TP/SL - zamknieta po cenie rynkowej.' };
+  return { label: reason||'-', text:'Powod: '+(reason||'nieznany') };
+}
+function renderTradeJournal() {
+  var body = gi('trade-journal-body'); if (!body) return;
+  var all = (ST.trades||[]).slice(0, 60);
+  if (!all.length) { body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text3)">Brak zamknietych transakcji</td></tr>'; return; }
+  body.innerHTML = all.map(function(x) {
+    var rx = reasonExplain(x.reason);
+    var pnlC = (x.pnl||0)>=0 ? 'up' : 'dn';
+    var time = x.ts ? new Date(x.ts).toLocaleString('pl-PL', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+    return '<tr title="'+rx.text.replace(/"/g,'&quot;')+'">'
+      + '<td style="font-size:8pt;color:var(--text3)">'+time+'</td>'
+      + '<td><b>'+(x.sym||'').replace('USDC','')+'</b></td>'
+      + '<td>'+fp(x.entry)+'</td>'
+      + '<td>'+fp(x.exit)+'</td>'
+      + '<td class="'+pnlC+'">'+((x.pnlPct||0)>=0?'+':'')+(x.pnlPct||0).toFixed(2)+'%</td>'
+      + '<td class="'+pnlC+'">'+((x.pnl||0)>=0?'+':'')+'$'+(x.pnl||0).toFixed(2)+'</td>'
+      + '<td style="font-size:8.5pt"><b>'+rx.label+'</b><br><span style="color:var(--text3);font-size:7.5pt">'+rx.text+'</span></td>'
+      + '</tr>';
+  }).join('');
+}
+
 function renderStats() {
   const t=ST.trades, wins=t.filter(function(x){ return x.pnl>0; }).length;
   const wr=t.length?(wins/t.length*100).toFixed(0):0;
@@ -2416,6 +2460,7 @@ function renderStats() {
       +'<td class="'+(+avgP>=0?'up':'dn')+'">'+(+avgP>=0?'+':'')+avgP+'%</td>'
       +'<td class="'+(s.p>=0?'up':'dn')+'">'+(s.p>=0?'+':'')+'$'+s.p.toFixed(2)+'</td></tr>';
   }).join('');
+  renderTradeJournal();
   setTimeout(drawEquity, 50);
 }
 

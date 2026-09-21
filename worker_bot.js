@@ -342,6 +342,7 @@ export default {
         liveBalanceErr: state.liveBalanceErr || null,
         lastFG:      state.lastFG      || { val:50, label:'Neutral' },
         lastSigs:    state.lastSigs    || [],
+        trades:      (state.trades     || []).slice(0, 60),
         mode:        cfg.mode          || 'paper',
         log:         (state.log        || []).slice(0, 10)
       });
@@ -1068,9 +1069,12 @@ async function openTrade(sig, fg, btcDrop, cfg, state, env, nb, gbm, ql, ew) {
 
     if (cfg.mode === 'mexc' && cfg.mexcApiKey) {
     try {
-      const qty = posSize / adjSig.price;
-      const res = await mexcMarketBuy(adjSig.sym, qty, cfg);
-      const execQty = res.qty || qty;
+      // mexcMarketBuy oczekuje KWOTY W DOLARACH (quoteOrderQty), nie ilosci
+      // monety - poprzednia wersja przeliczala posSize/price na qty i wysylala
+      // to jako dolary, co dawaloby np. quoteOrderQty=0.00019 zamiast $15, albo
+      // przy tanszych monetach wielokrotnosc zamierzonej wielkosci pozycji.
+      const res = await mexcMarketBuy(adjSig.sym, posSize, cfg);
+      const execQty = res.qty || (posSize / adjSig.price);
       const execP = res.price || adjSig.price;
       const execSize = execQty * execP;
       const el    = calcDynamicLevels(execP, adjSig.atrD, cfg);
@@ -1267,7 +1271,7 @@ function kellySize(cfg, state, total) {
   const autoScale = safeTotal >= 500;
   const fixedSize = autoScale
     ? Math.min(safeTotal * 0.03, safeTotal * 0.20)
-    : (safeTotal * (cfg.posSize || 15) / 100);
+    : (cfg.posSize || 15); // stala kwota $ (etykieta UI: "Rozmiar pozycji $"), nie procent salda
 
   const trades    = (state.trades || []).slice(0, 30);
   if (trades.length < 5) {
@@ -2589,6 +2593,10 @@ async function dashboardHTML(cfg, state, env) {
             var iterEl = document.getElementById('rb-iter');
             if (iterEl) iterEl.textContent = data.iter;
             _renderSigsFromServer(data.lastSigs);
+            if (data.trades && typeof ST !== 'undefined') {
+              ST.trades = data.trades;
+              if (typeof renderTradeJournal === 'function') renderTradeJournal();
+            }
             if (data.mode) {
               if (typeof CFG !== 'undefined') CFG.mode = data.mode;
               var modeBadgeEl2 = document.getElementById('mode-badge');
