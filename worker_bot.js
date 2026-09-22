@@ -722,6 +722,12 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   const mom5  = d.c.length > 5  ? (price / d.c.at(-6)  - 1) * 100 : 0;
   const mom10 = d.c.length > 10 ? (price / d.c.at(-11) - 1) * 100 : 0;
 
+  // Zdrowy trwajacy trend wzrostowy (uzywane nizej, aby wylaczyc kary
+  // "wykupienia" ktore sa mysleniem powrotu do sredniej i sa wprost
+  // sprzeczne z wejsciem w KONTYNUACJE trendu - patrz blok nizej).
+  const healthyUptrend = trendD === 2 && rsiD >= 50 && rsiD < 70
+                      && macdD.hist > 0 && price > vwap4h;
+
   // ── Scoring
   let score = 0;
   const why = [];
@@ -745,7 +751,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if      (bbD.pos < 0.08) { score += 18; why.push('Cena przy dolnej BB'); }
   else if (bbD.pos < 0.20) { score += 13; why.push('BB dolna strefa'); }
   else if (bbD.pos < 0.35) { score += 6; }
-  else if (bbD.pos > 0.85) { score -= 10; why.push('BB górna – ryzyko'); }
+  else if (bbD.pos > 0.85 && !healthyUptrend) { score -= 10; why.push('BB górna – ryzyko'); }
 
   if      (trendD === 2)  { score += 12; why.push('Ponad EMA50+200 – bull'); }
   else if (trendD === 1)  { score += 8;  why.push('Ponad EMA200'); }
@@ -754,7 +760,7 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
 
   if      (mom5 > 0 && mom10 < 0)    { score += 8; why.push('Momentum odwrócenie'); }
   else if (mom5 < -5 && mom10 < -10) { score += 5; why.push('Oversold momentum'); }
-  else if (mom5 > 8)                  { score -= 5; why.push('Zbyt szybki wzrost'); }
+  else if (mom5 > 8 && !healthyUptrend) { score -= 5; why.push('Zbyt szybki wzrost'); }
 
   if (volR > 1.8 || vol4R > 2.0) { score += 5; why.push('Vol spike x' + Math.max(volR,vol4R).toFixed(1)); }
   else if (volR < 0.4)            { score -= 8; why.push('Niski wolumen'); }
@@ -786,14 +792,14 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   // NIZSZY score - bot nie mial zadnej sciezki, zeby wejsc w trwajacy trend
   // wzrostowy, tylko czekal na glebokie cofki. Przy miesiacu wzrostow oznaczalo
   // to zero transakcji. Ten blok daje drugie, kontrolowane wejscie: zdrowy trend
-  // (nie skrajnie wykupiony), potwierdzony MACD i VWAP.
-  const healthyUptrend = trendD === 2 && rsiD >= 50 && rsiD < 70
-                      && macdD.hist > 0 && price > vwap4h;
+  // (nie skrajnie wykupiony), potwierdzony MACD i VWAP. (healthyUptrend liczony
+  // wyzej, przed scoringiem, bo jest tez uzywany do wylaczenia kar za
+  // "wykupienie"/"volatile" ktore inaczej anuluja ta premie).
   if (healthyUptrend) {
     // Nie na samej gornej wstędze BB = jest jeszcze przestrzen do TP, a nie
     // kupujemy dokladnie na szczycie wybicia.
     const roomToRun = bbD.pos < 0.75;
-    score += roomToRun ? 18 : 10;
+    score += roomToRun ? 20 : 16;
     why.push('Kontynuacja trendu wzrostowego' + (roomToRun ? ' (jest przestrzen do TP)' : ' (blisko gornej BB)'));
     score = Math.max(0, Math.min(100, score));
   }
@@ -810,7 +816,10 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
   if (regime === 'sideways')   { regimeMinScoreAdj = 8; }
   if (regime === 'bull_trend') { score += 5; why.push('Rezim: bull trend'); }
   if (regime === 'bear_trend') { score -= 15; why.push('Rezim: bear trend'); }
-  if (regime === 'volatile')   { score -= 8;  why.push('Rezim: volatile'); }
+  // "volatile" = duzy ATR% - to samo w sobie NIE jest ryzykiem gdy towarzyszy
+  // mu zdrowy, potwierdzony trend wzrostowy (szybki ruch w gore = wysoka
+  // zmiennosc z definicji); kara ma sens tylko dla bezkierunkowej huśtawki.
+  if (regime === 'volatile' && !healthyUptrend) { score -= 8;  why.push('Rezim: volatile'); }
   score = Math.max(0, Math.min(100, score));
 
   // ── Candlestick Patterns
@@ -1255,9 +1264,13 @@ function isMicroAccount(total) { return (isFinite(total) && total > 0 && total <
 function kellySize(cfg, state, total) {
   const safeTotal = (isFinite(total) && total > 0) ? total : 100;
 
-    // Micro account: inwestuj 40% salda lub max $8 (zostawia bufor na opłaty)
+    // Micro account: inwestuj 90% salda (bufor 10% na oplaty/slippage/precyzje
+    // ilosci), bez sztywnego limitu $8 - przy $20 salda dawalo to $8 (40%),
+    // czyli i tak najwiecej 1 pozycja (patrz openTrade) prawie 2x mniejsza niz
+    // moglaby byc. Bez Kelly cap, bo przy < 5 tradow kellySize nizej i tak by
+    // to obcięło do (cfg.posSize||15), co dla mikro-konta jest bez sensu.
   if (isMicroAccount(safeTotal)) {
-    const microSize = Math.min(safeTotal * 0.40, 8);
+    const microSize = safeTotal * 0.90;
     return Math.max(5, Math.round(microSize * 100) / 100); // minimum $5 dla MEXC
   }
 
@@ -2775,4 +2788,5 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
+
 
