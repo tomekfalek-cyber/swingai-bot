@@ -8,7 +8,7 @@
 // Kraken public API jako zrodlo danych – nie blokuje CF Workers
 // Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC – mapowanie w mexcSymbol()
 // Uwaga: BTC w Kraken = XBT
-const PAIRS = ['XBTUSDT','ETHUSDT','SOLUSDT','XRPUSDT'];
+const PAIRS = ['SOLUSDT', 'XRPUSDT', 'ADAUSDT'];
 const FEE   = 0.002;
 const TIMEOUT_MS = 7 * 24 * 3600000; // 7 dni
 
