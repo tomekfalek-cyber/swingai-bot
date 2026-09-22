@@ -8,7 +8,7 @@
 // Kraken public API jako zrodlo danych – nie blokuje CF Workers
 // Pary Kraken: XBTUSDT, ETHUSDT itd. | Handel MEXC: BTCUSDC – mapowanie w mexcSymbol()
 // Uwaga: BTC w Kraken = XBT
-const PAIRS = ['XBTUSDT','ETHUSDT','SOLUSDT','XRPUSDT','ADAUSDT'];
+const PAIRS = ['XBTUSDT','ETHUSDT','SOLUSDT','XRPUSDT'];
 const FEE   = 0.002;
 const TIMEOUT_MS = 7 * 24 * 3600000; // 7 dni
 
@@ -474,19 +474,18 @@ async function runBotCycle(env) {
     // 3. Sprawdź otwarte pozycje
     await checkPositions(cfg, state, env, ql);
 
-        // 4. Skanuj pary - DIAGNOSTYKA
+          // 4. Skanuj pary - DIAGNOSTYKA
     const sigs = [];
+    const currentAccountBalance = cfg.mode === 'mexc' ? (state.liveBalance || 0) : (state.paperBalance || 1000);
+    
     for (const sym of PAIRS) {
       try {
-        // UWAGA: na końcu dodano parametr 'total'
-        const s = await analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore);
-// Tutaj 'total' to zmienna z runBotCycle, która jest przekazywana do parametru 'accountTotal' w funkcji
+        const s = await analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adaptiveMinScore, currentAccountBalance);
         sigs.push(s);
         state.lastSigs = state.lastSigs || [];
       } catch(e) {
         addLog(state, sym + ': ' + e.message, 'warn');
       }
-      // UWAGA: zwiększono opóźnienie z 700 na 2000, aby uniknąć blokady Krakena
       await sleep(2000);
     }
     
@@ -871,21 +870,16 @@ async function analyzeSwing(sym, cfg, state, nb, gbm, ql, ew, pairParams, adapti
     aiMethod  = 'Score+NB+OBI';
   }
 
-    // ── Per-pair threshold
+     // ── Per-pair threshold
   const pp       = pairParams[sym] || PAIR_PARAMS_DEFAULT[sym] || null;
   let minScore = (pp ? pp.minScore : adaptiveMinScore) + regimeMinScoreAdj;
   
-    // Dla małych kont obniż próg, aby bot w ogóle handlował
-  // Używamy 'currentAccountBalance' aby uniknąć konfliktu nazw ze zmienną 'total'
-  const currentAccountBalance = cfg.mode === 'mexc' 
-    ? (state.liveBalance || 0) 
-    : (state.paperBalance || 1000);
-    
-  if (currentAccountBalance < 100) {
-    minScore = Math.max(45, minScore - 10); // Obniż o 10 punktów, ale nigdy poniżej 45
+  // Dla małych kont obniż próg, aby bot w ogóle handlował
+  if (accountTotal < 100) {
+    minScore = Math.max(45, minScore - 10); 
   }
   
-  const buy      = finalProb >= minScore / 100;
+  const buy = finalProb >= minScore / 100;
 
   return {
     sym, price,
