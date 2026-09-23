@@ -344,7 +344,7 @@ export default {
         lastSigs:    state.lastSigs    || [],
         trades:      (state.trades     || []).slice(0, 60),
         mode:        cfg.mode          || 'paper',
-        log:         (state.log        || []).slice(0, 10)
+        log:         (state.log        || []).slice(0, 60)
       });
     }
 
@@ -2624,6 +2624,7 @@ async function dashboardHTML(cfg, state, env) {
             });
             var lc = document.getElementById('log-count');
             if (lc) lc.textContent = bs.log.length + ' wpisow (Worker)';
+            if (typeof setWorkerLog === 'function') setWorkerLog(bs.log);
           }
         } catch(e) { console.warn('Worker applyState error:', e); }
       }
@@ -2709,6 +2710,7 @@ async function dashboardHTML(cfg, state, env) {
                   logArea3.appendChild(div);
                 });
               }
+              if (typeof setWorkerLog === 'function') setWorkerLog(data.log);
             }
           })
           .catch(function(){});
