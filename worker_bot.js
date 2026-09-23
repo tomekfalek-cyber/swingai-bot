@@ -1,4 +1,4 @@
-﻿// SwingAI Bot 24/7 – Cloudflare Worker – MEXC VERSION
+﻿﻿// SwingAI Bot 24/7 – Cloudflare Worker – MEXC VERSION
 // Gielda (egzekucja zlecen): MEXC (spot) | Dane rynkowe (klines/ticker/orderbook): Kraken public API
 // Multi-TF (Daily+4H+1H), NB+GBM+QL, PATTERNS, Kelly, ATR-TP/SL, CORR, OBI
 
@@ -1837,7 +1837,7 @@ function mexcSymbol(sym) { return sym.replace('_','').replace('XBT','BTC').repla
 // sym moze byc XBTUSDT (Kraken) lub BTCUSDC (MEXC) – obslugujemy oba
 function mexcQtyPrecision(sym) {
   // UWAGA: to jest tabela awaryjna (fallback) - uzywana TYLKO jesli zywe zapytanie
-  // do MEXC exchangeInfo (mexcGetQtyPrecision) sie nie powiedzie. Sprawdzone realne
+  // do MEXC exchangeInfo (mexcGetSymbolMeta) sie nie powiedzie. Sprawdzone realne
   // dane MEXC (dokumentacja) pokazuja np. BTC baseSizePrecision "0.000001" (6 miejsc),
   // podczas gdy ta tabela mowi 5 - hardkodowane zgadywanie moze byc niezgodne z
   // rzeczywistymi regulami gieldy per para i powodowac odrzucenie zlecenia SELL
@@ -1853,30 +1853,52 @@ function mexcFmtQty(sym, qty, prec) {
   const p = (prec != null) ? prec : mexcQtyPrecision(sym);
   return p === 0 ? Math.floor(qty).toString() : qty.toFixed(p);
 }
-// Pobiera prawdziwa precyzje ilosci dla danego symbolu MEXC (baseSizePrecision z
-// exchangeInfo) zamiast polegac wylacznie na zgadywaniu w mexcQtyPrecision. Jeden
-// dodatkowy request TYLKO przy faktycznej sprzedazy (nie w petli skanowania), wiec
-// nie obciaza limitu 50 zapytan/cykl. Przy bledzie/timeoutcie wraca do fallbacku.
-async function mexcGetQtyPrecision(msym, fallbackPrec) {
+// Pobiera prawdziwa precyzje ilosci (baseSizePrecision) i ceny (quotePrecision)
+// dla danego symbolu MEXC z exchangeInfo, zamiast polegac wylacznie na zgadywaniu
+// w mexcQtyPrecision. Jeden dodatkowy request TYLKO przy faktycznym kupnie/sprzedazy
+// (nie w petli skanowania), wiec nie obciaza limitu 50 zapytan/cykl. Przy
+// bledzie/timeoutcie wraca do fallbacku.
+async function mexcGetSymbolMeta(msym, fallbackQtyPrec) {
   try {
     const r = await fetchWithTimeout('https://api.mexc.com/api/v3/exchangeInfo?symbol=' + msym, 6000);
-    if (!r.ok) return fallbackPrec;
+    if (!r.ok) return { qtyPrec: fallbackQtyPrec, pricePrec: 4 };
     const d = await r.json();
     const info = d.symbols && d.symbols[0];
     const bsp = info && info.baseSizePrecision;
+    let qtyPrec = fallbackQtyPrec;
     if (bsp) {
       const dot = String(bsp).indexOf('.');
-      return dot === -1 ? 0 : (String(bsp).length - dot - 1);
+      qtyPrec = dot === -1 ? 0 : (String(bsp).length - dot - 1);
     }
+    const pricePrec = (info && info.quotePrecision != null) ? +info.quotePrecision : 4;
+    return { qtyPrec, pricePrec };
   } catch(_) { /* fallback nizej */ }
-  return fallbackPrec;
+  return { qtyPrec: fallbackQtyPrec, pricePrec: 4 };
+}
+// Zaokragla w dol (nigdy w gore) do danej precyzji - przy kupnie zapobiega
+// wyslaniu ilosci, ktora przy danej cenie limitu przekroczylaby dostepne saldo.
+function mexcFloorQty(qty, prec) {
+  const f = Math.pow(10, prec);
+  const v = Math.floor(qty * f) / f;
+  return prec === 0 ? String(Math.floor(v)) : v.toFixed(prec);
 }
 
 async function mexcMarketBuy(sym, quoteQty, cfg) {
   const msym = mexcSymbol(sym);
+  const meta = await mexcGetSymbolMeta(msym, mexcQtyPrecision(sym));
+  // WAZNE: MEXC dopuszcza zlecenia typu MARKET na parach USDC TYLKO dla BTCUSDC -
+  // wszystkie inne pary USDC (ETH/SOL/XRP/ADA/DOGE...) wspieraja wylacznie
+  // LIMIT/LIMIT_MAKER (blad "current order type can not place order" przy MARKET).
+  // Symulujemy zlecenie rynkowe zleceniem LIMIT+IOC z cena 0,5% nad rynkiem -
+  // wypelnia sie natychmiast po dostepnej cenie albo anuluje sam siebie.
+  const tr = await fetchWithTimeout('https://api.mexc.com/api/v3/ticker/price?symbol=' + msym, 6000).catch(() => null);
+  const tickerPrice = tr && tr.ok ? +(await tr.json()).price : 0;
+  if (!tickerPrice) throw new Error('MEXC buy: brak ceny tickera dla ' + msym);
+  const limitPrice = +(tickerPrice * 1.005).toFixed(meta.pricePrec);
+  const qty = mexcFloorQty(quoteQty / limitPrice, meta.qtyPrec);
   let d;
   try {
-    const s = await mexcSign('symbol=' + msym + '&side=BUY&type=MARKET&quoteOrderQty=' + quoteQty.toFixed(2), cfg);
+    const s = await mexcSign('symbol=' + msym + '&side=BUY&type=LIMIT&timeInForce=IOC&quantity=' + qty + '&price=' + limitPrice, cfg);
     const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
     d = await r.json();
   } catch(e) {
@@ -1888,8 +1910,8 @@ async function mexcMarketBuy(sym, quoteQty, cfg) {
     throw new Error('MEXC buy (blad sieci, brak potwierdzenia): ' + e.message);
   }
   if (!d.orderId) throw new Error('MEXC buy: ' + (d.msg || JSON.stringify(d)));
-  // Odpytaj status zlecenia z krotkim retry (do 3x), bo przy slabej plynnosci
-  // MARKET order moze nie byc jeszcze w pelni wypelniony po samym 1s.
+  // Odpytaj status zlecenia z krotkim retry (do 3x) - IOC rozstrzyga sie zwykle
+  // natychmiast, ale przy slabej plynnosci moze wypelnic sie tylko czesciowo.
   let det = {};
   for (let attempt = 0; attempt < 3; attempt++) {
     await sleep(1000 * (attempt + 1));
@@ -1897,11 +1919,12 @@ async function mexcMarketBuy(sym, quoteQty, cfg) {
       const s2 = await mexcSign('symbol=' + msym + '&orderId=' + d.orderId, cfg);
       det = await (await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s2.qs, 10000, { headers: { 'X-MEXC-APIKEY': s2.apiKey } })).json();
     } catch(_) { continue; }
-    if (det.status === 'FILLED') break;
+    if (det.status && det.status !== 'NEW') break;
   }
-  const avgPrice = det.avgPrice ? +det.avgPrice : (det.price ? +det.price : 0);
-  const qty = det.executedQty ? +det.executedQty : (quoteQty / (avgPrice || 1));
-  return { price: avgPrice, qty };
+  const execQty = det.executedQty ? +det.executedQty : 0;
+  if (execQty <= 0) throw new Error('MEXC buy: zlecenie LIMIT+IOC nie zostalo wypelnione (za mala plynnosc lub cena poza dozwolonym zakresem)');
+  const avgPrice = det.cummulativeQuoteQty ? (+det.cummulativeQuoteQty / execQty) : (det.avgPrice ? +det.avgPrice : limitPrice);
+  return { price: avgPrice, qty: execQty };
 }
 
 // Po nieudanym (siec/timeout) zapytaniu BUY - sprawdza w historii zlecen MEXC, czy
@@ -1928,10 +1951,16 @@ async function mexcReconcileBuy(msym, cfg) {
 
 async function mexcMarketSell(sym, qty, cfg) {
   const msym = mexcSymbol(sym);
-  const prec = await mexcGetQtyPrecision(msym, mexcQtyPrecision(sym));
+  const meta = await mexcGetSymbolMeta(msym, mexcQtyPrecision(sym));
   let d;
   try {
-    const s = await mexcSign('symbol=' + msym + '&side=SELL&type=MARKET&quantity=' + mexcFmtQty(sym, qty, prec), cfg);
+    // Patrz komentarz w mexcMarketBuy: MEXC dopuszcza MARKET na parach USDC tylko
+    // dla BTCUSDC, wiec symulujemy zlecenie rynkowe LIMIT+IOC (cena 0,5% pod rynkiem).
+    const tr = await fetchWithTimeout('https://api.mexc.com/api/v3/ticker/price?symbol=' + msym, 6000);
+    const tickerPrice = +(await tr.json()).price;
+    if (!tickerPrice) throw new Error('brak ceny tickera dla ' + msym);
+    const limitPrice = +(tickerPrice * 0.995).toFixed(meta.pricePrec);
+    const s = await mexcSign('symbol=' + msym + '&side=SELL&type=LIMIT&timeInForce=IOC&quantity=' + mexcFmtQty(sym, qty, meta.qtyPrec) + '&price=' + limitPrice, cfg);
     const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
     d = await r.json();
   } catch(e) {
@@ -1944,6 +1973,12 @@ async function mexcMarketSell(sym, qty, cfg) {
     throw new Error('MEXC sell (blad sieci, brak potwierdzenia): ' + e.message);
   }
   if (!d.orderId) throw new Error('MEXC sell: ' + (d.msg || JSON.stringify(d)));
+  // IOC moze wypelnic sie tylko czesciowo (za maly bufor ceny / plynnosc) - sprawdz
+  // realny balans zamiast slepo wierzyc, ze zlecenie w pelni zamknelo pozycje.
+  const stillHeld = await mexcAssetBalance(msym, cfg).catch(() => null);
+  if (stillHeld !== null && stillHeld >= qty * 0.05) {
+    throw new Error('MEXC sell: LIMIT+IOC nie wypelnione w pelni (pozostalo ~' + stillHeld + ' ' + msym.replace('USDC','').replace('USDT','') + ')');
+  }
   return true;
 }
 
@@ -2788,5 +2823,6 @@ function jsonResp(data, status=200) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders() }
   });
 }
+
 
 
