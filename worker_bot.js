@@ -1889,12 +1889,14 @@ async function mexcMarketBuy(sym, quoteQty, cfg) {
   // WAZNE: MEXC dopuszcza zlecenia typu MARKET na parach USDC TYLKO dla BTCUSDC -
   // wszystkie inne pary USDC (ETH/SOL/XRP/ADA/DOGE...) wspieraja wylacznie
   // LIMIT/LIMIT_MAKER (blad "current order type can not place order" przy MARKET).
-  // Symulujemy zlecenie rynkowe zleceniem LIMIT+IOC z cena 0,5% nad rynkiem -
-  // wypelnia sie natychmiast po dostepnej cenie albo anuluje sam siebie.
+  // Symulujemy zlecenie rynkowe zleceniem LIMIT+IOC z cena 1% nad rynkiem -
+  // wypelnia sie natychmiast po dostepnej cenie albo anuluje sam siebie. Bufor 1%
+  // (a nie 0,5%) zmniejsza ryzyko czesciowego niewypelnienia przy szybkim ruchu ceny,
+  // a nadal jest daleki od limitu gieldy (filtr PERCENT_PRICE_BY_SIDE: 2-10%).
   const tr = await fetchWithTimeout('https://api.mexc.com/api/v3/ticker/price?symbol=' + msym, 6000).catch(() => null);
   const tickerPrice = tr && tr.ok ? +(await tr.json()).price : 0;
   if (!tickerPrice) throw new Error('MEXC buy: brak ceny tickera dla ' + msym);
-  const limitPrice = +(tickerPrice * 1.005).toFixed(meta.pricePrec);
+  const limitPrice = +(tickerPrice * 1.01).toFixed(meta.pricePrec);
   const qty = mexcFloorQty(quoteQty / limitPrice, meta.qtyPrec);
   let d;
   try {
@@ -1955,11 +1957,12 @@ async function mexcMarketSell(sym, qty, cfg) {
   let d;
   try {
     // Patrz komentarz w mexcMarketBuy: MEXC dopuszcza MARKET na parach USDC tylko
-    // dla BTCUSDC, wiec symulujemy zlecenie rynkowe LIMIT+IOC (cena 0,5% pod rynkiem).
+    // dla BTCUSDC, wiec symulujemy zlecenie rynkowe LIMIT+IOC (cena 1% pod rynkiem -
+    // wazne przy SL na szybkim spadku, zeby zlecenie na pewno przebilo sie przez ksiazke).
     const tr = await fetchWithTimeout('https://api.mexc.com/api/v3/ticker/price?symbol=' + msym, 6000);
     const tickerPrice = +(await tr.json()).price;
     if (!tickerPrice) throw new Error('brak ceny tickera dla ' + msym);
-    const limitPrice = +(tickerPrice * 0.995).toFixed(meta.pricePrec);
+    const limitPrice = +(tickerPrice * 0.99).toFixed(meta.pricePrec);
     const s = await mexcSign('symbol=' + msym + '&side=SELL&type=LIMIT&timeInForce=IOC&quantity=' + mexcFmtQty(sym, qty, meta.qtyPrec) + '&price=' + limitPrice, cfg);
     const r = await fetchWithTimeout('https://api.mexc.com/api/v3/order?' + s.qs, 10000, { method:'POST', headers: { 'X-MEXC-APIKEY': s.apiKey, 'Content-Type': 'application/json' } });
     d = await r.json();
