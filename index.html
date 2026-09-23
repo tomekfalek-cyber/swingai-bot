@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -2492,13 +2492,25 @@ function drawEquity() {
 
 function renderMarketTab(sigs) {
   if (!sigs || !sigs.length) return;
-  const btc=sigs.find(function(s){ return s.sym==='BTCUSDC'; }); if(!btc) return;
-  gi('mkt-btc-trend').innerHTML = btc.trendD===2?'<span class="up">Bull mocny</span>':btc.trendD===1?'<span class="up">Bull</span>':btc.trendD===0?'<span class="gold">Boczny</span>':'<span class="dn">Bear</span>';
-  gi('mkt-btc-rsi').innerHTML = btc.rsiD<=32?'<span class="up">'+btc.rsiD+' (oversold)</span>':btc.rsiD>=68?'<span class="dn">'+btc.rsiD+' (overbought)</span>':'<span class="neu">'+btc.rsiD+'</span>';
+  // Nie wymagaj obecnosci BTC w sygnalach - live bot (worker) skanuje tylko
+  // pary z PAIRS (SOL/XRP/ADA), BTC nigdy tam nie wystapi, wiec wczesniejszy
+  // "if(!btc) return;" blokowal renderowanie CALEJ zakladki Rynek (razem z
+  // market-cards) na zawsze, niezaleznie od stanu bota/API.
+  const btc=sigs.find(function(s){ return s.sym==='BTCUSDC'; });
+  if (btc) {
+    gi('mkt-btc-trend').innerHTML = btc.trendD===2?'<span class="up">Bull mocny</span>':btc.trendD===1?'<span class="up">Bull</span>':btc.trendD===0?'<span class="gold">Boczny</span>':'<span class="dn">Bear</span>';
+    gi('mkt-btc-rsi').innerHTML = btc.rsiD<=32?'<span class="up">'+btc.rsiD+' (oversold)</span>':btc.rsiD>=68?'<span class="dn">'+btc.rsiD+' (overbought)</span>':'<span class="neu">'+btc.rsiD+'</span>';
+  } else {
+    gi('mkt-btc-trend').innerHTML = '<span class="neu">n/d (BTC nie skanowany)</span>';
+    gi('mkt-btc-rsi').innerHTML   = '<span class="neu">n/d</span>';
+  }
   const altBuys=sigs.filter(function(s){ return s.sym!=='BTCUSDC'&&s.buy; }).length;
   gi('mkt-alts').innerHTML = altBuys>2?'<span class="up">'+altBuys+' BUY</span>':altBuys>0?'<span class="gold">'+altBuys+' BUY</span>':'<span class="dn">Brak</span>';
+  // Progi wzgledne do liczby realnie skanowanych par (zamiast hardkodowanych
+  // 9/5, ktore zakladaly ~15-parowa liste i przy 3 parach live bota nigdy
+  // nie byly osiagalne - "Rynek ogolnie" zawsze pokazywal "Niedzwiedzi").
   const reg=sigs.filter(function(s){ return s.trendD>=1; }).length;
-  gi('mkt-regime').innerHTML = reg>=9?'<span class="up">Byczo ('+reg+'/'+sigs.length+')</span>':reg>=5?'<span class="gold">Mieszany</span>':'<span class="dn">Niedzwiedzi</span>';
+  gi('mkt-regime').innerHTML = reg>=Math.ceil(sigs.length*0.7)?'<span class="up">Byczo ('+reg+'/'+sigs.length+')</span>':reg>=Math.ceil(sigs.length*0.4)?'<span class="gold">Mieszany</span>':'<span class="dn">Niedzwiedzi</span>';
   gi('market-cards').innerHTML = sigs.map(function(s) {
     const tC=s.trendD>=1?'up':s.trendD===0?'gold':'dn';
     const tT=s.trendD===2?'Bull':s.trendD===1?'Bull':s.trendD===0?'Boczny':'Bear';
