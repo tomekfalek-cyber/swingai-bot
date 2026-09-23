@@ -498,7 +498,7 @@ tr:hover td{background:rgba(45,143,255,.04);}
           </div>
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Kapitał startowy $</span><input id="bt-capital" type="number" value="1000" style="width:80px"></div>
           <div class="r2" style="margin-bottom:6px"><span class="lbl">Wielkość pozycji %</span><input id="bt-size" type="number" value="10" min="1" max="50" style="width:80px"></div>
-          <div class="r2" style="margin-bottom:6px"><span class="lbl">Min Score BUY</span><input id="bt-score" type="number" value="55" min="40" max="90" style="width:80px"> <small class="lbl">(max~88)</small></div>
+          <div class="r2" style="margin-bottom:6px"><span class="lbl">Min Score BUY</span><input id="bt-score" type="number" value="40" min="40" max="90" style="width:80px"> <small class="lbl">(score liczony inaczej niż live - jesli 0 transakcji, obnizaj)</small></div>
           <div class="r2" style="margin-bottom:10px"><span class="lbl">TP% / SL%</span>
             <span><input id="bt-tp" type="number" value="8" style="width:48px"> / <input id="bt-sl" type="number" value="4" style="width:48px"></span>
           </div>
@@ -3587,7 +3587,7 @@ async function runBacktest() {
 
     btResults = { trades:trades, curve:curve, capital:capital };
     renderBacktestResults(trades, curve, capital);
-    var scoreInfo = trades.length===0 ? ' | Max score na '+n+' barach: '+maxScoreSeen+' (prog: '+minScore+')' : '';
+    var scoreInfo = trades.length===0 ? ' | Max score na '+n+' barach: '+maxScoreSeen+' (prog: '+minScore+') — obniz "Min Score BUY" pod '+maxScoreSeen+' aby zobaczyc transakcje' : '';
     gi('bt-progress').textContent = 'Gotowe — '+trades.length+' transakcji na '+n+' swiecach'+scoreInfo;
   } catch(e) {
     gi('bt-progress').textContent = 'Blad: '+e.message;
