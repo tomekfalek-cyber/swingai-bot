@@ -519,6 +519,12 @@ async function runBotCycle(env) {
     const btcDrop = await btcDropGuard();
     if (btcDrop) addLog(state, 'BTC Guard aktywny – brak nowych long na altcoinach', 'warn');
 
+    // 2b. Synchronizuj z realnym kontem MEXC - wykryj pozycje, ktore istnieja na
+    // gieldzie (otwarte przez bota LUB recznie przez uzytkownika) ale nie sa w
+    // state.positions (np. po utracie stanu przy restarcie/resecie Workera).
+    // Dziala co cykl (self-healing) - nie wymaga recznego /add-position.
+    await syncPositionsFromExchange(cfg, state);
+
     // 3. Sprawdź otwarte pozycje
     await checkPositions(cfg, state, env, ql);
 
@@ -2059,6 +2065,66 @@ async function mexcGetBalance(cfg) {
   const d = await mexcAccount(cfg);
   const usdc = d.balances.find(b => b.asset === 'USDC');
   return usdc ? +usdc.free : 0;
+}
+
+// Wykrywa pozycje otwarte na koncie MEXC (przez bota LUB recznie przez uzytkownika),
+// ktore nie sa jeszcze w state.positions, i dopisuje je - bot zarzadza nimi dalej
+// (SL/TP/trailing w checkPositions) niezaleznie od tego, kto je otworzyl. Ogranicza
+// sie do uniwersum par tego bota (PAIR_PARAMS_DEFAULT: BTC/ETH/SOL/XRP/ADA), bo tylko
+// dla nich ma dane rynkowe (Kraken) i mapowanie na symbol MEXC.
+async function syncPositionsFromExchange(cfg, state) {
+  if (cfg.mode !== 'mexc' || !cfg.mexcApiKey || !cfg.mexcSecret) return;
+  let acct;
+  try { acct = await mexcAccount(cfg); }
+  catch(e) { addLog(state, 'Sync pozycji: nie udalo sie pobrac konta MEXC: ' + e.message, 'err'); return; }
+  if (!Array.isArray(state.positions)) state.positions = [];
+  for (const sym of Object.keys(PAIR_PARAMS_DEFAULT)) {
+    if (state.positions.some(p => p.sym === sym)) continue; // juz zarzadzana
+    const msym = mexcSymbol(sym);
+    const asset = msym.replace('USDC', '').replace('USDT', '');
+    const bal = acct.balances.find(b => b.asset === asset);
+    const qty = bal ? (+bal.free + +bal.locked) : 0;
+    if (qty <= 0) continue;
+    let price;
+    try { price = await getLastPrice(sym); } catch(e) { continue; }
+    if (!price || qty * price < 1) continue; // dust (<$1) - pomijamy
+    const entry = await mexcEstimateEntryPrice(msym, qty, price, cfg);
+    state.positions.push({
+      sym, entry, qty, cp: price, highP: Math.max(price, entry),
+      sl: 0, tp: 0, trailDist: cfg.trail, // 0 => checkPositions uzyje entry*(1±cfg.tp/sl)
+      entryTs: Date.now(),
+      score: 0, finalProb: 0, aiMethod: 'SYNC', nbFeatures: null, gbmFeatures: null,
+      qlSig: null, gbmProb: null, nbLabel: 'NEUTRAL',
+      why: 'Zsynchronizowano z konta MEXC (saldo bez wpisu w state)', size: entry * qty, rr: 0
+    });
+    addLog(state, 'SYNC: wykryto pozycje ' + sym + ' na MEXC (qty=' + qty + ', szac. entry=$' + entry.toFixed(4) + ') - dodano do zarzadzania', 'warn');
+  }
+}
+
+// Szacuje cene wejscia z ostatnich wypelnionych zlecen BUY (allOrders), sumujac od
+// najnowszych do pokrycia obecnie posiadanej ilosci. Przy braku/niedoborze historii
+// wraca do aktualnej ceny rynkowej (bezpieczny fallback, nie zgadywanie w druga strone).
+async function mexcEstimateEntryPrice(msym, qty, fallbackPrice, cfg) {
+  try {
+    const s = await mexcSign('symbol=' + msym + '&limit=50', cfg);
+    const r = await fetchWithTimeout('https://api.mexc.com/api/v3/allOrders?' + s.qs, 10000, { headers: { 'X-MEXC-APIKEY': s.apiKey } });
+    const orders = await r.json();
+    if (!Array.isArray(orders)) return fallbackPrice;
+    const buys = orders
+      .filter(o => o.side === 'BUY' && o.status === 'FILLED' && +o.executedQty > 0)
+      .sort((a, b) => (+b.updateTime || 0) - (+a.updateTime || 0));
+    let remaining = qty, sumCost = 0, sumQty = 0;
+    for (const o of buys) {
+      if (remaining <= 0) break;
+      const oQty   = +o.executedQty;
+      const oPrice = o.cummulativeQuoteQty ? (+o.cummulativeQuoteQty / oQty) : (+o.price || fallbackPrice);
+      const take   = Math.min(oQty, remaining);
+      sumCost += take * oPrice;
+      sumQty  += take;
+      remaining -= take;
+    }
+    return sumQty > 0 ? (sumCost / sumQty) : fallbackPrice;
+  } catch(e) { return fallbackPrice; }
 }
 
 // ─────────────────────────────────────────────────────────────────────
