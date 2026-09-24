@@ -117,7 +117,9 @@ export default {
       // Restart w tym samym trybie (np. po zatrzymaniu przez Cloudflare) ma wznowic
       // dzialanie z otwartymi pozycjami, nie czyscic ich jak przy pierwszym starcie.
       const oldState = await getState(env);
-      const freshState = (oldCfg.mode === 'paper') ? { ...defaultState(), ...oldState } : defaultState();
+      const freshState = (oldCfg.mode === 'paper')
+  ? { ...defaultState(), ...oldState, cycleRunning: false, cycleStartedAt: 0 }
+  : defaultState();
       await env.SWINGAI_KV.put('state', JSON.stringify(freshState));
       ctx.waitUntil(runBotCycle(env));
       return new Response(redirectHTML('✅ Bot PAPER uruchomiony!'), { headers: {'Content-Type':'text/html;charset=utf-8'} });
@@ -151,7 +153,9 @@ export default {
       // zmianie trybu (paper -> mexc), bo pozycje z paper tradingu nie odpowiadaja
       // realnym pozycjom na gieldzie.
       const oldState = await getState(env);
-      const freshState = (oldCfg.mode === 'mexc') ? { ...defaultState(), ...oldState } : defaultState();
+      const freshState = (oldCfg.mode === 'mexc')
+  ? { ...defaultState(), ...oldState, cycleRunning: false, cycleStartedAt: 0 }
+  : defaultState();
       await env.SWINGAI_KV.put('state', JSON.stringify(freshState));
       ctx.waitUntil(runBotCycle(env));
       return jsonResp({ ok:true, msg:'Bot LIVE uruchomiony!' });
