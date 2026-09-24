@@ -187,6 +187,42 @@ export default {
       return jsonResp({ok:true, msg:'Konfiguracja zapisana'});
     }
 
+    // Recznie dodaje pozycje do state.positions - do odtworzenia realnej pozycji
+    // z gieldy po tym jak /start-live wyzerowal stan bota (bug naprawiony 2026-09-24,
+    // ale nie odtwarza danych utraconych PRZED poprawka). Chronione tym samym
+    // globalnym AUTH_SECRET co inne endpointy kontrolne (patrz gate na starcie fetch()).
+    if (url.pathname === '/add-position' && request.method === 'POST') {
+      let b = {};
+      try { b = await request.json(); } catch(e) {}
+      const sym   = String(b.sym || '').toUpperCase();
+      const entry = parseFloat(b.entry);
+      const qty   = parseFloat(b.qty);
+      if (!sym || !(entry > 0) || !(qty > 0)) {
+        return jsonResp({ ok:false, error:'Wymagane: sym, entry (cena wejscia), qty (ilosc) - wszystkie > 0' }, 400);
+      }
+      const cfg   = await getConfig(env);
+      const state = await getState(env);
+      if (!Array.isArray(state.positions)) state.positions = [];
+      if (state.positions.some(p => p.sym === sym)) {
+        return jsonResp({ ok:false, error:'Pozycja ' + sym + ' juz istnieje w state.positions' }, 409);
+      }
+      const trailDist = (b.trail != null) ? parseFloat(b.trail) / 100 : cfg.trail;
+      const tp = (b.tp != null) ? parseFloat(b.tp) : 0; // 0 => checkPositions uzyje entry*(1+cfg.tp)
+      const sl = (b.sl != null) ? parseFloat(b.sl) : 0; // 0 => checkPositions uzyje entry*(1-cfg.sl)
+      const pos = {
+        sym, entry, qty, cp: entry, highP: entry,
+        sl, tp, trailDist,
+        entryTs: b.entryTs ? Number(b.entryTs) : Date.now(),
+        score: 0, finalProb: 0, aiMethod: 'MANUAL', nbFeatures: null, gbmFeatures: null,
+        qlSig: null, gbmProb: null, nbLabel: 'NEUTRAL',
+        why: 'Recznie odtworzona po utracie stanu (Cloudflare reset)', size: entry * qty, rr: 0
+      };
+      state.positions.push(pos);
+      addLog(state, 'RECZNIE dodano pozycje ' + sym + ' @ ' + entry + ' qty=' + qty, 'warn');
+      await env.SWINGAI_KV.put('state', JSON.stringify(state));
+      return jsonResp({ ok:true, position: pos });
+    }
+
     if (url.pathname === '/delete-keys') {
       const which = url.searchParams.get('w') || 'all';
       const cfg = await getConfig(env);
