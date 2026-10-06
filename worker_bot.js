@@ -2083,6 +2083,20 @@ async function syncPositionsFromExchange(cfg, state) {
   try { acct = await mexcAccount(cfg); }
   catch(e) { addLog(state, 'Sync pozycji: nie udalo sie pobrac konta MEXC: ' + e.message, 'err'); return; }
   if (!Array.isArray(state.positions)) state.positions = [];
+  // BUGFIX (dwukierunkowa synchronizacja): USUN pozycje, ktorych juz NIE MA na gieldzie
+  // (zamkniete recznie albo poza botem). Wczesniej sync tylko DODAWAL - zamknieta
+  // pozycja zostawala w state.positions i na dashboardzie na zawsze ("duch").
+  state.positions = state.positions.filter(function(pos) {
+    var msymR  = mexcSymbol(pos.sym);
+    var assetR = msymR.replace('USDC', '').replace('USDT', '');
+    var balR   = acct.balances.find(function(b){ return b.asset === assetR; });
+    var qtyR   = balR ? (+balR.free + +balR.locked) : 0;
+    if (qtyR <= 0) {
+      addLog(state, 'SYNC: pozycja ' + pos.sym + ' nie istnieje juz na MEXC - usuwam z panelu', 'warn');
+      return false;
+    }
+    return true;
+  });
   for (const sym of Object.keys(PAIR_PARAMS_DEFAULT)) {
     if (state.positions.some(p => p.sym === sym)) continue; // juz zarzadzana
     const msym = mexcSymbol(sym);
