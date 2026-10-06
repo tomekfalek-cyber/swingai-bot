@@ -388,6 +388,7 @@ export default {
         lastCycle:   state.lastCycle   || null,
         nextCycle:   nextCycle,
         posCount:    (state.positions  || []).length,
+        positions:   state.positions   || [],
         active:      cfg.active        || false,
         dailyPnl:    state.dailyPnl    || 0,
         liveBalance: state.liveBalance || null,
@@ -2760,6 +2761,18 @@ async function dashboardHTML(cfg, state, env) {
             if (data.trades && typeof ST !== 'undefined') {
               ST.trades = data.trades;
               if (typeof renderTradeJournal === 'function') renderTradeJournal();
+            }
+            // BUGFIX: po zamknieciu pozycji Worker zwraca aktualne positions -
+            // bez tego dashboard trzymal stara liste z localStorage do F5.
+            if (data.positions !== undefined && typeof ST !== 'undefined') {
+              ST.positions = data.positions;
+              try {
+                var rawP = localStorage.getItem('swingai_v3');
+                var stP  = rawP ? JSON.parse(rawP) : {};
+                stP.positions = data.positions;
+                localStorage.setItem('swingai_v3', JSON.stringify(stP));
+              } catch(eP) {}
+              if (typeof renderPositions === 'function') renderPositions();
             }
             if (data.mode) {
               if (typeof CFG !== 'undefined') CFG.mode = data.mode;
